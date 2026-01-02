@@ -1,0 +1,7 @@
+scrape_configs:
+  - job_name: 'nestjs-cluster'
+    dns_sd_configs:
+      - names:
+          - 'trade3-nestjs' # Убираем 'tasks.', оставляем просто имя сервиса
+        type: 'A'
+        port: 3000

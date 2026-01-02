@@ -1,0 +1,24 @@
+import { Injectable } from '@nestjs/common';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { ConfigService } from '@nestjs/config';
+import { PrismaClient } from '../../generated/prisma/client';
+
+@Injectable()
+export class PrismaService extends PrismaClient {
+  constructor(private readonly configService: ConfigService) {
+    const DB_USER = configService.getOrThrow<string>('DB_USER');
+    const DB_PASSWORD = configService.getOrThrow<string>('DB_PASSWORD');
+    const DB_HOST = configService.getOrThrow<string>('DB_HOST');
+    const DB_PORT = configService.getOrThrow<string>('DB_PORT');
+    const DB_NAME = configService.getOrThrow<string>('DB_NAME');
+
+    const connectionString = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=public`;
+    const pool = new Pool({ connectionString });
+
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore: PrismaPg expects a Pool but types might be slightly off in some versions without @types/pg being exact match or other quirk, but this is the standard usage.
+    const adapter = new PrismaPg(pool);
+    super({ adapter });
+  }
+}

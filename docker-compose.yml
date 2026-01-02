@@ -1,0 +1,87 @@
+version: '3.8'
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  trade3-nestjs:
+    build: .
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+    restart: always
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    logging: *default-logging
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - trade3-nestjs
+    logging: *default-logging
+
+  dozzle:
+    image: amir20/dozzle:latest
+    restart: always
+    environment:
+      - DOZZLE_BASE=/logs
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging: *default-logging
+
+  prometheus:
+    image: prom/prometheus
+    restart: always
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.external-url=http://localhost/prometheus/'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - promdata:/prometheus
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana
+    restart: always
+    environment:
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+    logging: *default-logging
+
+volumes:
+  pgdata:
+  grafanadata:
+  promdata:

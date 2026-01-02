@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid(7))
+  username  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([username])
+}
+
+// Store
+model Store {
+  id        String    @id @default(uuid(7))
+  name      String
+  cashboxes Cashbox[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([name])
+}
+
+model Cashbox {
+  id        String   @id @default(uuid(7))
+  name      String
+  store     Store    @relation(fields: [storeId], references: [id])
+  storeId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, storeId])
+}
+
+// Product
+// Pricing types (e.g., Retail, Wholesale)
+model PriceType {
+  id        String   @id @default(uuid(7))
+  name      String
+  prices    Price[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name])
+}
+
+// Actual product prices
+model Price {
+  id          String    @id @default(uuid(7))
+  value       Float
+  product     Product   @relation(fields: [productId], references: [id])
+  productId   String
+  priceType   PriceType @relation(fields: [priceTypeId], references: [id])
+  priceTypeId String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([productId, priceTypeId])
+}
+
+model Category {
+  id        String    @id @default(uuid(7))
+  name      String
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([name])
+}
+
+model Product {
+  id         String   @id @default(uuid(7))
+  name       String
+  article    String?
+  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId String
+  prices     Price[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([categoryId, name])
+}
+
+// People
+model Vendor {
+  id        String   @id @default(uuid(7))
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name])
+}
+
+model Client {
+  id        String   @id @default(uuid(7))
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name])
+}
