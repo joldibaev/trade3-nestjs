@@ -8,6 +8,7 @@ export interface Field {
   isArray: boolean;
   isRelation: boolean;
   isSystem: boolean;
+  isEnum: boolean;
 }
 
 export interface Model {
@@ -40,7 +41,7 @@ export function parseFields(body: string): Field[] {
         trimmed.includes('@id') ||
         trimmed.includes('@default(now())') ||
         trimmed.includes('@updatedAt');
-      const isOptional = type.endsWith('?');
+      const isOptional = type.endsWith('?') || trimmed.includes('@default');
       const cleanType = type.replace('?', '');
       const isArray = cleanType.endsWith('[]');
       const baseType = cleanType.replace('[]', '');
@@ -48,6 +49,7 @@ export function parseFields(body: string): Field[] {
         'String',
         'Int',
         'Float',
+        'Decimal',
         'Boolean',
         'DateTime',
         'Json',
@@ -60,6 +62,7 @@ export function parseFields(body: string): Field[] {
         isArray,
         isRelation,
         isSystem,
+        isEnum: false, // Will be updated later
       };
     })
     .filter((f): f is Field => f !== null);
@@ -87,19 +90,32 @@ export function mapType(prismaType: string): string {
 /**
  * Generates an interface file content (no swagger decorators)
  */
-export function generateInterfaceContent(model: Model, allModels: Models): string {
-  const relationFields = model.fields.filter((f) => f.isRelation);
+export function generateInterfaceContent(
+  model: Model,
+  allModels: Models,
+): string {
+  const relevantFields = model.fields.filter((f) => f.isRelation || f.isEnum);
+  const importLines = new Set<string>();
 
-  let imports = '';
-  relationFields.forEach((f) => {
+  relevantFields.forEach((f) => {
     const relModel = allModels[f.type];
     if (relModel && relModel.name !== model.name) {
-      imports += `import { ${relModel.name} } from './${relModel.singular}.interface';\n`;
+      importLines.add(
+        `import { ${relModel.name} } from './${relModel.singular}.interface';`,
+      );
+    } else if (f.isEnum) {
+      importLines.add(`import { ${f.type} } from '../prisma/enums';`);
     }
   });
 
-  let content = imports;
-  if (imports) content += '\n';
+  if (model.fields.some((f) => f.type === 'Decimal')) {
+    importLines.add(
+      "import { Decimal } from '../prisma/internal/prismaNamespace';",
+    );
+  }
+
+  let content = Array.from(importLines).sort().join('\n');
+  if (content) content += '\n\n';
   content += `export interface ${model.name} {\n`;
 
   model.fields.forEach((f) => {
@@ -117,18 +133,29 @@ export function generateInterfaceContent(model: Model, allModels: Models): strin
  * Generates an entity file content (with swagger decorators)
  */
 export function generateEntityContent(model: Model, allModels: Models): string {
-  const relationFields = model.fields.filter((f) => f.isRelation);
+  const relevantFields = model.fields.filter((f) => f.isRelation || f.isEnum);
+  const importLines = new Set<string>();
+  importLines.add("import { ApiProperty } from '@nestjs/swagger';");
 
-  let imports = "import { ApiProperty } from '@nestjs/swagger';\n";
-  relationFields.forEach((f) => {
+  relevantFields.forEach((f) => {
     const relModel = allModels[f.type];
     if (relModel && relModel.name !== model.name) {
-      imports += `import { ${relModel.name} } from './${relModel.singular}.entity';\n`;
+      importLines.add(
+        `import { ${relModel.name} } from './${relModel.singular}.entity';`,
+      );
+    } else if (f.isEnum) {
+      importLines.add(`import { ${f.type} } from '../prisma/enums';`);
     }
   });
 
-  let content = imports;
-  if (imports) content += '\n';
+  if (model.fields.some((f) => f.type === 'Decimal')) {
+    importLines.add(
+      "import { Decimal } from '../prisma/internal/prismaNamespace';",
+    );
+  }
+
+  let content = Array.from(importLines).sort().join('\n');
+  if (content) content += '\n\n';
   content += `export class ${model.name} {\n`;
 
   model.fields.forEach((f, index) => {
@@ -136,10 +163,14 @@ export function generateEntityContent(model: Model, allModels: Models): string {
     const suffix = f.isOptional ? '?' : '';
     const arraySuffix = f.isArray ? '[]' : '';
 
-    if (f.isRelation) {
+    if (f.isRelation && !f.isEnum) {
       content += `  @ApiProperty({ type: () => ${tsType}, isArray: ${f.isArray}, required: ${!f.isOptional} })\n`;
+    } else if (f.isEnum) {
+      content += `  @ApiProperty({ enum: ${tsType}, isArray: ${f.isArray}, required: ${!f.isOptional} })\n`;
     } else if (tsType === 'Date') {
       content += `  @ApiProperty({ type: 'string', format: 'date-time', required: ${!f.isOptional} })\n`;
+    } else if (tsType === 'Decimal') {
+      content += `  @ApiProperty({ type: 'number', required: ${!f.isOptional} })\n`;
     } else {
       content += `  @ApiProperty({ type: '${tsType}', required: ${!f.isOptional}${f.name === 'id' ? ", format: 'uuid'" : ''} })\n`;
     }
@@ -158,6 +189,7 @@ export function generateEntityContent(model: Model, allModels: Models): string {
  */
 export function generateCreateDtoContent(model: Model): string {
   const validatorImports = new Set<string>();
+  const customImports = new Set<string>();
   let fieldsContent = '';
   const filteredFields = model.fields.filter(
     (f) => !f.isSystem && !f.isRelation && !f.isArray,
@@ -180,6 +212,15 @@ export function generateCreateDtoContent(model: Model): string {
     } else if (mapType(f.type) === 'string') {
       fieldsContent += '  @IsString()\n';
       validatorImports.add('IsString');
+    } else if (f.type === 'Decimal') {
+      fieldsContent += '  @IsNumber()\n';
+      validatorImports.add('IsNumber');
+    }
+
+    if (f.isEnum) {
+      customImports.add(`import { ${f.type} } from '../../prisma/enums';`);
+      fieldsContent += `  @IsEnum(${f.type})\n`;
+      validatorImports.add('IsEnum');
     }
 
     fieldsContent += `  ${f.name}${f.isOptional ? '?' : ''}: ${mapType(f.type)};\n`;
@@ -194,6 +235,17 @@ export function generateCreateDtoContent(model: Model): string {
   }
   if (validatorImports.size > 0) {
     createContent += `import { ${Array.from(validatorImports).sort().join(', ')} } from 'class-validator';\n`;
+  }
+  if (
+    model.fields.some(
+      (f) => f.type === 'Decimal' && !f.isArray && !f.isSystem && !f.isRelation,
+    )
+  ) {
+    createContent +=
+      "import { Decimal } from '../../prisma/internal/prismaNamespace';\n";
+  }
+  if (customImports.size > 0) {
+    createContent += Array.from(customImports).sort().join('\n') + '\n';
   }
   if (createContent) createContent += '\n';
 
@@ -239,6 +291,22 @@ function run(): void {
     };
   }
 
+  const enums: string[] = [];
+  const enumRegex = /enum\s+(\w+)\s+{([\s\S]*?)}/g;
+  while ((match = enumRegex.exec(schema)) !== null) {
+    enums.push(match[1]);
+  }
+
+  // Update isEnum and isRelation based on found enums
+  for (const modelName in models) {
+    models[modelName].fields.forEach((f) => {
+      if (enums.includes(f.type)) {
+        f.isEnum = true;
+        f.isRelation = false;
+      }
+    });
+  }
+
   const generatedDir = path.join(process.cwd(), 'src', 'generated');
   const dirs = {
     entities: path.join(generatedDir, 'entities'),
@@ -271,7 +339,8 @@ function run(): void {
 
     // DTOs
     const modelDtoDir = path.join(dirs.dto, model.singular);
-    if (!fs.existsSync(modelDtoDir)) fs.mkdirSync(modelDtoDir, { recursive: true });
+    if (!fs.existsSync(modelDtoDir))
+      fs.mkdirSync(modelDtoDir, { recursive: true });
 
     fs.writeFileSync(
       path.join(modelDtoDir, `create-${model.singular}.dto.ts`),
@@ -280,8 +349,8 @@ function run(): void {
     fs.writeFileSync(
       path.join(modelDtoDir, `update-${model.singular}.dto.ts`),
       "import { PartialType } from '@nestjs/swagger';\n" +
-      `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
-      `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`
+        `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
+        `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`,
     );
 
     // Enums
@@ -299,4 +368,6 @@ function run(): void {
   console.log('✨ Generation complete!');
 }
 
-if (require.main === module) { run(); }
+if (require.main === module) {
+  run();
+}

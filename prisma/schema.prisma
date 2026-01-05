@@ -14,6 +14,12 @@ datasource db {
   provider = "postgresql"
 }
 
+enum DocumentStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id        String   @id @default(uuid(7))
   username  String
@@ -25,42 +31,49 @@ model User {
 
 // Store
 model Store {
-  id        String    @id @default(uuid(7))
-  name      String
-  cashboxes Cashbox[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id            String               @id @default(uuid(7))
+  name          String
+  cashboxes     Cashbox[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  stocks        Stock[]
+  sales         DocumentSale[]
+  purchases     DocumentPurchase[]
+  returns       DocumentReturn[]
+  adjustments   DocumentAdjustment[]
+  transfersFrom DocumentTransfer[]   @relation("SourceStore")
+  transfersTo   DocumentTransfer[]   @relation("DestinationStore")
 
   @@unique([name])
 }
 
 model Cashbox {
-  id        String   @id @default(uuid(7))
+  id        String         @id @default(uuid(7))
   name      String
-  store     Store    @relation(fields: [storeId], references: [id])
+  store     Store          @relation(fields: [storeId], references: [id])
   storeId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  sales     DocumentSale[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   @@unique([name, storeId])
 }
 
-// Product
-// Pricing types (e.g., Retail, Wholesale)
+// Price
 model PriceType {
-  id        String   @id @default(uuid(7))
+  id        String         @id @default(uuid(7))
   name      String
   prices    Price[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  sales     DocumentSale[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   @@unique([name])
 }
 
-// Actual product prices
 model Price {
   id          String    @id @default(uuid(7))
-  value       Float
+  value       Decimal
   product     Product   @relation(fields: [productId], references: [id])
   productId   String
   priceType   PriceType @relation(fields: [priceTypeId], references: [id])
@@ -71,6 +84,7 @@ model Price {
   @@unique([productId, priceTypeId])
 }
 
+// Product
 model Category {
   id        String    @id @default(uuid(7))
   name      String
@@ -81,34 +95,214 @@ model Category {
   @@unique([name])
 }
 
+model Stock {
+  id                   String   @id @default(uuid(7))
+  quantity             Decimal  @default(0)
+  averagePurchasePrice Decimal  @default(0)
+  product              Product  @relation(fields: [productId], references: [id])
+  productId            String
+  store                Store    @relation(fields: [storeId], references: [id])
+  storeId              String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([productId, storeId])
+}
+
 model Product {
-  id         String   @id @default(uuid(7))
-  name       String
-  article    String?
-  category   Category @relation(fields: [categoryId], references: [id])
-  categoryId String
-  prices     Price[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String                   @id @default(uuid(7))
+  name            String
+  article         String?
+  category        Category                 @relation(fields: [categoryId], references: [id])
+  categoryId      String
+  prices          Price[]
+  stocks          Stock[]
+  saleItems       DocumentSaleItem[]
+  purchaseItems   DocumentPurchaseItem[]
+  returnItems     DocumentReturnItem[]
+  adjustmentItems DocumentAdjustmentItem[]
+  transferItems   DocumentTransferItem[]
+  barcodes        Barcode[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([categoryId, name])
 }
 
+// Barcode
+enum BarcodeType {
+  EAN13
+  EAN8
+  CODE128
+  INTERNAL
+  OTHER
+}
+
+model Barcode {
+  id        String      @id @default(uuid(7))
+  value     String
+  type      BarcodeType @default(EAN13)
+  product   Product     @relation(fields: [productId], references: [id])
+  productId String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([productId, value])
+}
+
 // People
 model Vendor {
-  id        String   @id @default(uuid(7))
+  id        String             @id @default(uuid(7))
   name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  purchases DocumentPurchase[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
   @@unique([name])
 }
 
 model Client {
-  id        String   @id @default(uuid(7))
+  id        String           @id @default(uuid(7))
   name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  sales     DocumentSale[]
+  returns   DocumentReturn[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
   @@unique([name])
+}
+
+model DocumentSale {
+  id          String             @id @default(uuid(7))
+  date        DateTime           @default(now())
+  store       Store              @relation(fields: [storeId], references: [id])
+  storeId     String
+  cashbox     Cashbox?           @relation(fields: [cashboxId], references: [id])
+  cashboxId   String?
+  client      Client?            @relation(fields: [clientId], references: [id])
+  clientId    String?
+  totalAmount Decimal
+  items       DocumentSaleItem[]
+  status      DocumentStatus     @default(DRAFT)
+  priceType   PriceType?         @relation(fields: [priceTypeId], references: [id])
+  priceTypeId String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model DocumentSaleItem {
+  id        String       @id @default(uuid(7))
+  sale      DocumentSale @relation(fields: [saleId], references: [id])
+  saleId    String
+  product   Product      @relation(fields: [productId], references: [id])
+  productId String
+  quantity  Decimal
+  price     Decimal
+  costPrice Decimal      @default(0)
+  total     Decimal
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model DocumentPurchase {
+  id          String                 @id @default(uuid(7))
+  date        DateTime               @default(now())
+  vendor      Vendor?                @relation(fields: [vendorId], references: [id])
+  vendorId    String?
+  store       Store                  @relation(fields: [storeId], references: [id])
+  storeId     String
+  totalAmount Decimal
+  items       DocumentPurchaseItem[]
+  status      DocumentStatus         @default(DRAFT)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+}
+
+model DocumentPurchaseItem {
+  id         String           @id @default(uuid(7))
+  purchase   DocumentPurchase @relation(fields: [purchaseId], references: [id])
+  purchaseId String
+  product    Product          @relation(fields: [productId], references: [id])
+  productId  String
+  quantity   Decimal
+  price      Decimal
+  total      Decimal
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+}
+
+model DocumentReturn {
+  id          String               @id @default(uuid(7))
+  date        DateTime             @default(now())
+  store       Store                @relation(fields: [storeId], references: [id])
+  storeId     String
+  client      Client?              @relation(fields: [clientId], references: [id])
+  clientId    String?
+  totalAmount Decimal
+  items       DocumentReturnItem[]
+  status      DocumentStatus       @default(DRAFT)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+model DocumentReturnItem {
+  id        String         @id @default(uuid(7))
+  return    DocumentReturn @relation(fields: [returnId], references: [id])
+  returnId  String
+  product   Product        @relation(fields: [productId], references: [id])
+  productId String
+  quantity  Decimal
+  price     Decimal
+  total     Decimal
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model DocumentAdjustment {
+  id        String                   @id @default(uuid(7))
+  date      DateTime                 @default(now())
+  store     Store                    @relation(fields: [storeId], references: [id])
+  storeId   String
+  items     DocumentAdjustmentItem[]
+  status    DocumentStatus           @default(DRAFT)
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+}
+
+model DocumentAdjustmentItem {
+  id             String             @id @default(uuid(7))
+  adjustment     DocumentAdjustment @relation(fields: [adjustmentId], references: [id])
+  adjustmentId   String
+  product        Product            @relation(fields: [productId], references: [id])
+  productId      String
+  quantity       Decimal
+  quantityBefore Decimal            @default(0)
+  quantityAfter  Decimal            @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+model DocumentTransfer {
+  id                 String                 @id @default(uuid(7))
+  date               DateTime               @default(now())
+  sourceStore        Store                  @relation("SourceStore", fields: [sourceStoreId], references: [id])
+  sourceStoreId      String
+  destinationStore   Store                  @relation("DestinationStore", fields: [destinationStoreId], references: [id])
+  destinationStoreId String
+  items              DocumentTransferItem[]
+  status             DocumentStatus         @default(DRAFT)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+}
+
+model DocumentTransferItem {
+  id         String           @id @default(uuid(7))
+  transfer   DocumentTransfer @relation(fields: [transferId], references: [id])
+  transferId String
+  product    Product          @relation(fields: [productId], references: [id])
+  productId  String
+  quantity   Decimal
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 }
