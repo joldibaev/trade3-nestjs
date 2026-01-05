@@ -5,6 +5,19 @@ import { Prisma } from '../generated/prisma/client';
 import Decimal = Prisma.Decimal;
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 
+interface PreparedPurchaseItem {
+  productId: string;
+  quantity: Decimal;
+  price: Decimal;
+  newPrices?: { priceTypeId: string; value: number }[];
+}
+
+interface PurchaseContext {
+  id?: string;
+  storeId: string;
+  date?: Date;
+}
+
 @Injectable()
 export class DocumentPurchaseService {
   constructor(
@@ -52,15 +65,6 @@ export class DocumentPurchaseService {
     // 3. Execute Transaction
     return this.prisma.$transaction(
       async (tx) => {
-        // Fetch existing stocks in batch
-        const existingStocks = await tx.stock.findMany({
-          where: {
-            storeId,
-            productId: { in: productIds },
-          },
-        });
-        const stockMap = new Map(existingStocks.map((s) => [s.productId, s]));
-
         // Create DocumentPurchase
         const purchase = await tx.documentPurchase.create({
           data: {
@@ -83,82 +87,141 @@ export class DocumentPurchaseService {
 
         // Update Stock if COMPLETED
         if (targetStatus === 'COMPLETED') {
-          // Process stock updates strictly sequentially to ensure transaction stability
-          for (const item of preparedItems) {
-            const stock = stockMap.get(item.productId);
-
-            const oldQty = stock ? stock.quantity : new Decimal(0);
-            const oldWap = stock ? stock.averagePurchasePrice : new Decimal(0);
-
-            // Calculate new Quantity
-            const newQty = oldQty.add(item.quantity);
-
-            // Calculate WAP using helper
-            const newWap = this.inventoryService.calculateNewWap(
-              oldQty,
-              oldWap,
-              item.quantity,
-              item.price,
-            );
-
-            await tx.stock.upsert({
-              where: {
-                productId_storeId: { productId: item.productId, storeId },
-              },
-              create: {
-                productId: item.productId,
-                storeId,
-                quantity: newQty,
-                averagePurchasePrice: newWap,
-              },
-              update: {
-                quantity: newQty,
-                averagePurchasePrice: newWap,
-              },
-            });
-
-            // Update Sales Prices if provided
-            if (item.newPrices && item.newPrices.length > 0) {
-              for (const priceUpdate of item.newPrices) {
-                await tx.price.upsert({
-                  where: {
-                    productId_priceTypeId: {
-                      productId: item.productId,
-                      priceTypeId: priceUpdate.priceTypeId,
-                    },
-                  },
-                  create: {
-                    productId: item.productId,
-                    priceTypeId: priceUpdate.priceTypeId,
-                    value: new Decimal(priceUpdate.value),
-                  },
-                  update: {
-                    value: new Decimal(priceUpdate.value),
-                  },
-                });
-              }
-            }
-
-            // Audit: Log Stock Movement
-            await this.inventoryService.logStockMovement(tx, {
-              type: 'PURCHASE',
-              storeId,
-              productId: item.productId,
-              quantity: item.quantity,
-              date: purchase.date,
-              documentId: purchase.id,
-              quantityAfter: newQty,
-              averagePurchasePrice: newWap,
-            });
-          }
+          await this.applyInventoryMovements(tx, purchase, preparedItems);
         }
 
         return purchase;
       },
       {
-        isolationLevel: 'Serializable', // Required for accurate WAP calculation
+        isolationLevel: 'Serializable',
       },
     );
+  }
+
+  async complete(id: string) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const purchase = await tx.documentPurchase.findUniqueOrThrow({
+          where: { id },
+          include: { items: true },
+        });
+
+        if (purchase.status !== 'DRAFT') {
+          throw new BadRequestException(
+            'Only DRAFT documents can be completed',
+          );
+        }
+
+        // Prepare items in the format the helper expects
+        const items = purchase.items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          price: i.price,
+          newPrices: [], // We don't have newPrices stored in DocumentPurchaseItem
+        }));
+
+        await this.applyInventoryMovements(tx, purchase, items);
+
+        // Update status
+        return tx.documentPurchase.update({
+          where: { id },
+          data: { status: 'COMPLETED' },
+          include: { items: true },
+        });
+      },
+      {
+        isolationLevel: 'Serializable',
+      },
+    );
+  }
+
+  private async applyInventoryMovements(
+    tx: Prisma.TransactionClient,
+    purchase: PurchaseContext,
+    items: PreparedPurchaseItem[],
+  ) {
+    const storeId = purchase.storeId;
+    const productIds = items.map((i) => i.productId);
+
+    // Fetch existing stocks in batch
+    const existingStocks = await tx.stock.findMany({
+      where: {
+        storeId,
+        productId: { in: productIds },
+      },
+    });
+    const stockMap = new Map<string, (typeof existingStocks)[0]>(
+      existingStocks.map((s) => [s.productId, s]),
+    );
+
+    // Process stock updates strictly sequentially
+    for (const item of items) {
+      const stock = stockMap.get(item.productId);
+
+      const oldQty = stock ? stock.quantity : new Decimal(0);
+      const oldWap = stock ? stock.averagePurchasePrice : new Decimal(0);
+
+      // Calculate new Quantity
+      const newQty = oldQty.add(item.quantity);
+
+      // Calculate WAP using helper
+      const newWap = this.inventoryService.calculateNewWap(
+        oldQty,
+        oldWap,
+        item.quantity,
+        item.price,
+      );
+
+      await tx.stock.upsert({
+        where: {
+          productId_storeId: { productId: item.productId, storeId },
+        },
+        create: {
+          productId: item.productId,
+          storeId,
+          quantity: newQty,
+          averagePurchasePrice: newWap,
+        },
+        update: {
+          quantity: newQty,
+          averagePurchasePrice: newWap,
+        },
+      });
+
+      // Update Sales Prices if provided (only during initial creation with DTO)
+      if (item.newPrices && item.newPrices.length > 0) {
+        for (const priceUpdate of item.newPrices) {
+          await tx.price.upsert({
+            where: {
+              productId_priceTypeId: {
+                productId: item.productId,
+                priceTypeId: priceUpdate.priceTypeId,
+              },
+            },
+            create: {
+              productId: item.productId,
+              priceTypeId: priceUpdate.priceTypeId,
+              value: new Decimal(priceUpdate.value),
+            },
+            update: {
+              value: new Decimal(priceUpdate.value),
+            },
+          });
+        }
+      }
+
+      // Audit: Log Stock Movement
+      await this.inventoryService.logStockMovement(tx, {
+        type: 'PURCHASE',
+        storeId,
+        productId: item.productId,
+        quantity: item.quantity,
+        date: purchase.date ?? new Date(),
+        documentId: purchase.id ?? '',
+        quantityAfter: newQty,
+        averagePurchasePrice: newWap,
+      });
+    }
   }
 
   findAll(include?: Record<string, boolean>) {

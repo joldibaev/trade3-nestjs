@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import Decimal = Prisma.Decimal;
+import { StockMovementType } from '../../generated/prisma/enums';
 
 @Injectable()
 export class InventoryService {
@@ -120,40 +121,26 @@ export class InventoryService {
       averagePurchasePrice,
     } = data;
 
-    // Construct relation object dynamically
-    const relationField = this.getRelationField(type);
+    const dataInput: Prisma.StockMovementUncheckedCreateInput = {
+      type: type as StockMovementType,
+      storeId,
+      productId,
+      quantity,
+      date: new Date(date),
+      quantityAfter,
+      averagePurchasePrice,
+    };
+
+    // Map the generic documentId to the specific relation field
+    if (type === 'PURCHASE') dataInput.documentPurchaseId = documentId;
+    if (type === 'SALE') dataInput.documentSaleId = documentId;
+    if (type === 'RETURN') dataInput.documentReturnId = documentId;
+    if (type === 'ADJUSTMENT') dataInput.documentAdjustmentId = documentId;
+    if (type === 'TRANSFER_IN' || type === 'TRANSFER_OUT')
+      dataInput.documentTransferId = documentId;
 
     await tx.stockMovement.create({
-      data: {
-        type: type as any,
-        storeId,
-        productId,
-        quantity,
-        date: new Date(date),
-        quantityAfter,
-        averagePurchasePrice,
-
-        // Map the generic documentId to the specific relation field
-        [relationField]: documentId,
-      },
+      data: dataInput,
     });
-  }
-
-  private getRelationField(type: string): string {
-    switch (type) {
-      case 'PURCHASE':
-        return 'documentPurchaseId';
-      case 'SALE':
-        return 'documentSaleId';
-      case 'RETURN':
-        return 'documentReturnId';
-      case 'ADJUSTMENT':
-        return 'documentAdjustmentId';
-      case 'TRANSFER_IN':
-      case 'TRANSFER_OUT':
-        return 'documentTransferId';
-      default:
-        throw new Error(`Unknown StockMovement type: ${type}`);
-    }
   }
 }

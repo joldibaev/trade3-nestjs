@@ -285,4 +285,77 @@ export class TestHelper {
     this.createdIds.sales.push(sale.id);
     return sale;
   }
+
+  async createReturn(
+    storeId: string,
+    clientId: string,
+    productId: string,
+    quantity: number,
+    price: number,
+    status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
+  ) {
+    const doc = await this.documentReturnService.create({
+      storeId,
+      clientId,
+      date: new Date().toISOString(),
+      status,
+      items: [{ productId, quantity, price }],
+    });
+    this.createdIds.returns.push(doc.id);
+    return doc;
+  }
+
+  async createAdjustment(
+    storeId: string,
+    productId: string,
+    quantityDelta: number,
+    status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
+  ) {
+    const doc = await this.documentAdjustmentService.create({
+      storeId,
+      date: new Date().toISOString(),
+      status,
+      items: [{ productId, quantity: quantityDelta }],
+    });
+    this.createdIds.adjustments.push(doc.id);
+    return doc;
+  }
+
+  async createTransfer(
+    sourceStoreId: string,
+    destinationStoreId: string,
+    productId: string,
+    quantity: number,
+    status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
+  ) {
+    const doc = await this.documentTransferService.create({
+      sourceStoreId,
+      destinationStoreId,
+      date: new Date().toISOString(),
+      status,
+      items: [{ productId, quantity }],
+    });
+    this.createdIds.transfers.push(doc.id);
+    return doc;
+  }
+
+  async completePurchase(id: string) {
+    return this.documentPurchaseService.complete(id);
+  }
+
+  async completeSale(id: string) {
+    return this.documentSaleService.complete(id);
+  }
+
+  async completeReturn(id: string) {
+    return this.documentReturnService.complete(id);
+  }
+
+  async completeAdjustment(id: string) {
+    return this.documentAdjustmentService.complete(id);
+  }
+
+  async completeTransfer(id: string) {
+    return this.documentTransferService.complete(id);
+  }
 }

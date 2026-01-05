@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+} from '@nestjs/common';
 import { DocumentPurchaseService } from './document-purchase.service';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -39,5 +47,11 @@ export class DocumentPurchaseController {
     @Query('include') include?: string | string[],
   ) {
     return this.documentPurchaseService.findOne(id, parseInclude(include));
+  }
+
+  @Patch(':id/complete')
+  @ApiStandardResponse(DocumentPurchase)
+  complete(@Param('id') id: string) {
+    return this.documentPurchaseService.complete(id);
   }
 }

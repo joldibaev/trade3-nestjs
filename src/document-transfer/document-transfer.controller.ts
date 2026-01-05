@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
 import { DocumentTransferService } from './document-transfer.service';
 import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -31,5 +31,11 @@ export class DocumentTransferController {
   @ApiStandardResponse(DocumentTransfer)
   findOne(@Param('id') id: string) {
     return this.documentTransferService.findOne(id);
+  }
+
+  @Patch(':id/complete')
+  @ApiStandardResponse(DocumentTransfer)
+  complete(@Param('id') id: string) {
+    return this.documentTransferService.complete(id);
   }
 }

@@ -131,4 +131,33 @@ describe('Document Purchase (e2e)', () => {
     expect(splitRetail?.value.toString()).toBe('1500');
     expect(splitWholesale?.value.toString()).toBe('1200');
   });
+
+  it('should not update stock if DRAFT and update when completed', async () => {
+    const store = await helper.createStore();
+    const vendor = await helper.createVendor();
+    const category = await helper.createCategory();
+    const product = await helper.createProduct(category.id);
+
+    // 1. Create DRAFT purchase
+    const purchase = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      20,
+      1000,
+      'DRAFT',
+    );
+
+    // Verify no stock created
+    const stockDraft = await helper.getStock(product.id, store.id);
+    expect(stockDraft).toBeNull();
+
+    // 2. Complete the purchase
+    await helper.completePurchase(purchase.id);
+
+    // Verify stock is updated
+    const stockAfter = await helper.getStock(product.id, store.id);
+    expect(stockAfter?.quantity.toString()).toBe('20');
+    expect(stockAfter?.averagePurchasePrice.toString()).toBe('1000');
+  });
 });

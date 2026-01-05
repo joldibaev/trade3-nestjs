@@ -111,4 +111,39 @@ describe('Document Transfer (e2e)', () => {
     // WAP = (5*2000 + 5*1000) / 10 = 1500
     expect(stockB!.averagePurchasePrice.toFixed(2)).toBe('1500.00');
   });
+
+  it('should not update stocks if transfer is DRAFT and update when completed', async () => {
+    const storeA = await helper.createStore();
+    const storeB = await helper.createStore();
+    const vendor = await helper.createVendor();
+    const category = await helper.createCategory();
+    const product = await helper.createProduct(category.id);
+
+    // Initial source stock: 10
+    await helper.createPurchase(storeA.id, vendor.id, product.id, 10, 1000);
+
+    // 1. Create DRAFT transfer (5 from A to B)
+    const transfer = await helper.createTransfer(
+      storeA.id,
+      storeB.id,
+      product.id,
+      5,
+      'DRAFT',
+    );
+
+    // Verify stocks unchanged
+    const stockA_draft = await helper.getStock(product.id, storeA.id);
+    expect(stockA_draft!.quantity.toString()).toBe('10');
+    const stockB_draft = await helper.getStock(product.id, storeB.id);
+    expect(stockB_draft).toBeNull();
+
+    // 2. Complete transfer
+    await helper.completeTransfer(transfer.id);
+
+    // Verify stocks updated
+    const stockA_after = await helper.getStock(product.id, storeA.id);
+    expect(stockA_after!.quantity.toString()).toBe('5');
+    const stockB_after = await helper.getStock(product.id, storeB.id);
+    expect(stockB_after!.quantity.toString()).toBe('5');
+  });
 });

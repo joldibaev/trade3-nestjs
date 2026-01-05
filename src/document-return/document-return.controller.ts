@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
 import { DocumentReturnService } from './document-return.service';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -22,10 +22,6 @@ export class DocumentReturnController {
   @Get()
   @ApiStandardResponseArray(DocumentReturn)
   findAll() {
-    // Basic include parsing or dedicated helper if needed
-    // For now, simpler than Sale/Purchase as no ApiIncludeQuery requested yet?
-    // But better reuse parseInclude if I import it.
-    // I will skip ApiIncludeQuery for brevity unless requested.
     return this.documentReturnService.findAll();
   }
 
@@ -33,5 +29,11 @@ export class DocumentReturnController {
   @ApiStandardResponse(DocumentReturn)
   findOne(@Param('id') id: string) {
     return this.documentReturnService.findOne(id);
+  }
+
+  @Patch(':id/complete')
+  @ApiStandardResponse(DocumentReturn)
+  complete(@Param('id') id: string) {
+    return this.documentReturnService.complete(id);
   }
 }

@@ -1,9 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import Decimal = Prisma.Decimal;
+
+interface PreparedReturnItem {
+  productId: string;
+  quantity: Decimal;
+  fallbackWap: Decimal;
+}
+
+interface ReturnContext {
+  id?: string;
+  storeId: string;
+  date?: Date;
+}
 
 @Injectable()
 export class DocumentReturnService {
@@ -70,45 +82,7 @@ export class DocumentReturnService {
         });
 
         if (doc.status === 'COMPLETED') {
-          for (const item of returnItems) {
-            // Use atomic increment for concurrency safety
-            // Upsert handles both "creation of new stock" and "update of existing"
-            await tx.stock.upsert({
-              where: {
-                productId_storeId: { productId: item.productId, storeId },
-              },
-              create: {
-                productId: item.productId,
-                storeId,
-                quantity: item.quantity,
-                averagePurchasePrice: item.fallbackWap, // Use fetched fallback instead of 0
-              },
-              update: {
-                quantity: { increment: item.quantity },
-                // Note: We deliberately do NOT update WAP on return (as agreed),
-                // assuming the returned item has the same cost structure or is negligible.
-              },
-            });
-
-            // Fetch updated stock for accurate snapshot
-            const updatedStock = await tx.stock.findUniqueOrThrow({
-              where: {
-                productId_storeId: { productId: item.productId, storeId },
-              },
-            });
-
-            // Audit: Log Stock Movement
-            await this.inventoryService.logStockMovement(tx, {
-              type: 'RETURN',
-              storeId,
-              productId: item.productId,
-              quantity: item.quantity,
-              date: doc.date,
-              documentId: doc.id,
-              quantityAfter: updatedStock.quantity,
-              averagePurchasePrice: updatedStock.averagePurchasePrice,
-            });
-          }
+          await this.applyInventoryMovements(tx, doc, returnItems);
         }
 
         return doc;
@@ -117,6 +91,90 @@ export class DocumentReturnService {
         isolationLevel: 'ReadCommitted',
       },
     );
+  }
+
+  async complete(id: string) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentReturn.findUniqueOrThrow({
+          where: { id },
+          include: { items: true },
+        });
+
+        if (doc.status !== 'DRAFT') {
+          throw new Error('Only DRAFT documents can be completed');
+        }
+
+        const productIds = doc.items.map((i) => i.productId);
+        const wapMap =
+          await this.inventoryService.getFallbackWapMap(productIds);
+
+        const items = doc.items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          fallbackWap: wapMap.get(i.productId) || new Decimal(0),
+        }));
+
+        await this.applyInventoryMovements(tx, doc, items);
+
+        return tx.documentReturn.update({
+          where: { id },
+          data: { status: 'COMPLETED' },
+          include: { items: true },
+        });
+      },
+      {
+        isolationLevel: 'Serializable',
+      },
+    );
+  }
+
+  private async applyInventoryMovements(
+    tx: Prisma.TransactionClient,
+    doc: ReturnContext,
+    items: PreparedReturnItem[],
+  ) {
+    const storeId = doc.storeId;
+
+    for (const item of items) {
+      // Use atomic increment for concurrency safety
+      // Upsert handles both "creation of new stock" and "update of existing"
+      await tx.stock.upsert({
+        where: {
+          productId_storeId: { productId: item.productId, storeId },
+        },
+        create: {
+          productId: item.productId,
+          storeId,
+          quantity: item.quantity,
+          averagePurchasePrice: item.fallbackWap, // Use fetched fallback instead of 0
+        },
+        update: {
+          quantity: { increment: item.quantity },
+          // Note: We deliberately do NOT update WAP on return (as agreed),
+          // assuming the returned item has the same cost structure or is negligible.
+        },
+      });
+
+      // Fetch updated stock for accurate snapshot
+      const updatedStock = await tx.stock.findUniqueOrThrow({
+        where: {
+          productId_storeId: { productId: item.productId, storeId },
+        },
+      });
+
+      // Audit: Log Stock Movement
+      await this.inventoryService.logStockMovement(tx, {
+        type: 'RETURN',
+        storeId,
+        productId: item.productId,
+        quantity: item.quantity,
+        date: doc.date ?? new Date(),
+        documentId: doc.id ?? '',
+        quantityAfter: updatedStock.quantity,
+        averagePurchasePrice: updatedStock.averagePurchasePrice,
+      });
+    }
   }
 
   findAll(include?: Record<string, boolean>) {

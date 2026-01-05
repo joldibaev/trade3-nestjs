@@ -79,4 +79,33 @@ describe('Document Return (e2e)', () => {
     expect(stockB!.quantity.toString()).toBe('2');
     expect(stockB!.averagePurchasePrice.toFixed(2)).toBe('5000.00');
   });
+
+  it('should not update stock if return is DRAFT and update when completed', async () => {
+    const store = await helper.createStore();
+    const vendor = await helper.createVendor();
+    const category = await helper.createCategory();
+    const product = await helper.createProduct(category.id);
+    const client = await helper.createClient();
+
+    // 1. Create DRAFT return
+    const returnDoc = await helper.createReturn(
+      store.id,
+      client.id,
+      product.id,
+      5,
+      1000,
+      'DRAFT',
+    );
+
+    // Verify stock is null/zero
+    const stockDraft = await helper.getStock(product.id, store.id);
+    expect(stockDraft).toBeNull();
+
+    // 2. Complete return
+    await helper.completeReturn(returnDoc.id);
+
+    // Verify stock updated
+    const stockAfter = await helper.getStock(product.id, store.id);
+    expect(stockAfter!.quantity.toString()).toBe('5');
+  });
 });

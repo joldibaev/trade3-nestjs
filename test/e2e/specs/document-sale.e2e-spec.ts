@@ -147,4 +147,38 @@ describe('Document Sale (e2e)', () => {
     });
     expect(salesCount).toBe(0);
   });
+
+  it('should not update stock if sale is DRAFT and update when completed', async () => {
+    const store = await helper.createStore();
+    const cashbox = await helper.createCashbox(store.id);
+    const vendor = await helper.createVendor();
+    const category = await helper.createCategory();
+    const product = await helper.createProduct(category.id);
+    const { retail } = await helper.createPriceTypes();
+
+    await helper.createPurchase(store.id, vendor.id, product.id, 10, 5000);
+
+    // 1. Create DRAFT sale
+    const sale = await helper.createSale(
+      store.id,
+      cashbox.id,
+      retail.id,
+      product.id,
+      3,
+      7000,
+      undefined,
+      'DRAFT',
+    );
+
+    // Verify stock is still 10
+    const stockDraft = await helper.getStock(product.id, store.id);
+    expect(stockDraft!.quantity.toString()).toBe('10');
+
+    // 2. Complete the sale
+    await helper.completeSale(sale.id);
+
+    // Verify stock is now 7
+    const stockAfter = await helper.getStock(product.id, store.id);
+    expect(stockAfter!.quantity.toString()).toBe('7');
+  });
 });

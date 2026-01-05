@@ -19,6 +19,7 @@ import { DocumentTransferService } from '../../../src/document-transfer/document
 describe('Document Adjustment (e2e)', () => {
   let app: INestApplication;
   let helper: TestHelper;
+  let prisma: PrismaService;
   let documentAdjustmentService: DocumentAdjustmentService;
 
   beforeAll(async () => {
@@ -29,6 +30,7 @@ describe('Document Adjustment (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
+    prisma = app.get(PrismaService);
     documentAdjustmentService = app.get(DocumentAdjustmentService);
 
     helper = new TestHelper(
@@ -116,5 +118,42 @@ describe('Document Adjustment (e2e)', () => {
 
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('0');
+  });
+
+  it('should not update stock if adjustment is DRAFT and update when completed', async () => {
+    const store = await helper.createStore();
+    const category = await helper.createCategory();
+    const product = await helper.createProduct(category.id);
+
+    // Initial stock: 10
+    await prisma.stock.create({
+      data: {
+        productId: product.id,
+        storeId: store.id,
+        quantity: 10,
+        averagePurchasePrice: 1000,
+      },
+    });
+
+    // 1. Create DRAFT adjustment (+5)
+    const adj = await helper.createAdjustment(store.id, product.id, 5, 'DRAFT');
+
+    // Verify stock still 10
+    const stockDraft = await helper.getStock(product.id, store.id);
+    expect(stockDraft!.quantity.toString()).toBe('10');
+
+    // 2. Complete adjustment
+    await helper.completeAdjustment(adj.id);
+
+    // Verify stock updated to 15
+    const stockAfter = await helper.getStock(product.id, store.id);
+    expect(stockAfter!.quantity.toString()).toBe('15');
+
+    // Verify snapshots in DocumentAdjustmentItem were updated
+    const adjItem = await prisma.documentAdjustmentItem.findFirst({
+      where: { adjustmentId: adj.id },
+    });
+    expect(adjItem!.quantityBefore.toString()).toBe('10');
+    expect(adjItem!.quantityAfter.toString()).toBe('15');
   });
 });

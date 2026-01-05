@@ -20,7 +20,7 @@ export class StandardResponseDto<T> {
  *
  * @param model - The entity class to be documented inside 'data'
  */
-export const ApiStandardResponse = <TModel extends Type<any>>(
+export const ApiStandardResponse = <TModel extends Type<unknown>>(
   model: TModel,
 ) => {
   return applyDecorators(
@@ -47,7 +47,7 @@ export const ApiStandardResponse = <TModel extends Type<any>>(
  *
  * @param model - The entity class to be documented inside 'data' array
  */
-export const ApiStandardResponseArray = <TModel extends Type<any>>(
+export const ApiStandardResponseArray = <TModel extends Type<unknown>>(
   model: TModel,
 ) => {
   return applyDecorators(
@@ -74,7 +74,7 @@ export const ApiStandardResponseArray = <TModel extends Type<any>>(
  *
  * @param entityEnum - The relation enum created by the resource generator
  */
-export const ApiIncludeQuery = (entityEnum: any) => {
+export const ApiIncludeQuery = (entityEnum: Record<string, string>) => {
   return ApiQuery({
     name: 'include',
     enum: entityEnum,
