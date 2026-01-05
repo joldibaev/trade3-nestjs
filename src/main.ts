@@ -8,6 +8,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  app.setGlobalPrefix('api', { exclude: ['metrics'] });
+
   app.useGlobalInterceptors(new TransformInterceptor());
 
   const { httpAdapter } = app.get(HttpAdapterHost);
