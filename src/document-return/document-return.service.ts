@@ -1,88 +1,122 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
-import Decimal = Prisma.Decimal;
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
+import Decimal = Prisma.Decimal;
 
 @Injectable()
 export class DocumentReturnService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inventoryService: InventoryService,
+  ) {}
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
     const { storeId, clientId, date, status, items } = createDocumentReturnDto;
 
-    const store = await this.prisma.store.findUnique({
-      where: { id: storeId },
-    });
-    if (!store) throw new NotFoundException('Store not found');
+    const targetStatus = status || 'COMPLETED';
 
-    // Calculate totals
-    let totalAmount = 0;
+    // 1. Validate Store
+    await this.inventoryService.validateStore(storeId);
+
+    // 2. Prepare Items
+    const productIds = items.map((i) => i.productId);
+
+    // Fetch fallback WAPs for all products in one go
+    const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
+
+    // Calculate totals & Prepare items
+    let totalAmount = new Decimal(0);
     const returnItems = items.map((item) => {
       // Default price to 0 if not provided
-      const price = item.price || 0;
-      const total = item.quantity * price;
-      totalAmount += total;
+      const price = new Decimal(item.price || 0);
+      const quantity = new Decimal(item.quantity);
+      const total = quantity.mul(price);
+      totalAmount = totalAmount.add(total);
+
+      // Determine fallback WAP for this product
+      // Strategy: Use WAP from another store if available
+      const fallbackWap = wapMap.get(item.productId) || new Decimal(0);
+
       return {
         productId: item.productId,
-        quantity: item.quantity,
+        quantity,
         price,
         total,
+        fallbackWap,
       };
     });
 
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentReturn.create({
-        data: {
-          storeId,
-          clientId,
-          date: date ? new Date(date) : new Date(),
-          status: status ?? 'COMPLETED',
-          totalAmount,
-          items: {
-            create: returnItems,
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentReturn.create({
+          data: {
+            storeId,
+            clientId,
+            date: date ? new Date(date) : new Date(),
+            status: targetStatus,
+            totalAmount,
+            items: {
+              create: returnItems.map((i) => ({
+                productId: i.productId,
+                quantity: i.quantity,
+                price: i.price,
+                total: i.total,
+              })),
+            },
           },
-        },
-        include: { items: true },
-      });
+          include: { items: true },
+        });
 
-      if (doc.status === 'COMPLETED') {
-        for (const item of doc.items) {
-          // Increase Stock
-          const stock = await tx.stock.findUnique({
-            where: {
-              productId_storeId: { productId: item.productId, storeId },
-            },
-          });
+        if (doc.status === 'COMPLETED') {
+          for (const item of returnItems) {
+            // Use atomic increment for concurrency safety
+            // Upsert handles both "creation of new stock" and "update of existing"
+            await tx.stock.upsert({
+              where: {
+                productId_storeId: { productId: item.productId, storeId },
+              },
+              create: {
+                productId: item.productId,
+                storeId,
+                quantity: item.quantity,
+                averagePurchasePrice: item.fallbackWap, // Use fetched fallback instead of 0
+              },
+              update: {
+                quantity: { increment: item.quantity },
+                // Note: We deliberately do NOT update WAP on return (as agreed),
+                // assuming the returned item has the same cost structure or is negligible.
+              },
+            });
 
-          // Logic: Just increase Qty. WAP remains same? Or re-average?
-          // If we don't know cost price, keep WAP same.
-          // If we treat return as "IN", we typically need cost price.
-          // For now, simple increment.
-          const oldQty = stock?.quantity
-            ? new Decimal(stock.quantity)
-            : new Decimal(0);
-          const newQty = oldQty.add(item.quantity);
+            // Fetch updated stock for accurate snapshot
+            const updatedStock = await tx.stock.findUniqueOrThrow({
+              where: {
+                productId_storeId: { productId: item.productId, storeId },
+              },
+            });
 
-          await tx.stock.upsert({
-            where: {
-              productId_storeId: { productId: item.productId, storeId },
-            },
-            create: {
-              productId: item.productId,
+            // Audit: Log Stock Movement
+            await this.inventoryService.logStockMovement(tx, {
+              type: 'RETURN',
               storeId,
-              quantity: newQty,
-              averagePurchasePrice: 0,
-            },
-            update: {
-              quantity: newQty,
-            },
-          });
+              productId: item.productId,
+              quantity: item.quantity,
+              date: doc.date,
+              documentId: doc.id,
+              quantityAfter: updatedStock.quantity,
+              averagePurchasePrice: updatedStock.averagePurchasePrice,
+            });
+          }
         }
-      }
 
-      return doc;
-    });
+        return doc;
+      },
+      {
+        isolationLevel: 'ReadCommitted',
+      },
+    );
   }
 
   findAll(include?: Record<string, boolean>) {

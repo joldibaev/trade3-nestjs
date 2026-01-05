@@ -1,128 +1,119 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
-import Decimal = Prisma.Decimal;
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
+import Decimal = Prisma.Decimal;
 
 @Injectable()
 export class DocumentSaleService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inventoryService: InventoryService,
+  ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
     const { storeId, cashboxId, clientId, date, status, priceTypeId, items } =
       createDocumentSaleDto;
 
-    // Validate Store & Cashbox
-    const store = await this.prisma.store.findUnique({
-      where: { id: storeId },
+    const targetStatus = status || 'COMPLETED';
+
+    // 1. Validate Store
+    await this.inventoryService.validateStore(storeId);
+
+    // 2. Prepare Items (Fetch Products & Calculate Prices)
+    const productIds = items.map((i) => i.productId);
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      include: { prices: true },
     });
-    if (!store) throw new NotFoundException('Store not found');
 
-    // 1. Prepare Data
-    let totalAmount = new Decimal(0);
-    const saleItems: {
+    const productsMap = new Map(products.map((p) => [p.id, p]));
+    const preparedItems: {
       productId: string;
-      quantity: number | Decimal;
-      price: number | Decimal;
-      total: number | Decimal;
+      quantity: Decimal;
+      price: Decimal;
+      total: Decimal;
     }[] = [];
+    let totalAmount = new Decimal(0);
 
-    // Check products and prices
     for (const item of items) {
-      const product = await this.prisma.product.findUnique({
-        where: { id: item.productId },
-        include: { prices: true },
-      });
-      if (!product)
+      const product = productsMap.get(item.productId);
+      if (!product) {
         throw new NotFoundException(`Product ${item.productId} not found`);
+      }
 
-      // Determine price
-      let finalPrice: Decimal | number | undefined = item.price;
-      if (finalPrice === undefined) {
+      let finalPrice = new Decimal(item.price ?? 0);
+      if (item.price === undefined) {
         if (priceTypeId) {
           const priceObj = product.prices.find(
             (p) => p.priceTypeId === priceTypeId,
           );
           finalPrice = priceObj ? priceObj.value : new Decimal(0);
         } else {
-          // Default to first available if no price type specified for sale
-          const defaultPrice = product.prices[0];
-          finalPrice = defaultPrice ? defaultPrice.value : new Decimal(0);
+          // Default to first available price
+          finalPrice = product.prices[0]
+            ? product.prices[0].value
+            : new Decimal(0);
         }
       }
 
-      const finalPriceDec = new Decimal(finalPrice);
-      const total = finalPriceDec.mul(item.quantity);
+      const quantity = new Decimal(item.quantity);
+      const total = finalPrice.mul(quantity);
       totalAmount = totalAmount.add(total);
 
-      saleItems.push({
+      preparedItems.push({
         productId: item.productId,
-        quantity: item.quantity,
-        price: finalPriceDec,
-        total: total,
+        quantity,
+        price: finalPrice,
+        total,
       });
     }
 
-    // 2. Transaction with Serializable isolation to prevent race conditions
+    // 3. Execute Transaction
     return this.prisma.$transaction(
       async (tx) => {
-        // Check stock availability BEFORE creating the sale document
-        // This prevents race conditions in concurrent sales
-        const saleItemsWithCostPrice: {
+        // Fetch all relevant stocks in one go
+        const stocks = await tx.stock.findMany({
+          where: {
+            storeId,
+            productId: { in: productIds },
+          },
+        });
+        const stockMap = new Map(stocks.map((s) => [s.productId, s]));
+
+        const documentItemsData: {
           productId: string;
-          quantity: number | Decimal;
-          price: number | Decimal;
+          quantity: Decimal;
+          price: Decimal;
           costPrice: Decimal;
-          total: number | Decimal;
+          total: Decimal;
         }[] = [];
-        const stockData = new Map<
-          string,
-          {
-            availableQty: Decimal;
-            costPrice: Decimal;
-            averagePurchasePrice: Decimal;
-          }
-        >();
 
-        for (const item of saleItems) {
-          const currentStock = await tx.stock.findUnique({
-            where: {
-              productId_storeId: { productId: item.productId, storeId },
-            },
-          });
+        for (const item of preparedItems) {
+          const stock = stockMap.get(item.productId);
+          const currentQty = stock ? stock.quantity : new Decimal(0);
+          const costPrice = stock ? stock.averagePurchasePrice : new Decimal(0);
 
-          const availableQty = currentStock?.quantity
-            ? new Decimal(currentStock.quantity)
-            : new Decimal(0);
-          const requestedQty = new Decimal(item.quantity);
-
-          // Validate sufficient stock BEFORE creating sale document
-          if (availableQty.lessThan(requestedQty)) {
-            throw new BadRequestException(
-              `Insufficient stock for product ${item.productId}. Available: ${availableQty.toString()}, Requested: ${requestedQty.toString()}`,
-            );
+          // Validate Stock Availability only if status is COMPLETED
+          if (targetStatus === 'COMPLETED') {
+            if (currentQty.lessThan(item.quantity)) {
+              throw new BadRequestException(
+                `Insufficient stock for product ${item.productId}. Available: ${currentQty.toString()}, Requested: ${item.quantity.toString()}`,
+              );
+            }
           }
 
-          // Get cost price from stock
-          const costPrice = currentStock?.averagePurchasePrice
-            ? new Decimal(currentStock.averagePurchasePrice)
-            : new Decimal(0);
-
-          // Store stock data for later use
-          stockData.set(item.productId, {
-            availableQty,
+          documentItemsData.push({
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.price,
             costPrice,
-            averagePurchasePrice:
-              currentStock?.averagePurchasePrice || new Decimal(0),
-          });
-
-          saleItemsWithCostPrice.push({
-            ...item,
-            costPrice,
+            total: item.total,
           });
         }
 
@@ -133,73 +124,69 @@ export class DocumentSaleService {
             cashboxId,
             clientId,
             date: date ? new Date(date) : new Date(),
-            status: status ?? 'COMPLETED', // Default to COMPLETED for now if not specified
+            status: targetStatus,
             priceTypeId,
             totalAmount,
             items: {
-              create: saleItemsWithCostPrice.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantity,
-                price: i.price,
-                costPrice: i.costPrice,
-                total: i.total,
-              })),
+              create: documentItemsData,
             },
           },
           include: { items: true },
         });
 
-        // If completed, update Stock
+        // Update Stock if COMPLETED
         if (sale.status === 'COMPLETED') {
-          for (const item of sale.items) {
-            // Re-read stock within transaction to ensure we have the latest value
-            // This prevents race conditions when multiple transactions run concurrently
-            const currentStock = await tx.stock.findUnique({
+          for (const item of preparedItems) {
+            // Use updateMany with constraint to ensure atomic consistency
+            const result = await tx.stock.updateMany({
               where: {
-                productId_storeId: { productId: item.productId, storeId },
+                productId: item.productId,
+                storeId: storeId,
+                quantity: { gte: item.quantity },
+              },
+              data: {
+                quantity: { decrement: item.quantity },
               },
             });
 
-            const availableQty = currentStock?.quantity
-              ? new Decimal(currentStock.quantity)
-              : new Decimal(0);
-            const requestedQty = new Decimal(item.quantity);
+            if (result.count === 0) {
+              const currentStock = await tx.stock.findUnique({
+                where: {
+                  productId_storeId: { productId: item.productId, storeId },
+                },
+              });
+              const available = currentStock ? currentStock.quantity : 0;
 
-            // Validate again before updating (double-check within transaction)
-            if (availableQty.lessThan(requestedQty)) {
               throw new BadRequestException(
-                `Insufficient stock for product ${item.productId}. Available: ${availableQty.toString()}, Requested: ${requestedQty.toString()}`,
+                `Insufficient stock for product ${item.productId}. Available: ${available.toString()}, Requested: ${item.quantity.toString()}`,
               );
             }
 
-            // Decrement Stock
-            const newQty = availableQty.sub(requestedQty);
-            const stockInfo = stockData.get(item.productId);
-
-            await tx.stock.upsert({
+            // Fetch updated stock for accurate snapshot
+            const updatedStock = await tx.stock.findUniqueOrThrow({
               where: {
                 productId_storeId: { productId: item.productId, storeId },
               },
-              create: {
-                productId: item.productId,
-                storeId,
-                quantity: newQty,
-                averagePurchasePrice:
-                  stockInfo?.averagePurchasePrice || new Decimal(0),
-              },
-              update: {
-                quantity: newQty,
-              },
             });
 
-            // Create Movement
+            // Audit: Log Stock Movement
+            await this.inventoryService.logStockMovement(tx, {
+              type: 'SALE',
+              storeId,
+              productId: item.productId,
+              quantity: item.quantity.negated(),
+              date: sale.date,
+              documentId: sale.id,
+              quantityAfter: updatedStock.quantity,
+              averagePurchasePrice: updatedStock.averagePurchasePrice,
+            });
           }
         }
 
         return sale;
       },
       {
-        isolationLevel: 'Serializable',
+        isolationLevel: 'ReadCommitted',
       },
     );
   }

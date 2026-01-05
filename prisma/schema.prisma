@@ -43,6 +43,7 @@ model Store {
   adjustments   DocumentAdjustment[]
   transfersFrom DocumentTransfer[]   @relation("SourceStore")
   transfersTo   DocumentTransfer[]   @relation("DestinationStore")
+  movements     StockMovement[]
 
   @@unique([name])
 }
@@ -123,6 +124,7 @@ model Product {
   adjustmentItems DocumentAdjustmentItem[]
   transferItems   DocumentTransferItem[]
   barcodes        Barcode[]
+  movements       StockMovement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -189,6 +191,7 @@ model DocumentSale {
   priceTypeId String?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
+  movements   StockMovement[]
 }
 
 model DocumentSaleItem {
@@ -217,6 +220,7 @@ model DocumentPurchase {
   status      DocumentStatus         @default(DRAFT)
   createdAt   DateTime               @default(now())
   updatedAt   DateTime               @updatedAt
+  movements   StockMovement[]
 }
 
 model DocumentPurchaseItem {
@@ -244,6 +248,7 @@ model DocumentReturn {
   status      DocumentStatus       @default(DRAFT)
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
+  movements   StockMovement[]
 }
 
 model DocumentReturnItem {
@@ -268,6 +273,7 @@ model DocumentAdjustment {
   status    DocumentStatus           @default(DRAFT)
   createdAt DateTime                 @default(now())
   updatedAt DateTime                 @updatedAt
+  movements StockMovement[]
 }
 
 model DocumentAdjustmentItem {
@@ -294,6 +300,7 @@ model DocumentTransfer {
   status             DocumentStatus         @default(DRAFT)
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
+  movements          StockMovement[]
 }
 
 model DocumentTransferItem {
@@ -305,4 +312,50 @@ model DocumentTransferItem {
   quantity   Decimal
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
+}
+
+// Stock Movement Log
+enum StockMovementType {
+  PURCHASE
+  SALE
+  RETURN
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+model StockMovement {
+  id        String            @id @default(uuid(7))
+  type      StockMovementType
+  store     Store             @relation(fields: [storeId], references: [id])
+  storeId   String
+  product   Product           @relation(fields: [productId], references: [id])
+  productId String
+
+  quantity             Decimal
+  quantityAfter        Decimal @default(0) // Snapshot of stock balance after operation
+  averagePurchasePrice Decimal @default(0) // Snapshot of cost price at moment of operation
+
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Direct Relations to Source Documents
+  documentPurchase   DocumentPurchase?   @relation(fields: [documentPurchaseId], references: [id])
+  documentPurchaseId String?
+
+  documentSale   DocumentSale?   @relation(fields: [documentSaleId], references: [id])
+  documentSaleId String?
+
+  documentReturn   DocumentReturn?   @relation(fields: [documentReturnId], references: [id])
+  documentReturnId String?
+
+  documentAdjustment   DocumentAdjustment?   @relation(fields: [documentAdjustmentId], references: [id])
+  documentAdjustmentId String?
+
+  documentTransfer   DocumentTransfer?   @relation(fields: [documentTransferId], references: [id])
+  documentTransferId String?
+
+  @@index([storeId, productId])
+  @@index([date])
 }

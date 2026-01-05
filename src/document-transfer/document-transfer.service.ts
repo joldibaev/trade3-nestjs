@@ -4,17 +4,23 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import Decimal = Prisma.Decimal;
 import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
 
 @Injectable()
 export class DocumentTransferService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inventoryService: InventoryService,
+  ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
     const { sourceStoreId, destinationStoreId, date, status, items } =
       createDocumentTransferDto;
+
+    const targetStatus = status || 'COMPLETED';
 
     if (sourceStoreId === destinationStoreId) {
       throw new BadRequestException(
@@ -22,121 +28,174 @@ export class DocumentTransferService {
       );
     }
 
-    const sourceStore = await this.prisma.store.findUnique({
-      where: { id: sourceStoreId },
-    });
-    if (!sourceStore) throw new NotFoundException('Source Store not found');
+    // 1. Validate Stores
+    // Use concurrent validation
+    await Promise.all([
+      this.inventoryService.validateStore(sourceStoreId).catch(() => {
+        throw new NotFoundException('Source Store not found');
+      }),
+      this.inventoryService.validateStore(destinationStoreId).catch(() => {
+        throw new NotFoundException('Destination Store not found');
+      }),
+    ]);
 
-    const destStore = await this.prisma.store.findUnique({
-      where: { id: destinationStoreId },
-    });
-    if (!destStore) throw new NotFoundException('Destination Store not found');
+    const productIds = items.map((item) => item.productId);
 
-    const transferItems = items.map((item) => ({
+    // Prepare Items
+    const preparedItems = items.map((item) => ({
       productId: item.productId,
-      quantity: item.quantity,
+      quantity: new Decimal(item.quantity),
     }));
 
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentTransfer.create({
-        data: {
-          sourceStoreId,
-          destinationStoreId,
-          date: date ? new Date(date) : new Date(),
-          status: status ?? 'COMPLETED',
-          items: {
-            create: transferItems,
+    return this.prisma.$transaction(
+      async (tx) => {
+        // 2. Batch Fetch Source Stocks
+        const sourceStocks = await tx.stock.findMany({
+          where: {
+            storeId: sourceStoreId,
+            productId: { in: productIds },
           },
-        },
-        include: { items: true },
-      });
+        });
+        const sourceStockMap = new Map(
+          sourceStocks.map((s) => [s.productId, s]),
+        );
 
-      if (doc.status === 'COMPLETED') {
-        for (const item of doc.items) {
-          // 1. Decrease Source Stock
-          const sourceStock = await tx.stock.findUnique({
-            where: {
-              productId_storeId: {
-                productId: item.productId,
-                storeId: sourceStoreId,
-              },
-            },
-          });
-          const oldSourceQty = sourceStock?.quantity
-            ? new Decimal(sourceStock.quantity)
-            : new Decimal(0);
-          const newSourceQty = oldSourceQty.sub(item.quantity);
+        // 3. Batch Fetch Destination Stocks
+        const destStocks = await tx.stock.findMany({
+          where: {
+            storeId: destinationStoreId,
+            productId: { in: productIds },
+          },
+        });
+        const destStockMap = new Map(destStocks.map((s) => [s.productId, s]));
 
-          await tx.stock.upsert({
-            where: {
-              productId_storeId: {
-                productId: item.productId,
-                storeId: sourceStoreId,
-              },
+        // 4. Create Document
+        const doc = await tx.documentTransfer.create({
+          data: {
+            sourceStoreId,
+            destinationStoreId,
+            date: date ? new Date(date) : new Date(),
+            status: targetStatus,
+            items: {
+              create: preparedItems.map((i) => ({
+                productId: i.productId,
+                quantity: i.quantity,
+              })),
             },
-            create: {
-              productId: item.productId,
+          },
+          include: { items: true },
+        });
+
+        if (targetStatus === 'COMPLETED') {
+          for (const item of preparedItems) {
+            const sourceStock = sourceStockMap.get(item.productId);
+            const sourceQty = sourceStock
+              ? sourceStock.quantity
+              : new Decimal(0);
+
+            // Validate Stock Availability
+            if (sourceQty.lessThan(item.quantity)) {
+              throw new BadRequestException(
+                `Insufficient stock for product ${item.productId} in source store`,
+              );
+            }
+
+            // --- Update Source Store ---
+            await tx.stock.update({
+              where: {
+                productId_storeId: {
+                  productId: item.productId,
+                  storeId: sourceStoreId,
+                },
+              },
+              data: {
+                quantity: { decrement: item.quantity },
+              },
+            });
+
+            // --- Update Destination Store ---
+            const destStock = destStockMap.get(item.productId);
+            const destQty = destStock ? destStock.quantity : new Decimal(0);
+            const destWap = destStock
+              ? destStock.averagePurchasePrice
+              : new Decimal(0);
+
+            const sourceWap = sourceStock
+              ? sourceStock.averagePurchasePrice
+              : new Decimal(0);
+
+            const newDestQty = destQty.add(item.quantity);
+
+            // Calculate New Destination WAP using helper
+            // We treat transfer in as a "purchase" from the source store at sourceWap cost
+            const newDestWap = this.inventoryService.calculateNewWap(
+              destQty,
+              destWap,
+              item.quantity,
+              sourceWap,
+            );
+
+            await tx.stock.upsert({
+              where: {
+                productId_storeId: {
+                  productId: item.productId,
+                  storeId: destinationStoreId,
+                },
+              },
+              create: {
+                productId: item.productId,
+                storeId: destinationStoreId,
+                quantity: item.quantity,
+                averagePurchasePrice: sourceWap, // Inherit cost from source
+              },
+              update: {
+                quantity: newDestQty,
+                averagePurchasePrice: newDestWap,
+              },
+            });
+
+            // Fetch updated source stock for snapshot
+            const updatedSourceStock = await tx.stock.findUniqueOrThrow({
+              where: {
+                productId_storeId: {
+                  productId: item.productId,
+                  storeId: sourceStoreId,
+                },
+              },
+            });
+
+            // Audit: Log TRANSFER_OUT
+            await this.inventoryService.logStockMovement(tx, {
+              type: 'TRANSFER_OUT',
               storeId: sourceStoreId,
-              quantity: new Decimal(item.quantity).neg(), // Negative allowed
-              averagePurchasePrice: 0,
-            },
-            update: { quantity: newSourceQty },
-          });
-
-          // 2. Increase Destination Stock
-          const destStock = await tx.stock.findUnique({
-            where: {
-              productId_storeId: {
-                productId: item.productId,
-                storeId: destinationStoreId,
-              },
-            },
-          });
-          const oldDestQty = destStock?.quantity
-            ? new Decimal(destStock.quantity)
-            : new Decimal(0);
-          const newDestQty = oldDestQty.add(item.quantity);
-
-          // Note: Transferring assumes cost price moves too?
-          // If we had cost price logic, we'd take WAP from source and move it to dest.
-          // For simplicity, we keep dest WAP same or simple Inc.
-
-          let destWap = destStock?.averagePurchasePrice
-            ? new Decimal(destStock.averagePurchasePrice)
-            : new Decimal(0);
-          const sourceWap = sourceStock?.averagePurchasePrice
-            ? new Decimal(sourceStock.averagePurchasePrice)
-            : new Decimal(0);
-
-          if (!newDestQty.isZero()) {
-            const oldVal = oldDestQty.mul(destWap);
-            const transferVal = new Decimal(item.quantity).mul(sourceWap);
-            destWap = oldVal.add(transferVal).div(newDestQty);
-          }
-
-          await tx.stock.upsert({
-            where: {
-              productId_storeId: {
-                productId: item.productId,
-                storeId: destinationStoreId,
-              },
-            },
-            create: {
               productId: item.productId,
-              storeId: destinationStoreId,
-              quantity: item.quantity,
-              averagePurchasePrice: sourceWap, // Assume initial price from source
-            },
-            update: {
-              quantity: newDestQty,
-              averagePurchasePrice: destWap,
-            },
-          });
-        }
-      }
+              quantity: item.quantity.negated(),
+              date: doc.date,
+              documentId: doc.id,
+              quantityAfter: updatedSourceStock.quantity,
+              averagePurchasePrice: updatedSourceStock.averagePurchasePrice,
+            });
 
-      return doc;
-    });
+            // Audit: Log TRANSFER_IN
+            await this.inventoryService.logStockMovement(tx, {
+              type: 'TRANSFER_IN',
+              storeId: destinationStoreId,
+              productId: item.productId,
+              quantity: item.quantity,
+              date: doc.date,
+              documentId: doc.id,
+              quantityAfter: newDestQty,
+              averagePurchasePrice: newDestWap,
+            });
+          }
+        }
+
+        return doc;
+      },
+      {
+        isolationLevel: 'Serializable',
+      },
+    );
   }
 
   findAll(include?: Record<string, boolean>) {

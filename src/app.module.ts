@@ -17,6 +17,7 @@ import { DocumentAdjustmentModule } from './document-adjustment/document-adjustm
 import { DocumentTransferModule } from './document-transfer/document-transfer.module';
 import { BarcodeModule } from './barcode/barcode.module';
 import { PriceModule } from './price/price.module';
+import { InventoryModule } from './core/inventory/inventory.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PriceModule } from './price/price.module';
     DocumentTransferModule,
     BarcodeModule,
     PriceModule,
+    InventoryModule,
   ],
 })
 export class AppModule {}

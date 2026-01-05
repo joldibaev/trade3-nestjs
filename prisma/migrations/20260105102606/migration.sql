@@ -4,6 +4,9 @@ CREATE TYPE "DocumentStatus" AS ENUM ('DRAFT', 'COMPLETED', 'CANCELLED');
 -- CreateEnum
 CREATE TYPE "BarcodeType" AS ENUM ('EAN13', 'EAN8', 'CODE128', 'INTERNAL', 'OTHER');
 
+-- CreateEnum
+CREATE TYPE "StockMovementType" AS ENUM ('PURCHASE', 'SALE', 'RETURN', 'ADJUSTMENT', 'TRANSFER_IN', 'TRANSFER_OUT');
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
@@ -262,6 +265,27 @@ CREATE TABLE "DocumentTransferItem" (
     CONSTRAINT "DocumentTransferItem_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "StockMovement" (
+    "id" TEXT NOT NULL,
+    "type" "StockMovementType" NOT NULL,
+    "storeId" TEXT NOT NULL,
+    "productId" TEXT NOT NULL,
+    "quantity" DECIMAL(65,30) NOT NULL,
+    "quantityAfter" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "averagePurchasePrice" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "documentPurchaseId" TEXT,
+    "documentSaleId" TEXT,
+    "documentReturnId" TEXT,
+    "documentAdjustmentId" TEXT,
+    "documentTransferId" TEXT,
+
+    CONSTRAINT "StockMovement_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
 
@@ -294,6 +318,12 @@ CREATE UNIQUE INDEX "Vendor_name_key" ON "Vendor"("name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Client_name_key" ON "Client"("name");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_storeId_productId_idx" ON "StockMovement"("storeId", "productId");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_date_idx" ON "StockMovement"("date");
 
 -- AddForeignKey
 ALTER TABLE "Cashbox" ADD CONSTRAINT "Cashbox_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -378,3 +408,24 @@ ALTER TABLE "DocumentTransferItem" ADD CONSTRAINT "DocumentTransferItem_transfer
 
 -- AddForeignKey
 ALTER TABLE "DocumentTransferItem" ADD CONSTRAINT "DocumentTransferItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentSaleId_fkey" FOREIGN KEY ("documentSaleId") REFERENCES "DocumentSale"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentReturnId_fkey" FOREIGN KEY ("documentReturnId") REFERENCES "DocumentReturn"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentAdjustmentId_fkey" FOREIGN KEY ("documentAdjustmentId") REFERENCES "DocumentAdjustment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentTransferId_fkey" FOREIGN KEY ("documentTransferId") REFERENCES "DocumentTransfer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
