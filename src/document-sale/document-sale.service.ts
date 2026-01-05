@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import Decimal = Prisma.Decimal;
@@ -24,7 +28,6 @@ export class DocumentSaleService {
       productId: string;
       quantity: number | Decimal;
       price: number | Decimal;
-      costPrice: number | Decimal;
       total: number | Decimal;
     }[] = [];
 
@@ -56,84 +59,149 @@ export class DocumentSaleService {
       const total = finalPriceDec.mul(item.quantity);
       totalAmount = totalAmount.add(total);
 
-      // We need costPrice from Stock (WAP)
-      const stock = await this.prisma.stock.findUnique({
-        where: { productId_storeId: { productId: item.productId, storeId } },
-      });
-      const costPrice = stock?.averagePurchasePrice
-        ? new Decimal(stock.averagePurchasePrice)
-        : new Decimal(0);
-
       saleItems.push({
         productId: item.productId,
         quantity: item.quantity,
         price: finalPriceDec,
-        costPrice: costPrice, // Capture current cost
         total: total,
       });
     }
 
-    // 2. Transaction
-    return this.prisma.$transaction(async (tx) => {
-      // Create DocumentSale
-      const sale = await tx.documentSale.create({
-        data: {
-          storeId,
-          cashboxId,
-          clientId,
-          date: date ? new Date(date) : new Date(),
-          status: status ?? 'COMPLETED', // Default to COMPLETED for now if not specified
-          priceTypeId,
-          totalAmount,
-          items: {
-            create: saleItems.map((i) => ({
-              productId: i.productId,
-              quantity: i.quantity,
-              price: i.price,
-              costPrice: i.costPrice,
-              total: i.total,
-            })),
-          },
-        },
-        include: { items: true },
-      });
+    // 2. Transaction with Serializable isolation to prevent race conditions
+    return this.prisma.$transaction(
+      async (tx) => {
+        // Check stock availability BEFORE creating the sale document
+        // This prevents race conditions in concurrent sales
+        const saleItemsWithCostPrice: {
+          productId: string;
+          quantity: number | Decimal;
+          price: number | Decimal;
+          costPrice: Decimal;
+          total: number | Decimal;
+        }[] = [];
+        const stockData = new Map<
+          string,
+          {
+            availableQty: Decimal;
+            costPrice: Decimal;
+            averagePurchasePrice: Decimal;
+          }
+        >();
 
-      // If completed, update Stock
-      if (sale.status === 'COMPLETED') {
-        for (const item of sale.items) {
-          // Decrement Stock
+        for (const item of saleItems) {
           const currentStock = await tx.stock.findUnique({
             where: {
               productId_storeId: { productId: item.productId, storeId },
             },
           });
 
-          const oldQty = currentStock?.quantity
+          const availableQty = currentStock?.quantity
             ? new Decimal(currentStock.quantity)
             : new Decimal(0);
-          const newQty = oldQty.sub(item.quantity);
+          const requestedQty = new Decimal(item.quantity);
 
-          await tx.stock.upsert({
-            where: {
-              productId_storeId: { productId: item.productId, storeId },
-            },
-            create: {
-              productId: item.productId,
-              storeId,
-              quantity: new Decimal(item.quantity).neg(), // Negative stock possible if allowed
-              averagePurchasePrice: 0,
-            },
-            update: {
-              quantity: newQty,
-            },
+          // Validate sufficient stock BEFORE creating sale document
+          if (availableQty.lessThan(requestedQty)) {
+            throw new BadRequestException(
+              `Insufficient stock for product ${item.productId}. Available: ${availableQty.toString()}, Requested: ${requestedQty.toString()}`,
+            );
+          }
+
+          // Get cost price from stock
+          const costPrice = currentStock?.averagePurchasePrice
+            ? new Decimal(currentStock.averagePurchasePrice)
+            : new Decimal(0);
+
+          // Store stock data for later use
+          stockData.set(item.productId, {
+            availableQty,
+            costPrice,
+            averagePurchasePrice:
+              currentStock?.averagePurchasePrice || new Decimal(0),
           });
 
-          // Create Movement
+          saleItemsWithCostPrice.push({
+            ...item,
+            costPrice,
+          });
         }
-      }
 
-      return sale;
-    });
+        // Create DocumentSale
+        const sale = await tx.documentSale.create({
+          data: {
+            storeId,
+            cashboxId,
+            clientId,
+            date: date ? new Date(date) : new Date(),
+            status: status ?? 'COMPLETED', // Default to COMPLETED for now if not specified
+            priceTypeId,
+            totalAmount,
+            items: {
+              create: saleItemsWithCostPrice.map((i) => ({
+                productId: i.productId,
+                quantity: i.quantity,
+                price: i.price,
+                costPrice: i.costPrice,
+                total: i.total,
+              })),
+            },
+          },
+          include: { items: true },
+        });
+
+        // If completed, update Stock
+        if (sale.status === 'COMPLETED') {
+          for (const item of sale.items) {
+            // Re-read stock within transaction to ensure we have the latest value
+            // This prevents race conditions when multiple transactions run concurrently
+            const currentStock = await tx.stock.findUnique({
+              where: {
+                productId_storeId: { productId: item.productId, storeId },
+              },
+            });
+
+            const availableQty = currentStock?.quantity
+              ? new Decimal(currentStock.quantity)
+              : new Decimal(0);
+            const requestedQty = new Decimal(item.quantity);
+
+            // Validate again before updating (double-check within transaction)
+            if (availableQty.lessThan(requestedQty)) {
+              throw new BadRequestException(
+                `Insufficient stock for product ${item.productId}. Available: ${availableQty.toString()}, Requested: ${requestedQty.toString()}`,
+              );
+            }
+
+            // Decrement Stock
+            const newQty = availableQty.sub(requestedQty);
+            const stockInfo = stockData.get(item.productId);
+
+            await tx.stock.upsert({
+              where: {
+                productId_storeId: { productId: item.productId, storeId },
+              },
+              create: {
+                productId: item.productId,
+                storeId,
+                quantity: newQty,
+                averagePurchasePrice:
+                  stockInfo?.averagePurchasePrice || new Decimal(0),
+              },
+              update: {
+                quantity: newQty,
+              },
+            });
+
+            // Create Movement
+          }
+        }
+
+        return sale;
+      },
+      {
+        isolationLevel: 'Serializable',
+      },
+    );
   }
 
   findAll(include?: Record<string, boolean>) {
