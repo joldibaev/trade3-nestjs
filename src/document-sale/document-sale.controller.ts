@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Body,
-  Param,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
 import { DocumentSaleService } from './document-sale.service';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -40,10 +32,7 @@ export class DocumentSaleController {
   @Get(':id')
   @ApiIncludeQuery(DocumentSaleRelations)
   @ApiStandardResponse(DocumentSale)
-  findOne(
-    @Param('id') id: string,
-    @Query('include') include?: string | string[],
-  ) {
+  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
     return this.documentSaleService.findOne(id, parseInclude(include));
   }
 

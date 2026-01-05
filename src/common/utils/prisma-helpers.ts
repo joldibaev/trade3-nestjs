@@ -7,9 +7,7 @@
  * @param include - Comma-separated string of relation names
  * @returns A Prisma-compatible include object or undefined if input is empty
  */
-export function parseInclude(
-  include?: string | string[],
-): Record<string, boolean> | undefined {
+export function parseInclude(include?: string | string[]): Record<string, boolean> | undefined {
   if (!include) return undefined;
 
   const includeArray = Array.isArray(include) ? include : [include];

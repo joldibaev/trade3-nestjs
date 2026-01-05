@@ -51,10 +51,7 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
   /**
    * Handles unique constraint violations (P2002).
    */
-  private handleP2002(
-    exception: Prisma.PrismaClientKnownRequestError,
-    response: Response,
-  ) {
+  private handleP2002(exception: Prisma.PrismaClientKnownRequestError, response: Response) {
     const status = HttpStatus.CONFLICT;
     const target = exception.meta?.target;
 

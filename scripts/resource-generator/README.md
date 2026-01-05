@@ -20,6 +20,7 @@ npm run generate:resource
 ```
 
 Скрипт создаст/обновит следующие папки в `src/generated/`:
+
 - `entities/` — классы сущностей (`[model].entity.ts`)
 - `interfaces/` — интерфейсы моделей (`[model].interface.ts`)
 - `dto/[model]/` — DTO для создания и обновления
@@ -34,6 +35,7 @@ npx jest scripts/resource-generator/index.spec.ts --rootDir .
 ```
 
 Тесты проверяют:
+
 - Парсинг схемы Prisma.
 - Маппинг типов.
 - Генерацию Entity, Interface и DTO.

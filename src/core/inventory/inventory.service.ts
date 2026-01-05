@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
-import Decimal = Prisma.Decimal;
 import { StockMovementType } from '../../generated/prisma/enums';
+import Decimal = Prisma.Decimal;
 
 @Injectable()
 export class InventoryService {
@@ -68,10 +68,7 @@ export class InventoryService {
    * Finds a fallback WAP for a product by checking stocks in other stores.
    * Useful for Returns/Adjustments when local stock is empty/zero-cost.
    */
-  async getFallbackWap(
-    productId: string,
-    tx: Prisma.TransactionClient,
-  ): Promise<Decimal> {
+  async getFallbackWap(productId: string, tx: Prisma.TransactionClient): Promise<Decimal> {
     const product = await tx.product.findUnique({
       where: { id: productId },
       include: {
@@ -94,13 +91,7 @@ export class InventoryService {
   async logStockMovement(
     tx: Prisma.TransactionClient,
     data: {
-      type:
-        | 'PURCHASE'
-        | 'SALE'
-        | 'RETURN'
-        | 'ADJUSTMENT'
-        | 'TRANSFER_IN'
-        | 'TRANSFER_OUT';
+      type: 'PURCHASE' | 'SALE' | 'RETURN' | 'ADJUSTMENT' | 'TRANSFER_IN' | 'TRANSFER_OUT';
       storeId: string;
       productId: string;
       quantity: Decimal;

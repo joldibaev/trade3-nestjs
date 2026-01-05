@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PriceService } from './price.service';
 import { CreatePriceDto } from '../generated/dto/price/create-price.dto';
@@ -42,10 +33,7 @@ export class PriceController {
   @Get(':id')
   @ApiIncludeQuery(PriceRelations)
   @ApiStandardResponse(Price)
-  findOne(
-    @Param('id') id: string,
-    @Query('include') include?: string | string[],
-  ) {
+  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
     return this.priceService.findOne(id, parseInclude(include));
   }
 

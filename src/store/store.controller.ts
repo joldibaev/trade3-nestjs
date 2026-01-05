@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { StoreService } from './store.service';
 import { CreateStoreDto } from '../generated/dto/store/create-store.dto';
@@ -42,10 +33,7 @@ export class StoreController {
   @Get(':id')
   @ApiIncludeQuery(StoreRelations)
   @ApiStandardResponse(Store)
-  findOne(
-    @Param('id') id: string,
-    @Query('include') include?: string | string[],
-  ) {
+  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
     return this.storesService.findOne(id, parseInclude(include));
   }
 

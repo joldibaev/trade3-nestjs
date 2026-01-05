@@ -3,8 +3,6 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { Prisma } from '../../../src/generated/prisma/client';
-import Decimal = Prisma.Decimal;
 import { StoreService } from '../../../src/store/store.service';
 import { CashboxService } from '../../../src/cashbox/cashbox.service';
 import { VendorService } from '../../../src/vendor/vendor.service';
@@ -66,13 +64,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     const qty = 10;
     const price = 100;
 
-    const purchase = await helper.createPurchase(
-      store.id,
-      vendor.id,
-      product.id,
-      qty,
-      price,
-    );
+    const purchase = await helper.createPurchase(store.id, vendor.id, product.id, qty, price);
 
     const movements = await prismaService.stockMovement.findMany({
       where: { documentPurchaseId: purchase.id },
@@ -101,14 +93,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 100);
 
     // 2. Sale (Qty 3, Price 200)
-    const sale = await helper.createSale(
-      store.id,
-      cashbox.id,
-      retail.id,
-      product.id,
-      3,
-      200,
-    );
+    const sale = await helper.createSale(store.id, cashbox.id, retail.id, product.id, 3, 200);
 
     const movements = await prismaService.stockMovement.findMany({
       where: { documentSaleId: sale.id },

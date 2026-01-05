@@ -106,8 +106,7 @@ export class DocumentReturnService {
         }
 
         const productIds = doc.items.map((i) => i.productId);
-        const wapMap =
-          await this.inventoryService.getFallbackWapMap(productIds);
+        const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
         const items = doc.items.map((i) => ({
           productId: i.productId,

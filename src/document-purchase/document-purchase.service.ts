@@ -26,8 +26,7 @@ export class DocumentPurchaseService {
   ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
-    const { storeId, vendorId, date, status, items } =
-      createDocumentPurchaseDto;
+    const { storeId, vendorId, date, status, items } = createDocumentPurchaseDto;
 
     const targetStatus = status || 'COMPLETED';
 
@@ -57,10 +56,7 @@ export class DocumentPurchaseService {
       };
     });
 
-    const totalAmount = preparedItems.reduce(
-      (sum, item) => sum.add(item.total),
-      new Decimal(0),
-    );
+    const totalAmount = preparedItems.reduce((sum, item) => sum.add(item.total), new Decimal(0));
 
     // 3. Execute Transaction
     return this.prisma.$transaction(
@@ -107,9 +103,7 @@ export class DocumentPurchaseService {
         });
 
         if (purchase.status !== 'DRAFT') {
-          throw new BadRequestException(
-            'Only DRAFT documents can be completed',
-          );
+          throw new BadRequestException('Only DRAFT documents can be completed');
         }
 
         // Prepare items in the format the helper expects

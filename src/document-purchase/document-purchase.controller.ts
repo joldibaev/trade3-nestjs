@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Body,
-  Param,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
 import { DocumentPurchaseService } from './document-purchase.service';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -22,9 +14,7 @@ import { parseInclude } from '../common/utils/prisma-helpers';
 @ApiTags('document-purchases')
 @Controller('document-purchases')
 export class DocumentPurchaseController {
-  constructor(
-    private readonly documentPurchaseService: DocumentPurchaseService,
-  ) {}
+  constructor(private readonly documentPurchaseService: DocumentPurchaseService) {}
 
   @Post()
   @ApiStandardResponse(DocumentPurchase)
@@ -42,10 +32,7 @@ export class DocumentPurchaseController {
   @Get(':id')
   @ApiIncludeQuery(DocumentPurchaseRelations)
   @ApiStandardResponse(DocumentPurchase)
-  findOne(
-    @Param('id') id: string,
-    @Query('include') include?: string | string[],
-  ) {
+  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
     return this.documentPurchaseService.findOne(id, parseInclude(include));
   }
 

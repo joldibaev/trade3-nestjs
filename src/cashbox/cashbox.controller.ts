@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CashboxService } from './cashbox.service';
 import { CreateCashboxDto } from '../generated/dto/cashbox/create-cashbox.dto';
@@ -42,10 +33,7 @@ export class CashboxController {
   @Get(':id')
   @ApiIncludeQuery(CashboxRelations)
   @ApiStandardResponse(Cashbox)
-  findOne(
-    @Param('id') id: string,
-    @Query('include') include?: string | string[],
-  ) {
+  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
     return this.cashboxesService.findOne(id, parseInclude(include));
   }
 

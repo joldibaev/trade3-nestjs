@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PriceTypeService } from './pricetype.service';
 import { CreatePriceTypeDto } from '../generated/dto/pricetype/create-pricetype.dto';
@@ -42,10 +34,7 @@ export class PriceTypeController {
 
   @Patch(':id')
   @ApiStandardResponse(PriceType)
-  update(
-    @Param('id') id: string,
-    @Body() updatePriceTypeDto: UpdatePriceTypeDto,
-  ) {
+  update(@Param('id') id: string, @Body() updatePriceTypeDto: UpdatePriceTypeDto) {
     return this.priceTypeService.update(id, updatePriceTypeDto);
   }
 

@@ -18,6 +18,7 @@ export interface Model {
 }
 
 export type Models = Record<string, Model>;
+export type Enums = Record<string, string[]>;
 
 /**
  * Parses fields from a Prisma model body
@@ -80,6 +81,8 @@ export function mapType(prismaType: string): string {
       return 'number';
     case 'Boolean':
       return 'boolean';
+    case 'Decimal':
+      return 'number';
     case 'DateTime':
       return 'Date';
     default:
@@ -90,37 +93,32 @@ export function mapType(prismaType: string): string {
 /**
  * Generates an interface file content (no swagger decorators)
  */
-export function generateInterfaceContent(
-  model: Model,
-  allModels: Models,
-): string {
+export function generateInterfaceContent(model: Model, allModels: Models): string {
   const relevantFields = model.fields.filter((f) => f.isRelation || f.isEnum);
   const importLines = new Set<string>();
 
   relevantFields.forEach((f) => {
-    const relModel = allModels[f.type];
-    if (relModel && relModel.name !== model.name) {
-      importLines.add(
-        `import { ${relModel.name} } from './${relModel.singular}.interface';`,
-      );
-    } else if (f.isEnum) {
-      importLines.add(`import { ${f.type} } from '../prisma/enums';`);
+    if (f.isEnum) {
+      importLines.add(`import { ${f.type} } from './constants';`);
+    } else {
+      const relModel = allModels[f.type];
+      if (relModel && relModel.name !== model.name) {
+        importLines.add(`import { ${relModel.name} } from './${relModel.singular}.interface';`);
+      }
     }
   });
 
-  if (model.fields.some((f) => f.type === 'Decimal')) {
-    importLines.add(
-      "import { Decimal } from '../prisma/internal/prismaNamespace';",
-    );
-  }
+  let content = '';
+  const imports = Array.from(importLines).sort().join('\n');
+  if (imports) content += imports + '\n\n';
 
-  let content = Array.from(importLines).sort().join('\n');
-  if (content) content += '\n\n';
   content += `export interface ${model.name} {\n`;
 
   model.fields.forEach((f) => {
+    // For interfaces, id is always mandatory for frontend easy use
+    const isId = f.name === 'id';
     const tsType = mapType(f.type);
-    const suffix = f.isOptional ? '?' : '';
+    const suffix = f.isOptional && !isId ? '?' : '';
     const arraySuffix = f.isArray ? '[]' : '';
 
     content += `  ${f.name}${suffix}: ${tsType}${arraySuffix};\n`;
@@ -140,18 +138,15 @@ export function generateEntityContent(model: Model, allModels: Models): string {
   relevantFields.forEach((f) => {
     const relModel = allModels[f.type];
     if (relModel && relModel.name !== model.name) {
-      importLines.add(
-        `import { ${relModel.name} } from './${relModel.singular}.entity';`,
-      );
+      importLines.add(`import { ${relModel.name} } from './${relModel.singular}.entity';`);
     } else if (f.isEnum) {
       importLines.add(`import { ${f.type} } from '../prisma/enums';`);
     }
   });
 
-  if (model.fields.some((f) => f.type === 'Decimal')) {
-    importLines.add(
-      "import { Decimal } from '../prisma/internal/prismaNamespace';",
-    );
+  const hasDecimal = model.fields.some((f) => f.type === 'Decimal');
+  if (hasDecimal) {
+    importLines.add("import { Decimal } from '../prisma/internal/prismaNamespace';");
   }
 
   let content = Array.from(importLines).sort().join('\n');
@@ -159,7 +154,8 @@ export function generateEntityContent(model: Model, allModels: Models): string {
   content += `export class ${model.name} {\n`;
 
   model.fields.forEach((f, index) => {
-    const tsType = mapType(f.type);
+    const isDecimal = f.type === 'Decimal';
+    const tsType = isDecimal ? 'Decimal' : mapType(f.type);
     const suffix = f.isOptional ? '?' : '';
     const arraySuffix = f.isArray ? '[]' : '';
 
@@ -169,7 +165,7 @@ export function generateEntityContent(model: Model, allModels: Models): string {
       content += `  @ApiProperty({ enum: ${tsType}, isArray: ${f.isArray}, required: ${!f.isOptional} })\n`;
     } else if (tsType === 'Date') {
       content += `  @ApiProperty({ type: 'string', format: 'date-time', required: ${!f.isOptional} })\n`;
-    } else if (tsType === 'Decimal') {
+    } else if (isDecimal) {
       content += `  @ApiProperty({ type: 'number', required: ${!f.isOptional} })\n`;
     } else {
       content += `  @ApiProperty({ type: '${tsType}', required: ${!f.isOptional}${f.name === 'id' ? ", format: 'uuid'" : ''} })\n`;
@@ -191,9 +187,7 @@ export function generateCreateDtoContent(model: Model): string {
   const validatorImports = new Set<string>();
   const customImports = new Set<string>();
   let fieldsContent = '';
-  const filteredFields = model.fields.filter(
-    (f) => !f.isSystem && !f.isRelation && !f.isArray,
-  );
+  const filteredFields = model.fields.filter((f) => !f.isSystem && !f.isRelation && !f.isArray);
 
   filteredFields.forEach((f, index) => {
     fieldsContent += `  @ApiProperty({ required: ${!f.isOptional} })\n`;
@@ -223,7 +217,8 @@ export function generateCreateDtoContent(model: Model): string {
       validatorImports.add('IsEnum');
     }
 
-    fieldsContent += `  ${f.name}${f.isOptional ? '?' : ''}: ${mapType(f.type)};\n`;
+    const tsType = f.type === 'Decimal' ? 'Decimal' : mapType(f.type);
+    fieldsContent += `  ${f.name}${f.isOptional ? '?' : ''}: ${tsType};\n`;
     if (index < filteredFields.length - 1) {
       fieldsContent += '\n';
     }
@@ -237,12 +232,9 @@ export function generateCreateDtoContent(model: Model): string {
     createContent += `import { ${Array.from(validatorImports).sort().join(', ')} } from 'class-validator';\n`;
   }
   if (
-    model.fields.some(
-      (f) => f.type === 'Decimal' && !f.isArray && !f.isSystem && !f.isRelation,
-    )
+    model.fields.some((f) => f.type === 'Decimal' && !f.isArray && !f.isSystem && !f.isRelation)
   ) {
-    createContent +=
-      "import { Decimal } from '../../prisma/internal/prismaNamespace';\n";
+    createContent += "import { Decimal } from '../../prisma/internal/prismaNamespace';\n";
   }
   if (customImports.size > 0) {
     createContent += Array.from(customImports).sort().join('\n') + '\n';
@@ -271,6 +263,26 @@ export function generateRelationEnumsContent(model: Model): string {
 }
 
 /**
+ * Generates content for all enums in a single file
+ */
+export function generateAllEnumsContent(enums: Enums): string {
+  let content = '';
+  Object.entries(enums).forEach(([name, values], index) => {
+    content += `export const ${name} = {\n`;
+    values.forEach((v) => {
+      content += `  ${v}: '${v}',\n`;
+    });
+    content += `} as const;\n\n`;
+    content += `export type ${name} = (typeof ${name})[keyof typeof ${name}];\n`;
+
+    if (index < Object.keys(enums).length - 1) {
+      content += '\n';
+    }
+  });
+  return content;
+}
+
+/**
  * Main execution logic
  */
 function run(): void {
@@ -291,16 +303,22 @@ function run(): void {
     };
   }
 
-  const enums: string[] = [];
+  const enums: Enums = {};
   const enumRegex = /enum\s+(\w+)\s+{([\s\S]*?)}/g;
   while ((match = enumRegex.exec(schema)) !== null) {
-    enums.push(match[1]);
+    const name = match[1];
+    const body = match[2];
+
+    enums[name] = body
+      .split('\n')
+      .map((v) => v.trim())
+      .filter((v) => v && !v.startsWith('//') && !v.startsWith('@@'));
   }
 
   // Update isEnum and isRelation based on found enums
   for (const modelName in models) {
     models[modelName].fields.forEach((f) => {
-      if (enums.includes(f.type)) {
+      if (enums[f.type]) {
         f.isEnum = true;
         f.isRelation = false;
       }
@@ -319,6 +337,9 @@ function run(): void {
   Object.values(dirs).forEach((dir) => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   });
+
+  // Generate common constants for interfaces
+  fs.writeFileSync(path.join(dirs.interfaces, 'constants.ts'), generateAllEnumsContent(enums));
 
   console.log('🚀 Starting centralized resource generation...');
 
@@ -339,8 +360,7 @@ function run(): void {
 
     // DTOs
     const modelDtoDir = path.join(dirs.dto, model.singular);
-    if (!fs.existsSync(modelDtoDir))
-      fs.mkdirSync(modelDtoDir, { recursive: true });
+    if (!fs.existsSync(modelDtoDir)) fs.mkdirSync(modelDtoDir, { recursive: true });
 
     fs.writeFileSync(
       path.join(modelDtoDir, `create-${model.singular}.dto.ts`),

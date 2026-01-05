@@ -1,18 +1,16 @@
-import { PrismaService } from '../../src/core/prisma/prisma.service';
-import { StoreService } from '../../src/store/store.service';
-import { CashboxService } from '../../src/cashbox/cashbox.service';
-import { VendorService } from '../../src/vendor/vendor.service';
-import { ClientService } from '../../src/client/client.service';
-import { PriceTypeService } from '../../src/pricetype/pricetype.service';
-import { ProductService } from '../../src/product/product.service';
-import { CategoryService } from '../../src/category/category.service';
-import { DocumentPurchaseService } from '../../src/document-purchase/document-purchase.service';
-import { DocumentSaleService } from '../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../src/document-transfer/document-transfer.service';
-import { Prisma } from '../../src/generated/prisma/client';
-import Decimal = Prisma.Decimal;
+import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { StoreService } from '../../../src/store/store.service';
+import { CashboxService } from '../../../src/cashbox/cashbox.service';
+import { VendorService } from '../../../src/vendor/vendor.service';
+import { ClientService } from '../../../src/client/client.service';
+import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
+import { ProductService } from '../../../src/product/product.service';
+import { CategoryService } from '../../../src/category/category.service';
+import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
+import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
+import { DocumentReturnService } from '../../../src/document-return/document-return.service';
+import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
+import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 export class TestHelper {
   constructor(

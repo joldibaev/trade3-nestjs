@@ -15,8 +15,6 @@ import { DocumentSaleService } from '../../../src/document-sale/document-sale.se
 import { DocumentReturnService } from '../../../src/document-return/document-return.service';
 import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
 import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
-import { Prisma } from '../../../src/generated/prisma/client';
-import Decimal = Prisma.Decimal;
 
 describe('Document Purchase (e2e)', () => {
   let app: INestApplication;
@@ -58,13 +56,7 @@ describe('Document Purchase (e2e)', () => {
     const category = await helper.createCategory();
     const product = await helper.createProduct(category.id);
 
-    const purchase = await helper.createPurchase(
-      store.id,
-      vendor.id,
-      product.id,
-      10,
-      5000,
-    );
+    const purchase = await helper.createPurchase(store.id, vendor.id, product.id, 10, 5000);
 
     expect(purchase.totalAmount.toString()).toBe('50000');
     const stock = await helper.getStock(product.id, store.id);
@@ -108,7 +100,7 @@ describe('Document Purchase (e2e)', () => {
     const product = await helper.createProduct(category.id);
     const { retail, wholesale } = await helper.createPriceTypes();
 
-    const purchase = await helper.createPurchase(
+    await helper.createPurchase(
       store.id,
       vendor.id,
       product.id,

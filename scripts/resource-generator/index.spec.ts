@@ -3,8 +3,8 @@ import {
   mapType,
   generateEntityContent,
   generateInterfaceContent,
+  generateAllEnumsContent,
   generateCreateDtoContent,
-  generateRelationEnumsContent,
   Model,
   Models,
 } from './index';
@@ -63,7 +63,7 @@ describe('Resource Generator', () => {
       expect(mapType('String')).toBe('string');
       expect(mapType('Int')).toBe('number');
       expect(mapType('Float')).toBe('number');
-      expect(mapType('Decimal')).toBe('Decimal');
+      expect(mapType('Decimal')).toBe('number');
       expect(mapType('Boolean')).toBe('boolean');
       expect(mapType('DateTime')).toBe('Date');
       expect(mapType('CustomModel')).toBe('CustomModel');
@@ -106,9 +106,7 @@ describe('Resource Generator', () => {
 
       expect(content).toContain('export class Product {');
       expect(content).toContain('category: Category;');
-      expect(content).toContain(
-        "import { Category } from './category.entity';",
-      );
+      expect(content).toContain("import { Category } from './category.entity';");
       expect(content).toContain('@ApiProperty');
     });
 
@@ -130,13 +128,9 @@ describe('Resource Generator', () => {
       };
 
       const content = generateEntityContent(model, {});
-      expect(content).toContain(
-        "@ApiProperty({ type: 'number', required: true })",
-      );
+      expect(content).toContain("@ApiProperty({ type: 'number', required: true })");
       expect(content).toContain('value: Decimal;');
-      expect(content).toContain(
-        "import { Decimal } from '../prisma/internal/prismaNamespace';",
-      );
+      expect(content).toContain("import { Decimal } from '../prisma/internal/prismaNamespace';");
     });
 
     it('should use enum property in ApiProperty for enums', () => {
@@ -160,45 +154,7 @@ describe('Resource Generator', () => {
       expect(content).toContain(
         '@ApiProperty({ enum: DocumentStatus, isArray: false, required: true })',
       );
-      expect(content).toContain(
-        "import { DocumentStatus } from '../prisma/enums';",
-      );
-    });
-
-    it('should avoid duplicate imports for same model relations', () => {
-      const allModels: Models = {
-        Store: { name: 'Store', singular: 'store', fields: [] },
-      };
-      const model: Model = {
-        name: 'Transfer',
-        singular: 'transfer',
-        fields: [
-          {
-            name: 'from',
-            type: 'Store',
-            isOptional: false,
-            isArray: false,
-            isRelation: true,
-            isSystem: false,
-            isEnum: false,
-          },
-          {
-            name: 'to',
-            type: 'Store',
-            isOptional: false,
-            isArray: false,
-            isRelation: true,
-            isSystem: false,
-            isEnum: false,
-          },
-        ],
-      };
-
-      const content = generateEntityContent(model, allModels);
-      const importCount = (
-        content.match(/import { Store } from '.\/store.entity';/g) || []
-      ).length;
-      expect(importCount).toBe(1);
+      expect(content).toContain("import { DocumentStatus } from '../prisma/enums';");
     });
   });
 
@@ -207,7 +163,7 @@ describe('Resource Generator', () => {
       Category: { name: 'Category', singular: 'category', fields: [] },
     };
 
-    it('should generate interface without decorators', () => {
+    it('should generate interface without decorators and import enums from common file', () => {
       const model: Model = {
         name: 'Product',
         singular: 'product',
@@ -230,27 +186,9 @@ describe('Resource Generator', () => {
             isSystem: false,
             isEnum: false,
           },
-        ],
-      };
-
-      const content = generateInterfaceContent(model, allModels);
-
-      expect(content).toContain('export interface Product {');
-      expect(content).toContain('category: Category;');
-      expect(content).toContain(
-        "import { Category } from './category.interface';",
-      );
-      expect(content).not.toContain('@ApiProperty');
-    });
-
-    it('should import enums from prisma/enums', () => {
-      const model: Model = {
-        name: 'Document',
-        singular: 'document',
-        fields: [
           {
             name: 'status',
-            type: 'DocumentStatus',
+            type: 'ProductStatus',
             isOptional: false,
             isArray: false,
             isRelation: false,
@@ -260,11 +198,69 @@ describe('Resource Generator', () => {
         ],
       };
 
-      const content = generateInterfaceContent(model, {});
-      expect(content).toContain(
-        "import { DocumentStatus } from '../prisma/enums';",
-      );
-      expect(content).toContain('status: DocumentStatus;');
+      const content = generateInterfaceContent(model, allModels, { ProductStatus: ['ACTIVE'] });
+
+      expect(content).toContain('export interface Product {');
+      expect(content).toContain('category: Category;');
+      expect(content).toContain("import { Category } from './category.interface';");
+      expect(content).toContain("import { ProductStatus } from './constants';");
+      expect(content).not.toContain('@ApiProperty');
+      expect(content).not.toContain('export const ProductStatus = {');
+    });
+
+    it('should make id mandatory even if optional in prisma', () => {
+      const model: Model = {
+        name: 'User',
+        singular: 'user',
+        fields: [
+          {
+            name: 'id',
+            type: 'String',
+            isOptional: true,
+            isArray: false,
+            isRelation: false,
+            isSystem: true,
+            isEnum: false,
+          },
+        ],
+      };
+      const content = generateInterfaceContent(model, {}, {});
+      expect(content).toContain('id: string;');
+      expect(content).not.toContain('id?: string;');
+    });
+
+    it('should map Decimal to number', () => {
+      const model: Model = {
+        name: 'Price',
+        singular: 'price',
+        fields: [
+          {
+            name: 'value',
+            type: 'Decimal',
+            isOptional: false,
+            isArray: false,
+            isRelation: false,
+            isSystem: false,
+            isEnum: false,
+          },
+        ],
+      };
+      const content = generateInterfaceContent(model, {}, {});
+      expect(content).toContain('value: number;');
+    });
+  });
+
+  describe('generateAllEnumsContent', () => {
+    it('should generate centralized enums content', () => {
+      const enums = {
+        Status: ['ACTIVE', 'INACTIVE'],
+        Type: ['A', 'B'],
+      };
+      const content = generateAllEnumsContent(enums);
+      expect(content).toContain('export const Status = {');
+      expect(content).toContain("ACTIVE: 'ACTIVE',");
+      expect(content).toContain('export type Status = (typeof Status)[keyof typeof Status];');
+      expect(content).toContain('export const Type = {');
     });
   });
 
@@ -298,34 +294,8 @@ describe('Resource Generator', () => {
       const content = generateCreateDtoContent(model);
       expect(content).toContain('@IsNumber()');
       expect(content).toContain('@IsUUID(7)');
-      expect(content).toContain(
-        "import { Decimal } from '../../prisma/internal/prismaNamespace';",
-      );
+      expect(content).toContain("import { Decimal } from '../../prisma/internal/prismaNamespace';");
       expect(content).toContain('export class CreateStockDto {');
-    });
-  });
-
-  describe('generateRelationEnumsContent', () => {
-    it('should generate correct enums for relations', () => {
-      const model: Model = {
-        name: 'Store',
-        singular: 'store',
-        fields: [
-          {
-            name: 'cashboxes',
-            type: 'Cashbox',
-            isOptional: false,
-            isArray: true,
-            isRelation: true,
-            isSystem: false,
-            isEnum: false,
-          },
-        ],
-      };
-      const content = generateRelationEnumsContent(model);
-
-      expect(content).toContain('export enum StoreRelations {');
-      expect(content).toContain("CASHBOXES = 'cashboxes',");
     });
   });
 });

@@ -341,19 +341,19 @@ model StockMovement {
   updatedAt DateTime @updatedAt
 
   // Direct Relations to Source Documents
-  documentPurchase   DocumentPurchase?   @relation(fields: [documentPurchaseId], references: [id])
+  documentPurchase   DocumentPurchase? @relation(fields: [documentPurchaseId], references: [id])
   documentPurchaseId String?
 
-  documentSale   DocumentSale?   @relation(fields: [documentSaleId], references: [id])
+  documentSale   DocumentSale? @relation(fields: [documentSaleId], references: [id])
   documentSaleId String?
 
-  documentReturn   DocumentReturn?   @relation(fields: [documentReturnId], references: [id])
+  documentReturn   DocumentReturn? @relation(fields: [documentReturnId], references: [id])
   documentReturnId String?
 
-  documentAdjustment   DocumentAdjustment?   @relation(fields: [documentAdjustmentId], references: [id])
+  documentAdjustment   DocumentAdjustment? @relation(fields: [documentAdjustmentId], references: [id])
   documentAdjustmentId String?
 
-  documentTransfer   DocumentTransfer?   @relation(fields: [documentTransferId], references: [id])
+  documentTransfer   DocumentTransfer? @relation(fields: [documentTransferId], references: [id])
   documentTransferId String?
 
   @@index([storeId, productId])

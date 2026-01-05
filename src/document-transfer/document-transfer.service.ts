@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
@@ -29,15 +25,12 @@ export class DocumentTransferService {
   ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
-    const { sourceStoreId, destinationStoreId, date, status, items } =
-      createDocumentTransferDto;
+    const { sourceStoreId, destinationStoreId, date, status, items } = createDocumentTransferDto;
 
     const targetStatus = status || 'COMPLETED';
 
     if (sourceStoreId === destinationStoreId) {
-      throw new BadRequestException(
-        'Source and Destination stores must be different',
-      );
+      throw new BadRequestException('Source and Destination stores must be different');
     }
 
     // 1. Validate Stores
@@ -172,13 +165,9 @@ export class DocumentTransferService {
       // --- Update Destination Store ---
       const destStock = destStockMap.get(item.productId);
       const destQty = destStock ? destStock.quantity : new Decimal(0);
-      const destWap = destStock
-        ? destStock.averagePurchasePrice
-        : new Decimal(0);
+      const destWap = destStock ? destStock.averagePurchasePrice : new Decimal(0);
 
-      const sourceWap = sourceStock
-        ? sourceStock.averagePurchasePrice
-        : new Decimal(0);
+      const sourceWap = sourceStock ? sourceStock.averagePurchasePrice : new Decimal(0);
 
       const newDestQty = destQty.add(item.quantity);
 

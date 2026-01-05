@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"{src,test,scripts,prisma}/**/*.{ts,js,json,prisma,md}\" \"*.{ts,js,json,md,yml}\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -22,7 +22,7 @@
     "prisma:reset": "prisma migrate reset",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
-    "generate:resource": "tsx scripts/resource-generator/index.ts"
+    "postprisma:generate": "tsx scripts/resource-generator/index.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -58,6 +58,7 @@
     "globals": "^16.0.0",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
+    "prettier-plugin-prisma": "^5.0.0",
     "prisma": "^7.2.0",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",

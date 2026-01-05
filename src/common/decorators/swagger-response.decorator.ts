@@ -1,10 +1,5 @@
 import { Type, applyDecorators } from '@nestjs/common';
-import {
-  ApiOkResponse,
-  getSchemaPath,
-  ApiExtraModels,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiOkResponse, getSchemaPath, ApiExtraModels, ApiQuery } from '@nestjs/swagger';
 
 /**
  * Standard structure for all successful API responses.
@@ -20,9 +15,7 @@ export class StandardResponseDto<T> {
  *
  * @param model - The entity class to be documented inside 'data'
  */
-export const ApiStandardResponse = <TModel extends Type<unknown>>(
-  model: TModel,
-) => {
+export const ApiStandardResponse = <TModel extends Type<unknown>>(model: TModel) => {
   return applyDecorators(
     ApiExtraModels(StandardResponseDto, model),
     ApiOkResponse({
@@ -47,9 +40,7 @@ export const ApiStandardResponse = <TModel extends Type<unknown>>(
  *
  * @param model - The entity class to be documented inside 'data' array
  */
-export const ApiStandardResponseArray = <TModel extends Type<unknown>>(
-  model: TModel,
-) => {
+export const ApiStandardResponseArray = <TModel extends Type<unknown>>(model: TModel) => {
   return applyDecorators(
     ApiExtraModels(StandardResponseDto, model),
     ApiOkResponse({

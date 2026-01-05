@@ -37,8 +37,7 @@ export class DocumentAdjustmentService {
 
     // 1a. Pre-fetch Fallback WAPs (checking other stores)
     // We do this outside the transaction for simplicity, as it's just a fallback hint
-    const fallbackWapMap =
-      await this.inventoryService.getFallbackWapMap(productIds);
+    const fallbackWapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
     return this.prisma.$transaction(
       async (tx) => {
@@ -87,12 +86,7 @@ export class DocumentAdjustmentService {
 
         // 5. Update Stocks (Only if COMPLETED)
         if (targetStatus === 'COMPLETED') {
-          await this.applyInventoryMovements(
-            tx,
-            doc,
-            preparedItems,
-            fallbackWapMap,
-          );
+          await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
         }
 
         return doc;
@@ -116,8 +110,7 @@ export class DocumentAdjustmentService {
         }
 
         const productIds = doc.items.map((i) => i.productId);
-        const fallbackWapMap =
-          await this.inventoryService.getFallbackWapMap(productIds);
+        const fallbackWapMap = await this.inventoryService.getFallbackWapMap(productIds);
         const existingStocks = await tx.stock.findMany({
           where: {
             storeId: doc.storeId,
@@ -149,12 +142,7 @@ export class DocumentAdjustmentService {
           });
         }
 
-        await this.applyInventoryMovements(
-          tx,
-          doc,
-          preparedItems,
-          fallbackWapMap,
-        );
+        await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
 
         return tx.documentAdjustment.update({
           where: { id },

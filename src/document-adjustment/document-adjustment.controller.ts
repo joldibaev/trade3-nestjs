@@ -11,9 +11,7 @@ import { DocumentAdjustment } from '../generated/entities/documentadjustment.ent
 @ApiTags('document-adjustments')
 @Controller('document-adjustments')
 export class DocumentAdjustmentController {
-  constructor(
-    private readonly documentAdjustmentService: DocumentAdjustmentService,
-  ) {}
+  constructor(private readonly documentAdjustmentService: DocumentAdjustmentService) {}
 
   @Post()
   @ApiStandardResponse(DocumentAdjustment)

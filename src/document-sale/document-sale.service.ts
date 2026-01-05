@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
@@ -66,15 +62,11 @@ export class DocumentSaleService {
       let finalPrice = new Decimal(item.price ?? 0);
       if (item.price === undefined) {
         if (priceTypeId) {
-          const priceObj = product.prices.find(
-            (p) => p.priceTypeId === priceTypeId,
-          );
+          const priceObj = product.prices.find((p) => p.priceTypeId === priceTypeId);
           finalPrice = priceObj ? priceObj.value : new Decimal(0);
         } else {
           // Default to first available price
-          finalPrice = product.prices[0]
-            ? product.prices[0].value
-            : new Decimal(0);
+          finalPrice = product.prices[0] ? product.prices[0].value : new Decimal(0);
         }
       }
 
@@ -172,9 +164,7 @@ export class DocumentSaleService {
         });
 
         if (sale.status !== 'DRAFT') {
-          throw new BadRequestException(
-            'Only DRAFT documents can be completed',
-          );
+          throw new BadRequestException('Only DRAFT documents can be completed');
         }
 
         const items = sale.items.map((i) => ({
@@ -202,10 +192,7 @@ export class DocumentSaleService {
     );
   }
 
-  private async updateItemCostPrices(
-    tx: Prisma.TransactionClient,
-    sale: SaleWithItems,
-  ) {
+  private async updateItemCostPrices(tx: Prisma.TransactionClient, sale: SaleWithItems) {
     const productIds = sale.items.map((i) => i.productId);
     const stocks = await tx.stock.findMany({
       where: {

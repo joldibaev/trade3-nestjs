@@ -82,20 +82,12 @@ describe('Document Return (e2e)', () => {
 
   it('should not update stock if return is DRAFT and update when completed', async () => {
     const store = await helper.createStore();
-    const vendor = await helper.createVendor();
     const category = await helper.createCategory();
     const product = await helper.createProduct(category.id);
     const client = await helper.createClient();
 
     // 1. Create DRAFT return
-    const returnDoc = await helper.createReturn(
-      store.id,
-      client.id,
-      product.id,
-      5,
-      1000,
-      'DRAFT',
-    );
+    const returnDoc = await helper.createReturn(store.id, client.id, product.id, 5, 1000, 'DRAFT');
 
     // Verify stock is null/zero
     const stockDraft = await helper.getStock(product.id, store.id);

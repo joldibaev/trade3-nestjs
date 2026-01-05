@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { BarcodeService } from './barcode.service';
 import { CreateBarcodeDto } from './dto/create-barcode.dto';
@@ -42,10 +33,7 @@ export class BarcodeController {
   @Get(':id')
   @ApiIncludeQuery(BarcodeRelations)
   @ApiStandardResponse(Barcode)
-  findOne(
-    @Param('id') id: string,
-    @Query('include') include?: string | string[],
-  ) {
+  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
     return this.barcodeService.findOne(id, parseInclude(include));
   }
 

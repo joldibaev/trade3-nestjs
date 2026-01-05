@@ -59,14 +59,7 @@ describe('Document Sale (e2e)', () => {
     const { retail } = await helper.createPriceTypes();
 
     await helper.createPurchase(store.id, vendor.id, product.id, 25, 5400);
-    await helper.createSale(
-      store.id,
-      cashbox.id,
-      retail.id,
-      product.id,
-      5,
-      7000,
-    );
+    await helper.createSale(store.id, cashbox.id, retail.id, product.id, 5, 7000);
 
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('20');
@@ -83,14 +76,7 @@ describe('Document Sale (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 5000);
     const stockBefore = await helper.getStock(product.id, store.id);
 
-    await helper.createSale(
-      store.id,
-      cashbox.id,
-      retail.id,
-      product.id,
-      1,
-      10000,
-    );
+    await helper.createSale(store.id, cashbox.id, retail.id, product.id, 1, 10000);
     const stockAfter = await helper.getStock(product.id, store.id);
 
     expect(stockAfter!.averagePurchasePrice.toFixed(2)).toBe(

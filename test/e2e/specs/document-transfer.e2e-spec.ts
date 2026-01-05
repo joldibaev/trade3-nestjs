@@ -123,13 +123,7 @@ describe('Document Transfer (e2e)', () => {
     await helper.createPurchase(storeA.id, vendor.id, product.id, 10, 1000);
 
     // 1. Create DRAFT transfer (5 from A to B)
-    const transfer = await helper.createTransfer(
-      storeA.id,
-      storeB.id,
-      product.id,
-      5,
-      'DRAFT',
-    );
+    const transfer = await helper.createTransfer(storeA.id, storeB.id, product.id, 5, 'DRAFT');
 
     // Verify stocks unchanged
     const stockA_draft = await helper.getStock(product.id, storeA.id);
