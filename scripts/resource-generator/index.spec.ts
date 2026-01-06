@@ -5,11 +5,23 @@ import {
   generateInterfaceContent,
   generateAllEnumsContent,
   generateCreateDtoContent,
+  toKebabCase,
   Model,
   Models,
 } from './index';
 
 describe('Resource Generator', () => {
+  describe('toKebabCase', () => {
+    it('should convert PascalCase to kebab-case', () => {
+      expect(toKebabCase('DocumentAdjustment')).toBe('document-adjustment');
+      expect(toKebabCase('Product')).toBe('product');
+    });
+
+    it('should convert camelCase to kebab-case', () => {
+      expect(toKebabCase('documentAdjustment')).toBe('document-adjustment');
+    });
+  });
+
   describe('parseFields', () => {
     it('should parse simple fields correctly', () => {
       const body = `
@@ -74,7 +86,35 @@ describe('Resource Generator', () => {
     const allModels: Models = {
       Category: { name: 'Category', singular: 'category', fields: [] },
       Price: { name: 'Price', singular: 'price', fields: [] },
+      DocumentAdjustment: {
+        name: 'DocumentAdjustment',
+        singular: 'document-adjustment',
+        fields: [],
+      },
     };
+
+    it('should generate correct entity with kebab-case relations', () => {
+      const model: Model = {
+        name: 'Test',
+        singular: 'test',
+        fields: [
+          {
+            name: 'adjustment',
+            type: 'DocumentAdjustment',
+            isOptional: false,
+            isArray: false,
+            isRelation: true,
+            isSystem: false,
+            isEnum: false,
+          },
+        ],
+      };
+
+      const content = generateEntityContent(model, allModels);
+      expect(content).toContain(
+        "import { DocumentAdjustment } from './document-adjustment.entity';",
+      );
+    });
 
     it('should generate correct entity with relations', () => {
       const model: Model = {

@@ -21,6 +21,16 @@ export type Models = Record<string, Model>;
 export type Enums = Record<string, string[]>;
 
 /**
+ * Converts PascalCase or camelCase to kebab-case
+ */
+export function toKebabCase(str: string): string {
+  return str
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/[\s_]+/g, '-')
+    .toLowerCase();
+}
+
+/**
  * Parses fields from a Prisma model body
  */
 export function parseFields(body: string): Field[] {
@@ -298,7 +308,7 @@ function run(): void {
     const modelName = match[1];
     models[modelName] = {
       name: modelName,
-      singular: modelName.toLowerCase(),
+      singular: toKebabCase(modelName),
       fields: parseFields(match[2]),
     };
   }
@@ -326,6 +336,13 @@ function run(): void {
   }
 
   const generatedDir = path.join(process.cwd(), 'src', 'generated');
+
+  // Clear old files
+  if (fs.existsSync(generatedDir)) {
+    console.log('🧹 Clearing old generated files...');
+    fs.rmSync(generatedDir, { recursive: true, force: true });
+  }
+
   const dirs = {
     entities: path.join(generatedDir, 'entities'),
     interfaces: path.join(generatedDir, 'interfaces'),
@@ -335,7 +352,7 @@ function run(): void {
 
   // Create directories
   Object.values(dirs).forEach((dir) => {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true });
   });
 
   // Generate common constants for interfaces
@@ -369,8 +386,8 @@ function run(): void {
     fs.writeFileSync(
       path.join(modelDtoDir, `update-${model.singular}.dto.ts`),
       "import { PartialType } from '@nestjs/swagger';\n" +
-        `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
-        `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`,
+      `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
+      `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`,
     );
 
     // Enums
