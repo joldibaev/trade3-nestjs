@@ -100,18 +100,10 @@ describe('Document Purchase (e2e)', () => {
     const product = await helper.createProduct(category.id);
     const { retail, wholesale } = await helper.createPriceTypes();
 
-    await helper.createPurchase(
-      store.id,
-      vendor.id,
-      product.id,
-      10,
-      1000,
-      'COMPLETED',
-      [
-        { priceTypeId: retail.id, value: 1500 },
-        { priceTypeId: wholesale.id, value: 1200 },
-      ],
-    );
+    await helper.createPurchase(store.id, vendor.id, product.id, 10, 1000, 'COMPLETED', [
+      { priceTypeId: retail.id, value: 1500 },
+      { priceTypeId: wholesale.id, value: 1200 },
+    ]);
 
     const prices = await app.get(PrismaService).price.findMany({
       where: { productId: product.id },
