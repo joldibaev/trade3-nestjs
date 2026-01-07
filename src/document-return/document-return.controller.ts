@@ -6,7 +6,7 @@ import {
   ApiStandardResponse,
   ApiStandardResponseArray,
 } from '../common/decorators/swagger-response.decorator';
-import { DocumentReturn } from '../generated/entities/documentreturn.entity';
+import { DocumentReturn } from '../generated/entities/document-return.entity';
 
 @ApiTags('document-returns')
 @Controller('document-returns')

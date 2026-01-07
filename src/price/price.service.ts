@@ -15,6 +15,7 @@ export class PriceService {
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.price.findMany({
+      orderBy: { createdAt: 'desc' },
       include,
     });
   }

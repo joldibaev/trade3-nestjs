@@ -14,7 +14,9 @@ export class VendorService {
   }
 
   findAll() {
-    return this.prisma.vendor.findMany();
+    return this.prisma.vendor.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   findOne(id: string) {

@@ -15,6 +15,7 @@ export class CategoryService {
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.category.findMany({
+      orderBy: { createdAt: 'desc' },
       include,
     });
   }

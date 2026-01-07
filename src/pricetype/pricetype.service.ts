@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { CreatePriceTypeDto } from '../generated/dto/pricetype/create-pricetype.dto';
-import { UpdatePriceTypeDto } from '../generated/dto/pricetype/update-pricetype.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { CreatePriceTypeDto } from '../generated/dto/price-type/create-price-type.dto';
+import { UpdatePriceTypeDto } from '../generated/dto/price-type/update-price-type.dto';
 
 @Injectable()
 export class PriceTypeService {
@@ -14,7 +14,9 @@ export class PriceTypeService {
   }
 
   findAll() {
-    return this.prisma.priceType.findMany();
+    return this.prisma.priceType.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   findOne(id: string) {

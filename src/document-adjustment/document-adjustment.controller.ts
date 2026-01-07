@@ -6,7 +6,7 @@ import {
   ApiStandardResponse,
   ApiStandardResponseArray,
 } from '../common/decorators/swagger-response.decorator';
-import { DocumentAdjustment } from '../generated/entities/documentadjustment.entity';
+import { DocumentAdjustment } from '../generated/entities/document-adjustment.entity';
 
 @ApiTags('document-adjustments')
 @Controller('document-adjustments')

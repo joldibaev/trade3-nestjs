@@ -7,9 +7,9 @@ import {
   ApiStandardResponseArray,
   ApiIncludeQuery,
 } from '../common/decorators/swagger-response.decorator';
-import { DocumentPurchase } from '../generated/entities/documentpurchase.entity';
-import { DocumentPurchaseRelations } from '../generated/relations/documentpurchase-relations.enum';
 import { parseInclude } from '../common/utils/prisma-helpers';
+import { DocumentPurchase } from '../generated/entities/document-purchase.entity';
+import { DocumentPurchaseRelations } from '../generated/relations/document-purchase-relations.enum';
 
 @ApiTags('document-purchases')
 @Controller('document-purchases')

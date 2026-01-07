@@ -6,7 +6,7 @@ import {
   ApiStandardResponse,
   ApiStandardResponseArray,
 } from '../common/decorators/swagger-response.decorator';
-import { DocumentTransfer } from '../generated/entities/documenttransfer.entity';
+import { DocumentTransfer } from '../generated/entities/document-transfer.entity';
 
 @ApiTags('document-transfers')
 @Controller('document-transfers')

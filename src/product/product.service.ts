@@ -15,6 +15,7 @@ export class ProductService {
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.product.findMany({
+      orderBy: { createdAt: 'desc' },
       include,
     });
   }

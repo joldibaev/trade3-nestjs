@@ -15,6 +15,7 @@ export class StoreService {
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.store.findMany({
+      orderBy: { createdAt: 'desc' },
       include,
     });
   }

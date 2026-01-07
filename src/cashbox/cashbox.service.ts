@@ -15,6 +15,7 @@ export class CashboxService {
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.cashbox.findMany({
+      orderBy: { createdAt: 'desc' },
       include,
     });
   }

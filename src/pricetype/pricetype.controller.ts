@@ -1,13 +1,13 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PriceTypeService } from './pricetype.service';
-import { CreatePriceTypeDto } from '../generated/dto/pricetype/create-pricetype.dto';
-import { UpdatePriceTypeDto } from '../generated/dto/pricetype/update-pricetype.dto';
 import {
   ApiStandardResponse,
   ApiStandardResponseArray,
 } from '../common/decorators/swagger-response.decorator';
-import { PriceType } from '../generated/entities/pricetype.entity';
+import { PriceType } from '../generated/entities/price-type.entity';
+import { CreatePriceTypeDto } from '../generated/dto/price-type/create-price-type.dto';
+import { UpdatePriceTypeDto } from '../generated/dto/price-type/update-price-type.dto';
 
 @ApiTags('price-types')
 @Controller('price-types')

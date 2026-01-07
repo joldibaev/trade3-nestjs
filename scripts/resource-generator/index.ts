@@ -338,10 +338,20 @@ function run(): void {
   const generatedDir = path.join(process.cwd(), 'src', 'generated');
 
   // Clear old files
-  if (fs.existsSync(generatedDir)) {
-    console.log('🧹 Clearing old generated files...');
-    fs.rmSync(generatedDir, { recursive: true, force: true });
-  }
+  // Clear old files (Specific directories only to preserve prisma client)
+  const dirsToClean = [
+    path.join(generatedDir, 'entities'),
+    path.join(generatedDir, 'interfaces'),
+    path.join(generatedDir, 'dto'),
+    path.join(generatedDir, 'relations'),
+  ];
+
+  dirsToClean.forEach((dir) => {
+    if (fs.existsSync(dir)) {
+      console.log(`🧹 Clearing ${dir}...`);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   const dirs = {
     entities: path.join(generatedDir, 'entities'),
@@ -386,8 +396,8 @@ function run(): void {
     fs.writeFileSync(
       path.join(modelDtoDir, `update-${model.singular}.dto.ts`),
       "import { PartialType } from '@nestjs/swagger';\n" +
-      `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
-      `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`,
+        `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
+        `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`,
     );
 
     // Enums
