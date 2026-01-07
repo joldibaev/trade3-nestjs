@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiTags, ApiQuery } from '@nestjs/swagger';
 import { CashboxService } from './cashbox.service';
 import { CreateCashboxDto } from '../generated/dto/cashbox/create-cashbox.dto';
 import { UpdateCashboxDto } from '../generated/dto/cashbox/update-cashbox.dto';
@@ -15,7 +15,7 @@ import { Cashbox } from '../generated/entities/cashbox.entity';
 @ApiTags('cashboxes')
 @Controller('cashboxes')
 export class CashboxController {
-  constructor(private readonly cashboxesService: CashboxService) {}
+  constructor(private readonly cashboxesService: CashboxService) { }
 
   @Post()
   @ApiStandardResponse(Cashbox)
@@ -26,8 +26,9 @@ export class CashboxController {
   @Get()
   @ApiIncludeQuery(CashboxRelations)
   @ApiStandardResponseArray(Cashbox)
-  findAll(@Query('include') include?: string | string[]) {
-    return this.cashboxesService.findAll(parseInclude(include));
+  @ApiQuery({ name: 'storeId', required: false, type: String })
+  findAll(@Query('storeId') storeId?: string, @Query('include') include?: string | string[]) {
+    return this.cashboxesService.findAll(storeId, parseInclude(include));
   }
 
   @Get(':id')

@@ -13,8 +13,9 @@ export class CashboxService {
     });
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll(storeId?: string, include?: Record<string, boolean>) {
     return this.prisma.cashbox.findMany({
+      where: { storeId },
       orderBy: { createdAt: 'desc' },
       include,
     });
