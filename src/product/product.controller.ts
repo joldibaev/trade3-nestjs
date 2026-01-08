@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { CreateProductDto } from '../generated/dto/product/create-product.dto';
 import { UpdateProductDto } from '../generated/dto/product/update-product.dto';
@@ -26,8 +26,9 @@ export class ProductController {
   @Get()
   @ApiIncludeQuery(ProductRelations)
   @ApiStandardResponseArray(Product)
-  findAll(@Query('include') include?: string | string[]) {
-    return this.productsService.findAll(parseInclude(include));
+  @ApiQuery({ name: 'categoryId', required: false, type: String })
+  findAll(@Query('categoryId') categoryId?: string, @Query('include') include?: string | string[]) {
+    return this.productsService.findAll(categoryId, parseInclude(include));
   }
 
   @Get(':id')

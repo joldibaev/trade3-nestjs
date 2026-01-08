@@ -13,8 +13,9 @@ export class ProductService {
     });
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll(categoryId?: string, include?: Record<string, boolean>) {
     return this.prisma.product.findMany({
+      where: { categoryId },
       orderBy: { createdAt: 'desc' },
       include,
     });
