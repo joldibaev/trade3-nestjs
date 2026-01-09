@@ -22,6 +22,7 @@
     "prisma:reset": "prisma migrate reset",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
+    "seed": "prisma db seed",
     "postprisma:generate": "tsx scripts/resource-generator/index.ts"
   },
   "dependencies": {
@@ -90,5 +91,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }

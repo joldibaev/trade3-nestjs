@@ -15,7 +15,7 @@ import { Cashbox } from '../generated/entities/cashbox.entity';
 @ApiTags('cashboxes')
 @Controller('cashboxes')
 export class CashboxController {
-  constructor(private readonly cashboxesService: CashboxService) { }
+  constructor(private readonly cashboxesService: CashboxService) {}
 
   @Post()
   @ApiStandardResponse(Cashbox)

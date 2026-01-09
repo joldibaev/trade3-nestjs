@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CategoryService } from './category.service';
 import { CreateCategoryDto } from '../generated/dto/category/create-category.dto';
 import { UpdateCategoryDto } from '../generated/dto/category/update-category.dto';
@@ -11,6 +11,7 @@ import {
   ApiIncludeQuery,
 } from '../common/decorators/swagger-response.decorator';
 import { Category } from '../generated/entities/category.entity';
+import { Prisma } from '../generated/prisma/client';
 
 @ApiTags('categories')
 @Controller('categories')
@@ -26,8 +27,14 @@ export class CategoryController {
   @Get()
   @ApiIncludeQuery(CategoryRelations)
   @ApiStandardResponseArray(Category)
-  findAll(@Query('include') include?: string | string[]) {
-    return this.categoriesService.findAll(parseInclude(include));
+  @ApiQuery({ name: 'parentId', required: false, type: String })
+  findAll(@Query('include') include?: string | string[], @Query('parentId') parentId?: string) {
+    const where: Prisma.CategoryWhereInput = {};
+    if (parentId) {
+      where.parent = parentId === 'null' ? null : { id: parentId };
+    }
+
+    return this.categoriesService.findAll(where, parseInclude(include));
   }
 
   @Get(':id')
