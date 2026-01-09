@@ -160,6 +160,9 @@ model Barcode {
 model Vendor {
   id        String             @id @default(uuid(7))
   name      String
+  phone     String?
+  email     String?
+  address   String?
   purchases DocumentPurchase[]
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
@@ -170,6 +173,9 @@ model Vendor {
 model Client {
   id        String           @id @default(uuid(7))
   name      String
+  phone     String?
+  email     String?
+  address   String?
   sales     DocumentSale[]
   returns   DocumentReturn[]
   createdAt DateTime         @default(now())

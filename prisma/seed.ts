@@ -163,6 +163,58 @@ async function main() {
 
     console.timeEnd('Categories & Products');
 
+    // 4. Clients
+    console.time('Clients');
+    const clientsData = [
+        { name: 'Постоянный Клиент', phone: '0812345678', email: 'regular@client.com', address: 'ул. Главная, 10' },
+        { name: 'Случайный Покупатель', phone: '0898765432' },
+        { name: 'Организация А', email: 'contact@orga.com', address: 'Офис центр, 5 этаж' },
+    ];
+
+    for (const client of clientsData) {
+        await prisma.client.upsert({
+            where: { name: client.name },
+            update: {
+                phone: client.phone,
+                email: client.email,
+                address: client.address
+            },
+            create: {
+                name: client.name,
+                phone: client.phone,
+                email: client.email,
+                address: client.address
+            },
+        });
+    }
+    console.timeEnd('Clients');
+
+    // 5. Vendors
+    console.time('Vendors');
+    const vendorsData = [
+        { name: 'Главный Поставщик', phone: '0311223344', email: 'sales@mainvendor.com', address: 'Промзона, Склад 1' },
+        { name: 'Импорт-Экспорт ООО', email: 'info@impex.com' },
+        { name: 'Местный Производитель', phone: '0355667788', address: 'ул. Заводская, 2' },
+    ];
+
+    for (const vendor of vendorsData) {
+        await prisma.vendor.upsert({
+            where: { name: vendor.name },
+            update: {
+                phone: vendor.phone,
+                email: vendor.email,
+                address: vendor.address
+            },
+            create: {
+                name: vendor.name,
+                phone: vendor.phone,
+                email: vendor.email,
+                address: vendor.address
+            },
+        });
+    }
+    console.timeEnd('Vendors');
+
     console.log('Seeding finished.');
     console.timeEnd('Total Seeding Time');
 }
@@ -174,4 +226,5 @@ main()
     })
     .finally(async () => {
         await prisma.$disconnect();
+        await pool.end();
     });
