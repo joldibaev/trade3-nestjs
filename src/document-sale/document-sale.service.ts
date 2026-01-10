@@ -3,6 +3,8 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
+import { StoreService } from '../store/store.service';
+import { StockMovementService } from '../stock-movement/stock-movement.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedSaleItem {
@@ -21,14 +23,13 @@ interface SaleWithItems extends SaleMinimal {
   items: { id: string; productId: string }[];
 }
 
-import { StoreService } from '../store/store.service';
-// ...
 @Injectable()
 export class DocumentSaleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
+    private readonly stockMovementService: StockMovementService,
   ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
@@ -279,7 +280,7 @@ export class DocumentSaleService {
       });
 
       // Audit: Log Stock Movement
-      await this.inventoryService.logStockMovement(tx, {
+      await this.stockMovementService.create(tx, {
         type: 'SALE',
         storeId,
         productId: item.productId,

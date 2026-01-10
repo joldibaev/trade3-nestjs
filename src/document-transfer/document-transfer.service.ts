@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
-import Decimal = Prisma.Decimal;
 import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
+import { StoreService } from '../store/store.service';
+import { StockMovementService } from '../stock-movement/stock-movement.service';
+import Decimal = Prisma.Decimal;
 
 interface PreparedTransferItem {
   productId: string;
@@ -17,14 +19,13 @@ interface TransferContext {
   date?: Date;
 }
 
-import { StoreService } from '../store/store.service';
-// ...
 @Injectable()
 export class DocumentTransferService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
+    private readonly stockMovementService: StockMovementService,
   ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
@@ -223,7 +224,7 @@ export class DocumentTransferService {
       });
 
       // Audit: Log TRANSFER_OUT
-      await this.inventoryService.logStockMovement(tx, {
+      await this.stockMovementService.create(tx, {
         type: 'TRANSFER_OUT',
         storeId: sourceStoreId,
         productId: item.productId,
@@ -235,7 +236,7 @@ export class DocumentTransferService {
       });
 
       // Audit: Log TRANSFER_IN
-      await this.inventoryService.logStockMovement(tx, {
+      await this.stockMovementService.create(tx, {
         type: 'TRANSFER_IN',
         storeId: destinationStoreId,
         productId: item.productId,

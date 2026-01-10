@@ -1,9 +1,11 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
-import Decimal = Prisma.Decimal;
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
+import { StoreService } from '../store/store.service';
+import { StockMovementService } from '../stock-movement/stock-movement.service';
+import Decimal = Prisma.Decimal;
 
 interface PreparedPurchaseItem {
   productId: string;
@@ -18,14 +20,13 @@ interface PurchaseContext {
   date?: Date;
 }
 
-import { StoreService } from '../store/store.service';
-// ...
 @Injectable()
 export class DocumentPurchaseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
+    private readonly stockMovementService: StockMovementService,
   ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
@@ -270,7 +271,7 @@ export class DocumentPurchaseService {
       }
 
       // Audit: Log Stock Movement
-      await this.inventoryService.logStockMovement(tx, {
+      await this.stockMovementService.create(tx, {
         type: 'PURCHASE',
         storeId,
         productId: item.productId,

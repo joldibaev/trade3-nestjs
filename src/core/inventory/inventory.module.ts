@@ -1,11 +1,10 @@
-import { Module, Global } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { PrismaModule } from '../prisma/prisma.module';
-import { StockMovementModule } from '../../stock-movement/stock-movement.module';
 
 @Global()
 @Module({
-  imports: [PrismaModule, StockMovementModule],
+  imports: [PrismaModule],
   providers: [InventoryService],
   exports: [InventoryService],
 })

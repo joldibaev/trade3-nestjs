@@ -1,8 +1,10 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
+import { StoreService } from '../store/store.service';
+import { StockMovementService } from '../stock-movement/stock-movement.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedReturnItem {
@@ -17,14 +19,13 @@ interface ReturnContext {
   date?: Date;
 }
 
-import { StoreService } from '../store/store.service';
-// ...
 @Injectable()
 export class DocumentReturnService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
+    private readonly stockMovementService: StockMovementService,
   ) {}
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
@@ -215,7 +216,7 @@ export class DocumentReturnService {
       });
 
       // Audit: Log Stock Movement
-      await this.inventoryService.logStockMovement(tx, {
+      await this.stockMovementService.create(tx, {
         type: 'RETURN',
         storeId,
         productId: item.productId,
