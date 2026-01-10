@@ -1,10 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, BadRequestException } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
 
 describe('Document Sale (e2e)', () => {
   let app: INestApplication;

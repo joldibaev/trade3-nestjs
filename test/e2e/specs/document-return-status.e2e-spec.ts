@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, BadRequestException } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
