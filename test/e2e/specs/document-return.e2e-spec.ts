@@ -3,23 +3,10 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 describe('Document Return (e2e)', () => {
   let app: INestApplication;
   let helper: TestHelper;
-  let documentReturnService: DocumentReturnService;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -29,23 +16,8 @@ describe('Document Return (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    documentReturnService = app.get(DocumentReturnService);
-
-    helper = new TestHelper(
-      app.get(PrismaService),
-      app.get(StoreService),
-      app.get(CashboxService),
-      app.get(VendorService),
-      app.get(ClientService),
-      app.get(PriceTypeService),
-      app.get(ProductService),
-      app.get(CategoryService),
-      app.get(DocumentPurchaseService),
-      app.get(DocumentSaleService),
-      documentReturnService,
-      app.get(DocumentAdjustmentService),
-      app.get(DocumentTransferService),
-    );
+    const prisma = app.get(PrismaService);
+    helper = new TestHelper(app, prisma);
   });
 
   afterAll(async () => {
@@ -65,14 +37,16 @@ describe('Document Return (e2e)', () => {
     await helper.createPurchase(storeA.id, vendor.id, product.id, 10, 5000);
 
     // 2. Return in Store B (where stock is 0/missing)
-    const returnDoc = await documentReturnService.create({
-      storeId: storeB.id,
-      clientId: client.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 2, price: 5000 }],
-    });
-    helper.createdIds.returns.push(returnDoc.id);
+    // 2. Return in Store B (where stock is 0/missing)
+    const returnDoc = await helper.createReturn(
+      storeB.id,
+      client.id,
+      product.id,
+      2,
+      5000,
+      'COMPLETED',
+    );
+    // helper.createdIds.returns.push(returnDoc.id); // Handled by helper
 
     // Verify Store B stock
     const stockB = await helper.getStock(product.id, storeB.id);

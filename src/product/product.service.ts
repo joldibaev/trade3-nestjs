@@ -36,8 +36,16 @@ export class ProductService {
   }
 
   remove(id: string) {
-    return this.prisma.product.delete({
-      where: { id },
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Delete dependencies
+      await tx.stock.deleteMany({ where: { productId: id } });
+      await tx.price.deleteMany({ where: { productId: id } });
+      await tx.barcode.deleteMany({ where: { productId: id } });
+
+      // 2. Delete Product
+      return tx.product.delete({
+        where: { id },
+      });
     });
   }
 }

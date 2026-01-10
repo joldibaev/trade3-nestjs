@@ -3,23 +3,10 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 describe('Document Sale Status (e2e)', () => {
   let app: INestApplication;
   let helper: TestHelper;
-  let documentSaleService: DocumentSaleService;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -29,23 +16,9 @@ describe('Document Sale Status (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    documentSaleService = app.get(DocumentSaleService);
+    const prisma = app.get(PrismaService);
 
-    helper = new TestHelper(
-      app.get(PrismaService),
-      app.get(StoreService),
-      app.get(CashboxService),
-      app.get(VendorService),
-      app.get(ClientService),
-      app.get(PriceTypeService),
-      app.get(ProductService),
-      app.get(CategoryService),
-      app.get(DocumentPurchaseService),
-      documentSaleService,
-      app.get(DocumentReturnService),
-      app.get(DocumentAdjustmentService),
-      app.get(DocumentTransferService),
-    );
+    helper = new TestHelper(app, prisma);
   });
 
   afterAll(async () => {
@@ -65,21 +38,25 @@ describe('Document Sale Status (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 100);
 
     // 2. Sale: 5 items
-    const sale = await documentSaleService.create({
-      storeId: store.id,
-      cashboxId: cashbox.id,
-      priceTypeId: retail.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 5, price: 200 }],
-    });
-    helper.createdIds.sales.push(sale.id);
+    // 2. Sale: 5 items
+    const sale = await helper.createSale(
+      store.id,
+      cashbox.id,
+      retail.id,
+      product.id,
+      5,
+      200,
+      undefined,
+      'COMPLETED',
+    );
+    // helper.createdIds.sales.push(sale.id); // Handled by helper
 
     const stockAfterSale = await helper.getStock(product.id, store.id);
     expect(stockAfterSale!.quantity.toString()).toBe('5');
 
     // 3. Revert Sale (DRAFT)
-    await documentSaleService.updateStatus(sale.id, 'DRAFT');
+    // 3. Revert Sale (DRAFT)
+    await helper.completeSale(sale.id, 'DRAFT');
 
     const stockAfterRevert = await helper.getStock(product.id, store.id);
     expect(stockAfterRevert!.quantity.toString()).toBe('10'); // Validates stock is returned
@@ -97,18 +74,21 @@ describe('Document Sale Status (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 100);
 
     // 2. Sale: 5 items
-    const sale = await documentSaleService.create({
-      storeId: store.id,
-      cashboxId: cashbox.id,
-      priceTypeId: retail.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 5, price: 200 }],
-    });
-    helper.createdIds.sales.push(sale.id);
+    // 2. Sale: 5 items
+    const sale = await helper.createSale(
+      store.id,
+      cashbox.id,
+      retail.id,
+      product.id,
+      5,
+      200,
+      undefined,
+      'COMPLETED',
+    );
 
     // 3. Cancel Sale
-    await documentSaleService.updateStatus(sale.id, 'CANCELLED');
+    // 3. Cancel Sale
+    await helper.completeSale(sale.id, 'CANCELLED');
 
     const stockAfterCancel = await helper.getStock(product.id, store.id);
     expect(stockAfterCancel!.quantity.toString()).toBe('10');
@@ -124,18 +104,21 @@ describe('Document Sale Status (e2e)', () => {
 
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 100);
 
-    const sale = await documentSaleService.create({
-      storeId: store.id,
-      cashboxId: cashbox.id,
-      priceTypeId: retail.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 5, price: 200 }],
-    });
-    helper.createdIds.sales.push(sale.id);
+    // 2. Sale: 5 items
+    const sale = await helper.createSale(
+      store.id,
+      cashbox.id,
+      retail.id,
+      product.id,
+      5,
+      200,
+      undefined,
+      'COMPLETED',
+    );
+    // helper.createdIds.sales.push(sale.id); // Handled by helper
 
-    // Call updateStatus to COMPLETED again
-    await documentSaleService.updateStatus(sale.id, 'COMPLETED');
+    // 3. Update Status to COMPLETED (Same)
+    const res = await helper.completeSale(sale.id, 'COMPLETED');
 
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('5'); // Should remain 5, not double deducted

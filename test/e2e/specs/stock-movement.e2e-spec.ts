@@ -3,18 +3,6 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 describe('Stock Movement Audit Flow (E2E)', () => {
   let app: INestApplication;
@@ -30,21 +18,8 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     await app.init();
 
     prismaService = app.get<PrismaService>(PrismaService);
-    helper = new TestHelper(
-      prismaService,
-      app.get(StoreService),
-      app.get(CashboxService),
-      app.get(VendorService),
-      app.get(ClientService),
-      app.get(PriceTypeService),
-      app.get(ProductService),
-      app.get(CategoryService),
-      app.get(DocumentPurchaseService),
-      app.get(DocumentSaleService),
-      app.get(DocumentReturnService),
-      app.get(DocumentAdjustmentService),
-      app.get(DocumentTransferService),
-    );
+    const prisma = app.get(PrismaService);
+    helper = new TestHelper(app, prisma);
   });
 
   afterEach(async () => {
@@ -124,13 +99,14 @@ describe('Stock Movement Audit Flow (E2E)', () => {
       },
     });
 
-    const returnDoc = await helper['documentReturnService'].create({
-      storeId: store.id,
-      clientId: client.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 2, price: 50 }],
-    });
+    const returnDoc = await helper.createReturn(
+      store.id,
+      client.id,
+      product.id,
+      2,
+      100,
+      'COMPLETED',
+    );
     helper.createdIds.returns.push(returnDoc.id);
 
     const movements = await prismaService.stockMovement.findMany({
@@ -162,12 +138,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     });
 
     // Adjustment: -3 (Loss/Shortage)
-    const adj = await helper['documentAdjustmentService'].create({
-      storeId: store.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: -3 }],
-    });
+    const adj = await helper.createAdjustment(store.id, product.id, -3, 'COMPLETED');
     helper.createdIds.adjustments.push(adj.id);
 
     const movements = await prismaService.stockMovement.findMany({
@@ -199,13 +170,13 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     });
 
     // Transfer 5 from Source to Dest
-    const transfer = await helper['documentTransferService'].create({
-      sourceStoreId: sourceStore.id,
-      destinationStoreId: destStore.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 5 }],
-    });
+    const transfer = await helper.createTransfer(
+      sourceStore.id,
+      destStore.id,
+      product.id,
+      5,
+      'COMPLETED',
+    );
     helper.createdIds.transfers.push(transfer.id);
 
     // Check OUT movement

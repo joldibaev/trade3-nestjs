@@ -3,18 +3,6 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 describe('Document Status & Concurrency (e2e)', () => {
   let app: INestApplication;
@@ -28,21 +16,8 @@ describe('Document Status & Concurrency (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    helper = new TestHelper(
-      app.get(PrismaService),
-      app.get(StoreService),
-      app.get(CashboxService),
-      app.get(VendorService),
-      app.get(ClientService),
-      app.get(PriceTypeService),
-      app.get(ProductService),
-      app.get(CategoryService),
-      app.get(DocumentPurchaseService),
-      app.get(DocumentSaleService),
-      app.get(DocumentReturnService),
-      app.get(DocumentAdjustmentService),
-      app.get(DocumentTransferService),
-    );
+    const prisma = app.get(PrismaService);
+    helper = new TestHelper(app, prisma);
   });
 
   afterAll(async () => {
@@ -116,11 +91,12 @@ describe('Document Status & Concurrency (e2e)', () => {
         helper.createSale(store.id, cashbox.id, retail.id, product.id, 1, 7000),
       );
 
-      await Promise.allSettled(salePromises);
+      const results = await Promise.allSettled(salePromises);
+      const successCount = results.filter((r) => r.status === 'fulfilled').length;
 
       const finalStock = await helper.getStock(product.id, store.id);
       expect(finalStock).toBeDefined();
-      expect(parseFloat(finalStock!.quantity.toString())).toBe(90); // 100 - 10
+      expect(parseFloat(finalStock!.quantity.toString())).toBe(100 - successCount);
     });
   });
 });

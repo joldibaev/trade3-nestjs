@@ -1,20 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, BadRequestException } from '@nestjs/common';
+import request from 'supertest';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
 import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 describe('Document Sale (e2e)', () => {
   let app: INestApplication;
@@ -28,21 +18,8 @@ describe('Document Sale (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    helper = new TestHelper(
-      app.get(PrismaService),
-      app.get(StoreService),
-      app.get(CashboxService),
-      app.get(VendorService),
-      app.get(ClientService),
-      app.get(PriceTypeService),
-      app.get(ProductService),
-      app.get(CategoryService),
-      app.get(DocumentPurchaseService),
-      app.get(DocumentSaleService),
-      app.get(DocumentReturnService),
-      app.get(DocumentAdjustmentService),
-      app.get(DocumentTransferService),
-    );
+    const prisma = app.get(PrismaService);
+    helper = new TestHelper(app, prisma);
   });
 
   afterAll(async () => {
@@ -91,9 +68,18 @@ describe('Document Sale (e2e)', () => {
     const product = await helper.createProduct(category.id);
     const { retail } = await helper.createPriceTypes();
 
-    await expect(
-      helper.createSale(store.id, cashbox.id, retail.id, product.id, 5, 7000),
-    ).rejects.toThrow(BadRequestException);
+    const res = await helper.createSale(
+      store.id,
+      cashbox.id,
+      retail.id,
+      product.id,
+      5,
+      7000,
+      undefined,
+      'COMPLETED',
+      400,
+    );
+    expect(res.message).toBeDefined(); // or check specific error message
   });
 
   it('should rollback stock update if sale fails mid-way (atomicity check)', async () => {
@@ -109,19 +95,21 @@ describe('Document Sale (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product1.id, 10, 1000);
 
     // Try to sell both. Product2 should trigger BadRequestException.
-    const salePromise = app.get(DocumentSaleService).create({
-      storeId: store.id,
-      cashboxId: cashbox.id,
-      priceTypeId: retail.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [
-        { productId: product1.id, quantity: 5, price: 2000 },
-        { productId: product2.id, quantity: 5, price: 2000 }, // This will fail
-      ],
-    });
-
-    await expect(salePromise).rejects.toThrow(BadRequestException);
+    // Try to sell both. Product2 should trigger BadRequestException.
+    const res = await request(app.getHttpServer())
+      .post('/document-sales')
+      .send({
+        storeId: store.id,
+        cashboxId: cashbox.id,
+        priceTypeId: retail.id,
+        date: new Date().toISOString(),
+        status: 'COMPLETED',
+        items: [
+          { productId: product1.id, quantity: 5, price: 2000 },
+          { productId: product2.id, quantity: 5, price: 2000 }, // This will fail
+        ],
+      })
+      .expect(400);
 
     // Verify Product 1 stock was NOT decreased
     const stock1 = await helper.getStock(product1.id, store.id);

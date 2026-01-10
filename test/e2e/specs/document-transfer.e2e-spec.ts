@@ -3,23 +3,10 @@ import { INestApplication, BadRequestException } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 describe('Document Transfer (e2e)', () => {
   let app: INestApplication;
   let helper: TestHelper;
-  let documentTransferService: DocumentTransferService;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -29,23 +16,8 @@ describe('Document Transfer (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    documentTransferService = app.get(DocumentTransferService);
-
-    helper = new TestHelper(
-      app.get(PrismaService),
-      app.get(StoreService),
-      app.get(CashboxService),
-      app.get(VendorService),
-      app.get(ClientService),
-      app.get(PriceTypeService),
-      app.get(ProductService),
-      app.get(CategoryService),
-      app.get(DocumentPurchaseService),
-      app.get(DocumentSaleService),
-      app.get(DocumentReturnService),
-      app.get(DocumentAdjustmentService),
-      documentTransferService,
-    );
+    const prisma = app.get(PrismaService);
+    helper = new TestHelper(app, prisma);
   });
 
   afterAll(async () => {
@@ -64,15 +36,9 @@ describe('Document Transfer (e2e)', () => {
     await helper.createPurchase(storeA.id, vendor.id, product.id, 10, 1000);
 
     // Try Transfer: 15 (Fail)
-    await expect(
-      documentTransferService.create({
-        sourceStoreId: storeA.id,
-        destinationStoreId: storeB.id,
-        date: new Date().toISOString(),
-        status: 'COMPLETED',
-        items: [{ productId: product.id, quantity: 15 }],
-      }),
-    ).rejects.toThrow(BadRequestException);
+    // Try Transfer: 15 (Fail)
+    const res = await helper.createTransfer(storeA.id, storeB.id, product.id, 15, 'COMPLETED', 400);
+    expect(res.message).toBeDefined();
 
     const stockA = await helper.getStock(product.id, storeA.id);
     expect(stockA!.quantity.toString()).toBe('10');
@@ -94,14 +60,9 @@ describe('Document Transfer (e2e)', () => {
     await helper.createPurchase(storeB.id, vendor.id, product.id, 5, 2000);
 
     // Transfer 5 from A to B
-    const transfer = await documentTransferService.create({
-      sourceStoreId: storeA.id,
-      destinationStoreId: storeB.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 5 }],
-    });
-    helper.createdIds.transfers.push(transfer.id);
+    // Transfer 5 from A to B
+    const transfer = await helper.createTransfer(storeA.id, storeB.id, product.id, 5, 'COMPLETED');
+    // helper.createdIds.transfers.push(transfer.id); // Handled by helper
 
     const stockA = await helper.getStock(product.id, storeA.id);
     expect(stockA!.quantity.toString()).toBe('5');

@@ -3,23 +3,10 @@ import { INestApplication, BadRequestException } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 describe('Document Purchase Status (e2e)', () => {
   let app: INestApplication;
   let helper: TestHelper;
-  let documentPurchaseService: DocumentPurchaseService;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -29,23 +16,9 @@ describe('Document Purchase Status (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    documentPurchaseService = app.get(DocumentPurchaseService);
+    const prismaService = app.get(PrismaService);
 
-    helper = new TestHelper(
-      app.get(PrismaService),
-      app.get(StoreService),
-      app.get(CashboxService),
-      app.get(VendorService),
-      app.get(ClientService),
-      app.get(PriceTypeService),
-      app.get(ProductService),
-      app.get(CategoryService),
-      documentPurchaseService,
-      app.get(DocumentSaleService),
-      app.get(DocumentReturnService),
-      app.get(DocumentAdjustmentService),
-      app.get(DocumentTransferService),
-    );
+    helper = new TestHelper(app, prismaService);
   });
 
   afterAll(async () => {
@@ -60,21 +33,22 @@ describe('Document Purchase Status (e2e)', () => {
     const product = await helper.createProduct(category.id);
 
     // 1. Create Purchase (COMPLETED)
-    const purchase = await documentPurchaseService.create({
-      storeId: store.id,
-      vendorId: vendor.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 10, price: 100 }],
-      newPrices: [],
-    });
-    helper.createdIds.purchases.push(purchase.id);
+    const purchase = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      10,
+      100,
+      'COMPLETED',
+    );
+    // createdIds.purchases.push is already handled in helper
 
     const stockBefore = await helper.getStock(product.id, store.id);
     expect(stockBefore!.quantity.toString()).toBe('10');
 
     // 2. Revert to DRAFT
-    await documentPurchaseService.updateStatus(purchase.id, 'DRAFT');
+    // 2. Revert to DRAFT
+    await helper.completePurchase(purchase.id, 'DRAFT');
 
     const stockAfter = await helper.getStock(product.id, store.id);
     // Stock should be 0 (or null if fully removed, but our logic likely keeps record with 0)
@@ -91,15 +65,16 @@ describe('Document Purchase Status (e2e)', () => {
     const { retail } = await helper.createPriceTypes();
 
     // 1. Purchase 10 items
-    const purchase = await documentPurchaseService.create({
-      storeId: store.id,
-      vendorId: vendor.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 10, price: 100 }],
-      newPrices: [{ priceTypeId: retail.id, value: 200 }],
-    });
-    helper.createdIds.purchases.push(purchase.id);
+    // 1. Purchase 10 items
+    const purchase = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      10,
+      100,
+      'COMPLETED',
+      [{ priceTypeId: retail.id, value: 200 }],
+    );
 
     // 2. Sell 5 items
     await helper.createSale(store.id, cashbox.id, retail.id, product.id, 5, 200);
@@ -108,9 +83,8 @@ describe('Document Purchase Status (e2e)', () => {
     // Trying to revert purchase (-10) would result in -5.
 
     // 3. Try to revert purchase
-    await expect(documentPurchaseService.updateStatus(purchase.id, 'DRAFT')).rejects.toThrow(
-      BadRequestException,
-    );
+    const res = await helper.completePurchase(purchase.id, 'DRAFT', 400);
+    expect(res.message).toBeDefined();
   });
 
   it('should allow re-completing a reverted purchase', async () => {
@@ -120,22 +94,23 @@ describe('Document Purchase Status (e2e)', () => {
     const product = await helper.createProduct(category.id);
 
     // 1. Create Purchase (COMPLETED)
-    const purchase = await documentPurchaseService.create({
-      storeId: store.id,
-      vendorId: vendor.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 10, price: 100 }],
-    });
-    helper.createdIds.purchases.push(purchase.id);
+    const purchase = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      10,
+      100,
+      'COMPLETED',
+    );
+    // helper.createdIds.purchases.push(purchase.id) is handled by createPurchase
 
     // 2. Revert to DRAFT
-    await documentPurchaseService.updateStatus(purchase.id, 'DRAFT');
+    await helper.completePurchase(purchase.id, 'DRAFT');
     const stockZero = await helper.getStock(product.id, store.id);
     expect(stockZero!.quantity.toString()).toBe('0');
 
     // 3. Complete again
-    await documentPurchaseService.updateStatus(purchase.id, 'COMPLETED');
+    await helper.completePurchase(purchase.id, 'COMPLETED');
     const stockFinal = await helper.getStock(product.id, store.id);
     expect(stockFinal!.quantity.toString()).toBe('10');
   });
@@ -147,17 +122,18 @@ describe('Document Purchase Status (e2e)', () => {
     const product = await helper.createProduct(category.id);
 
     // 1. Create Purchase (COMPLETED)
-    const purchase = await documentPurchaseService.create({
-      storeId: store.id,
-      vendorId: vendor.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 5, price: 500 }],
-    });
+    const purchase = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      5,
+      500,
+      'COMPLETED',
+    );
     helper.createdIds.purchases.push(purchase.id);
 
     // 2. Cancel
-    await documentPurchaseService.updateStatus(purchase.id, 'CANCELLED');
+    await helper.completePurchase(purchase.id, 'CANCELLED');
 
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('0');
@@ -174,13 +150,14 @@ describe('Document Purchase Status (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 10);
 
     // 2. Buy Expensive (10 @ 100$) - Total Qty 20, Total Value 1100, WAP 55
-    const expensivePurchase = await documentPurchaseService.create({
-      storeId: store.id,
-      vendorId: vendor.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 10, price: 100 }],
-    });
+    const expensivePurchase = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      10,
+      100,
+      'COMPLETED',
+    );
     helper.createdIds.purchases.push(expensivePurchase.id);
 
     // Current Stock: 20 @ 55 (Total Value 1100)
@@ -192,8 +169,7 @@ describe('Document Purchase Status (e2e)', () => {
     // 4. Try to revert "Expensive Purchase" (10 @ 100 = 1000 value)
     // We have 550 value in stock. We want to remove 1000 value.
     // Result would be negative value. blocked.
-    await expect(
-      documentPurchaseService.updateStatus(expensivePurchase.id, 'DRAFT'),
-    ).rejects.toThrow(BadRequestException);
+    const res = await helper.completePurchase(expensivePurchase.id, 'DRAFT', 400);
+    expect(res.message).toBeDefined();
   });
 });

@@ -1,33 +1,69 @@
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 export class TestHelper {
   constructor(
+    private readonly app: INestApplication,
     private readonly prismaService: PrismaService,
-    private readonly storeService: StoreService,
-    private readonly cashboxService: CashboxService,
-    private readonly vendorService: VendorService,
-    private readonly clientService: ClientService,
-    private readonly priceTypeService: PriceTypeService,
-    private readonly productService: ProductService,
-    private readonly categoryService: CategoryService,
-    private readonly documentPurchaseService: DocumentPurchaseService,
-    private readonly documentSaleService: DocumentSaleService,
-    private readonly documentReturnService: DocumentReturnService,
-    private readonly documentAdjustmentService: DocumentAdjustmentService,
-    private readonly documentTransferService: DocumentTransferService,
-  ) {}
+  ) { }
+
+  // ... (previous code)
+
+  async createPurchase(
+    storeId: string,
+    vendorId: string,
+    productId: string,
+    quantity: number,
+    price: number,
+    status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
+    newPrices?: any[],
+    expectedStatus = 201,
+  ) {
+    const date = new Date();
+    date.setHours(10, 0, 0, 0);
+
+    const payload: any = {
+      storeId,
+      vendorId,
+      date: date.toISOString(),
+      status: status,
+      items: [
+        {
+          productId,
+          quantity,
+          price,
+          newPrices,
+        },
+      ],
+    };
+
+    let res = await request(this.app.getHttpServer())
+      .post('/document-purchases')
+      .send(payload)
+      .expect(expectedStatus);
+
+    if (expectedStatus !== 201 && expectedStatus !== 200) {
+      return res.body;
+    }
+
+    let purchaseId = res.body.id;
+
+    // Only PATCH if we created as DRAFT but want COMPLETED (and didn't create as COMPLETED)
+    // But if we passed status=COMPLETED in payload, res.body.status should be COMPLETED.
+    // However, if the API *ignores* status=COMPLETED in create and forces DRAFT, we still need patch.
+    // Let's assume API respects it. If not, we check res.body.status.
+
+    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
+      res = await request(this.app.getHttpServer())
+        .patch(`/document-purchases/${purchaseId}/status`)
+        .send({ status: 'COMPLETED' })
+        .expect(200);
+    }
+
+    this.createdIds.purchases.push(purchaseId);
+    return res.body;
+  }
 
   public createdIds = {
     stores: [] as string[],
@@ -43,6 +79,7 @@ export class TestHelper {
     adjustments: [] as string[],
     transfers: [] as string[],
     stocks: [] as string[],
+    users: [] as string[],
   };
 
   uniqueName(prefix: string) {
@@ -65,7 +102,82 @@ export class TestHelper {
     });
 
     // 2. Cleanup Documents and their Items
+    // Also delete items linked to our products, to catch any orphans
+    if (this.createdIds.products.length > 0) {
+      await this.prismaService.documentSaleItem.deleteMany({
+        where: { productId: { in: this.createdIds.products } },
+      });
+      await this.prismaService.documentPurchaseItem.deleteMany({
+        where: { productId: { in: this.createdIds.products } },
+      });
+      await this.prismaService.documentReturnItem.deleteMany({
+        where: { productId: { in: this.createdIds.products } },
+      });
+      await this.prismaService.documentAdjustmentItem.deleteMany({
+        where: { productId: { in: this.createdIds.products } },
+      });
+      await this.prismaService.documentTransferItem.deleteMany({
+        where: { productId: { in: this.createdIds.products } },
+      });
+    }
+
+    // Also delete documents linked to our stores, to catch orphans
+    if (this.createdIds.stores.length > 0) {
+      // Sales
+      await this.prismaService.documentSaleItem.deleteMany({
+        where: { sale: { storeId: { in: this.createdIds.stores } } },
+      });
+      await this.prismaService.documentSale.deleteMany({
+        where: { storeId: { in: this.createdIds.stores } },
+      });
+
+      // Purchases (linked to store)
+      await this.prismaService.documentPurchaseItem.deleteMany({
+        where: { purchase: { storeId: { in: this.createdIds.stores } } },
+      });
+      await this.prismaService.documentPurchase.deleteMany({
+        where: { storeId: { in: this.createdIds.stores } },
+      });
+
+      // Returns
+      await this.prismaService.documentReturnItem.deleteMany({
+        where: { return: { storeId: { in: this.createdIds.stores } } },
+      });
+      await this.prismaService.documentReturn.deleteMany({
+        where: { storeId: { in: this.createdIds.stores } },
+      });
+
+      // Adjustments
+      await this.prismaService.documentAdjustmentItem.deleteMany({
+        where: { adjustment: { storeId: { in: this.createdIds.stores } } },
+      });
+      await this.prismaService.documentAdjustment.deleteMany({
+        where: { storeId: { in: this.createdIds.stores } },
+      });
+
+      // Transfers (Source or Destination)
+      await this.prismaService.documentTransferItem.deleteMany({
+        where: {
+          transfer: {
+            OR: [
+              { sourceStoreId: { in: this.createdIds.stores } },
+              { destinationStoreId: { in: this.createdIds.stores } },
+            ],
+          },
+        },
+      });
+      await this.prismaService.documentTransfer.deleteMany({
+        where: {
+          OR: [
+            { sourceStoreId: { in: this.createdIds.stores } },
+            { destinationStoreId: { in: this.createdIds.stores } },
+          ],
+        },
+      });
+    }
+
     if (this.createdIds.sales.length > 0) {
+      // Cleanup specifically tracked sales (redundant but safe)
       await this.prismaService.documentSaleItem.deleteMany({
         where: { saleId: { in: this.createdIds.sales } },
       });
@@ -73,7 +185,9 @@ export class TestHelper {
         where: { id: { in: this.createdIds.sales } },
       });
     }
+    // ... continue with other explicit deletions if needed, but store-based should cover most.
 
+    // Explicit cleanup for other tracked documents just in case they aren't linked to tracked stores (unlikely in tests but possible)
     if (this.createdIds.returns.length > 0) {
       await this.prismaService.documentReturnItem.deleteMany({
         where: { returnId: { in: this.createdIds.returns } },
@@ -161,64 +275,74 @@ export class TestHelper {
         where: { id: { in: this.createdIds.priceTypes } },
       });
     }
+
+    if (this.createdIds.users.length > 0) {
+      await this.prismaService.user.deleteMany({
+        where: { id: { in: this.createdIds.users } },
+      });
+    }
   }
 
   async createStore() {
-    const store = await this.storeService.create({
-      name: this.uniqueName('Store'),
+    const store = await this.prismaService.store.create({
+      data: { name: this.uniqueName('Store') },
     });
     this.createdIds.stores.push(store.id);
     return store;
   }
 
   async createCashbox(storeId: string) {
-    const cashbox = await this.cashboxService.create({
-      name: this.uniqueName('Cashbox'),
-      storeId,
+    const cashbox = await this.prismaService.cashbox.create({
+      data: {
+        name: this.uniqueName('Cashbox'),
+        storeId,
+      },
     });
     this.createdIds.cashboxes.push(cashbox.id);
     return cashbox;
   }
 
   async createVendor() {
-    const vendor = await this.vendorService.create({
-      name: this.uniqueName('Vendor'),
+    const vendor = await this.prismaService.vendor.create({
+      data: { name: this.uniqueName('Vendor') },
     });
     this.createdIds.vendors.push(vendor.id);
     return vendor;
   }
 
   async createClient() {
-    const client = await this.clientService.create({
-      name: this.uniqueName('Client'),
+    const client = await this.prismaService.client.create({
+      data: { name: this.uniqueName('Client') },
     });
     this.createdIds.clients.push(client.id);
     return client;
   }
 
   async createPriceTypes() {
-    const retail = await this.priceTypeService.create({
-      name: this.uniqueName('Retail'),
+    const retail = await this.prismaService.priceType.create({
+      data: { name: this.uniqueName('Retail') },
     });
-    const wholesale = await this.priceTypeService.create({
-      name: this.uniqueName('Wholesale'),
+    const wholesale = await this.prismaService.priceType.create({
+      data: { name: this.uniqueName('Wholesale') },
     });
     this.createdIds.priceTypes.push(retail.id, wholesale.id);
     return { retail, wholesale };
   }
 
-  async createCategory() {
-    const category = await this.categoryService.create({
-      name: this.uniqueName('Category'),
+  async createCategory(name?: string) {
+    const category = await this.prismaService.category.create({
+      data: { name: name || this.uniqueName('Category') },
     });
     this.createdIds.categories.push(category.id);
     return category;
   }
 
   async createProduct(categoryId: string) {
-    const product = await this.productService.create({
-      name: this.uniqueName('Product'),
-      categoryId,
+    const product = await this.prismaService.product.create({
+      data: {
+        name: this.uniqueName('Product'),
+        categoryId,
+      },
     });
     this.createdIds.products.push(product.id);
     return product;
@@ -229,33 +353,9 @@ export class TestHelper {
       where: { productId_storeId: { productId, storeId } },
     });
     if (stock && !this.createdIds.stocks.includes(stock.id)) {
-      // We generally don't delete stocks individually, but okay to track
       this.createdIds.stocks.push(stock.id);
     }
     return stock;
-  }
-
-  async createPurchase(
-    storeId: string,
-    vendorId: string,
-    productId: string,
-    quantity: number,
-    price: number,
-    status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
-    newPrices?: any[],
-  ) {
-    const date = new Date();
-    date.setHours(10, 0, 0, 0);
-
-    const purchase = await this.documentPurchaseService.create({
-      storeId,
-      vendorId,
-      date: date.toISOString(),
-      status,
-      items: [{ productId, quantity, price, newPrices }],
-    });
-    this.createdIds.purchases.push(purchase.id);
-    return purchase;
   }
 
   async createSale(
@@ -267,21 +367,46 @@ export class TestHelper {
     price: number,
     clientId?: string,
     status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
+    expectedStatus = 201,
   ) {
     const date = new Date();
     date.setHours(14, 0, 0, 0);
 
-    const sale = await this.documentSaleService.create({
+    const payload = {
       storeId,
       cashboxId,
       clientId,
       priceTypeId,
       date: date.toISOString(),
-      status,
-      items: [{ productId, quantity, price }],
-    });
-    this.createdIds.sales.push(sale.id);
-    return sale;
+      status: status,
+      items: [
+        {
+          productId,
+          quantity,
+        },
+      ],
+    };
+
+    let res = await request(this.app.getHttpServer())
+      .post('/document-sales')
+      .send(payload)
+      .expect(expectedStatus);
+
+    if (expectedStatus !== 201 && expectedStatus !== 200) {
+      return res.body;
+    }
+
+    const saleId = res.body.id;
+
+    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
+      res = await request(this.app.getHttpServer())
+        .patch(`/document-sales/${saleId}/status`)
+        .send({ status: 'COMPLETED' })
+        .expect(200);
+    }
+
+    this.createdIds.sales.push(saleId);
+    return res.body;
   }
 
   async createReturn(
@@ -291,16 +416,36 @@ export class TestHelper {
     quantity: number,
     price: number,
     status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
+    expectedStatus = 201,
   ) {
-    const doc = await this.documentReturnService.create({
+    const payload = {
       storeId,
       clientId,
       date: new Date().toISOString(),
-      status,
+      status: status,
       items: [{ productId, quantity, price }],
-    });
-    this.createdIds.returns.push(doc.id);
-    return doc;
+    };
+
+    let res = await request(this.app.getHttpServer())
+      .post('/document-returns')
+      .send(payload)
+      .expect(expectedStatus);
+
+    if (expectedStatus !== 201 && expectedStatus !== 200) {
+      return res.body;
+    }
+
+    const docId = res.body.id;
+
+    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
+      res = await request(this.app.getHttpServer())
+        .patch(`/document-returns/${docId}/status`)
+        .send({ status: 'COMPLETED' })
+        .expect(200);
+    }
+
+    this.createdIds.returns.push(docId);
+    return res.body;
   }
 
   async createAdjustment(
@@ -308,15 +453,35 @@ export class TestHelper {
     productId: string,
     quantityDelta: number,
     status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
+    expectedStatus = 201,
   ) {
-    const doc = await this.documentAdjustmentService.create({
+    const payload = {
       storeId,
       date: new Date().toISOString(),
-      status,
+      status: status,
       items: [{ productId, quantity: quantityDelta }],
-    });
-    this.createdIds.adjustments.push(doc.id);
-    return doc;
+    };
+
+    let res = await request(this.app.getHttpServer())
+      .post('/document-adjustments')
+      .send(payload)
+      .expect(expectedStatus);
+
+    if (expectedStatus !== 201 && expectedStatus !== 200) {
+      return res.body;
+    }
+
+    const docId = res.body.id;
+
+    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
+      res = await request(this.app.getHttpServer())
+        .patch(`/document-adjustments/${docId}/status`)
+        .send({ status: 'COMPLETED' })
+        .expect(200);
+    }
+
+    this.createdIds.adjustments.push(docId);
+    return res.body;
   }
 
   async createTransfer(
@@ -325,36 +490,96 @@ export class TestHelper {
     productId: string,
     quantity: number,
     status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
+    expectedStatus = 201,
   ) {
-    const doc = await this.documentTransferService.create({
+    const payload = {
       sourceStoreId,
       destinationStoreId,
       date: new Date().toISOString(),
-      status,
+      status: status,
       items: [{ productId, quantity }],
-    });
-    this.createdIds.transfers.push(doc.id);
-    return doc;
+    };
+
+    let res = await request(this.app.getHttpServer())
+      .post('/document-transfers')
+      .send(payload)
+      .expect(expectedStatus);
+
+    if (expectedStatus !== 201 && expectedStatus !== 200) {
+      return res.body;
+    }
+
+    const docId = res.body.id;
+
+    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
+      res = await request(this.app.getHttpServer())
+        .patch(`/document-transfers/${docId}/status`)
+        .send({ status: 'COMPLETED' })
+        .expect(200);
+    }
+
+    this.createdIds.transfers.push(docId);
+    return res.body;
   }
 
-  async completePurchase(id: string) {
-    return this.documentPurchaseService.updateStatus(id, 'COMPLETED');
+  async completePurchase(
+    id: string,
+    status: 'DRAFT' | 'COMPLETED' | 'CANCELLED' = 'COMPLETED',
+    expectedStatus = 200,
+  ) {
+    const res = await request(this.app.getHttpServer())
+      .patch(`/document-purchases/${id}/status`)
+      .send({ status })
+      .expect(expectedStatus);
+    return res.body;
   }
 
-  async completeSale(id: string) {
-    return this.documentSaleService.updateStatus(id, 'COMPLETED');
+  async completeSale(
+    id: string,
+    status: 'DRAFT' | 'COMPLETED' | 'CANCELLED' = 'COMPLETED',
+    expectedStatus = 200,
+  ) {
+    const res = await request(this.app.getHttpServer())
+      .patch(`/document-sales/${id}/status`)
+      .send({ status })
+      .expect(expectedStatus);
+    return res.body;
   }
 
-  async completeReturn(id: string) {
-    return this.documentReturnService.updateStatus(id, 'COMPLETED');
+  async completeReturn(
+    id: string,
+    status: 'DRAFT' | 'COMPLETED' | 'CANCELLED' = 'COMPLETED',
+    expectedStatus = 200,
+  ) {
+    const res = await request(this.app.getHttpServer())
+      .patch(`/document-returns/${id}/status`)
+      .send({ status })
+      .expect(expectedStatus);
+    return res.body;
   }
 
-  async completeAdjustment(id: string) {
-    return this.documentAdjustmentService.updateStatus(id, 'COMPLETED');
+  async completeAdjustment(
+    id: string,
+    status: 'DRAFT' | 'COMPLETED' | 'CANCELLED' = 'COMPLETED',
+    expectedStatus = 200,
+  ) {
+    const res = await request(this.app.getHttpServer())
+      .patch(`/document-adjustments/${id}/status`)
+      .send({ status })
+      .expect(expectedStatus);
+    return res.body;
   }
 
-  async completeTransfer(id: string) {
-    return this.documentTransferService.updateStatus(id, 'COMPLETED');
+  async completeTransfer(
+    id: string,
+    status: 'DRAFT' | 'COMPLETED' | 'CANCELLED' = 'COMPLETED',
+    expectedStatus = 200,
+  ) {
+    const res = await request(this.app.getHttpServer())
+      .patch(`/document-transfers/${id}/status`)
+      .send({ status })
+      .expect(expectedStatus);
+    return res.body;
   }
 
   async addStock(storeId: string, productId: string, quantity: number, price: number) {

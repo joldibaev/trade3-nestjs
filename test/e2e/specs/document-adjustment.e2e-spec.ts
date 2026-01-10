@@ -3,24 +3,11 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { DocumentPurchaseService } from '../../../src/document-purchase/document-purchase.service';
-import { StoreService } from '../../../src/store/store.service';
-import { CashboxService } from '../../../src/cashbox/cashbox.service';
-import { VendorService } from '../../../src/vendor/vendor.service';
-import { ClientService } from '../../../src/client/client.service';
-import { PriceTypeService } from '../../../src/pricetype/pricetype.service';
-import { ProductService } from '../../../src/product/product.service';
-import { CategoryService } from '../../../src/category/category.service';
-import { DocumentSaleService } from '../../../src/document-sale/document-sale.service';
-import { DocumentReturnService } from '../../../src/document-return/document-return.service';
-import { DocumentAdjustmentService } from '../../../src/document-adjustment/document-adjustment.service';
-import { DocumentTransferService } from '../../../src/document-transfer/document-transfer.service';
 
 describe('Document Adjustment (e2e)', () => {
   let app: INestApplication;
   let helper: TestHelper;
   let prisma: PrismaService;
-  let documentAdjustmentService: DocumentAdjustmentService;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -31,23 +18,8 @@ describe('Document Adjustment (e2e)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
-    documentAdjustmentService = app.get(DocumentAdjustmentService);
 
-    helper = new TestHelper(
-      app.get(PrismaService),
-      app.get(StoreService),
-      app.get(CashboxService),
-      app.get(VendorService),
-      app.get(ClientService),
-      app.get(PriceTypeService),
-      app.get(ProductService),
-      app.get(CategoryService),
-      app.get(DocumentPurchaseService),
-      app.get(DocumentSaleService),
-      app.get(DocumentReturnService),
-      documentAdjustmentService,
-      app.get(DocumentTransferService),
-    );
+    helper = new TestHelper(app, prisma);
   });
 
   afterAll(async () => {
@@ -65,13 +37,9 @@ describe('Document Adjustment (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 1000);
 
     // Adjustment: -2 (Shortage)
-    const adj = await documentAdjustmentService.create({
-      storeId: store.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: -2 }],
-    });
-    helper.createdIds.adjustments.push(adj.id);
+    // Adjustment: -2 (Shortage)
+    const adj = await helper.createAdjustment(store.id, product.id, -2, 'COMPLETED');
+    // helper.createdIds.adjustments.push(adj.id); // Handled by helper
 
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('8');
@@ -87,13 +55,9 @@ describe('Document Adjustment (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 1000);
 
     // Adjustment: +5 (Surplus)
-    const adj = await documentAdjustmentService.create({
-      storeId: store.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: 5 }],
-    });
-    helper.createdIds.adjustments.push(adj.id);
+    // Adjustment: +5 (Surplus)
+    const adj = await helper.createAdjustment(store.id, product.id, 5, 'COMPLETED');
+    // helper.createdIds.adjustments.push(adj.id); // Handled by helper
 
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('15');
@@ -108,12 +72,7 @@ describe('Document Adjustment (e2e)', () => {
 
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 1000);
 
-    const adj = await documentAdjustmentService.create({
-      storeId: store.id,
-      date: new Date().toISOString(),
-      status: 'COMPLETED',
-      items: [{ productId: product.id, quantity: -10 }],
-    });
+    const adj = await helper.createAdjustment(store.id, product.id, -10, 'COMPLETED');
     helper.createdIds.adjustments.push(adj.id);
 
     const stock = await helper.getStock(product.id, store.id);

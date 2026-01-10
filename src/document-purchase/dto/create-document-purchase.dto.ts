@@ -13,7 +13,7 @@ import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
-class UpdateProductPriceDto {
+export class UpdateProductPriceDto {
   @ApiProperty({ example: 'uuid-pricetype-id' })
   @IsString()
   priceTypeId: string;
@@ -23,7 +23,7 @@ class UpdateProductPriceDto {
   value: number;
 }
 
-class CreateDocumentPurchaseItemDto {
+export class CreateDocumentPurchaseItemDto {
   @ApiProperty({ example: 'uuid-product-id' })
   @IsString()
   productId: string;
