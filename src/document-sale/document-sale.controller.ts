@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common
 import { DocumentSaleService } from './document-sale.service';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { ApiTags } from '@nestjs/swagger';
+import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
 import {
   ApiStandardResponse,
   ApiStandardResponseArray,
@@ -14,7 +15,7 @@ import { DocumentSaleRelations } from '../generated/relations/document-sale-rela
 @ApiTags('document-sales')
 @Controller('document-sales')
 export class DocumentSaleController {
-  constructor(private readonly documentSaleService: DocumentSaleService) {}
+  constructor(private readonly documentSaleService: DocumentSaleService) { }
 
   @Post()
   @ApiStandardResponse(DocumentSale)
@@ -36,9 +37,9 @@ export class DocumentSaleController {
     return this.documentSaleService.findOne(id, parseInclude(include));
   }
 
-  @Patch(':id/complete')
+  @Patch(':id/status')
   @ApiStandardResponse(DocumentSale)
-  complete(@Param('id') id: string) {
-    return this.documentSaleService.complete(id);
+  updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateDocumentStatusDto) {
+    return this.documentSaleService.updateStatus(id, updateStatusDto.status);
   }
 }

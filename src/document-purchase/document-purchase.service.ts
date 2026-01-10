@@ -23,7 +23,7 @@ export class DocumentPurchaseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) {}
+  ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, status, items } = createDocumentPurchaseDto;
@@ -94,7 +94,7 @@ export class DocumentPurchaseService {
     );
   }
 
-  async complete(id: string) {
+  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
     return this.prisma.$transaction(
       async (tx) => {
         const purchase = await tx.documentPurchase.findUniqueOrThrow({
@@ -102,24 +102,49 @@ export class DocumentPurchaseService {
           include: { items: true },
         });
 
-        if (purchase.status !== 'DRAFT') {
-          throw new BadRequestException('Only DRAFT documents can be completed');
+        const oldStatus = purchase.status;
+
+        if (oldStatus === newStatus) {
+          return purchase;
         }
 
-        // Prepare items in the format the helper expects
+        // Prevent modifying CANCELLED documents (unless business logic allows revival, but usually not)
+        if (oldStatus === 'CANCELLED') {
+          throw new BadRequestException('Cannot change status of CANCELLED document');
+        }
+
+        // Prepare items
         const items = purchase.items.map((i) => ({
           productId: i.productId,
           quantity: i.quantity,
           price: i.price,
-          newPrices: [], // We don't have newPrices stored in DocumentPurchaseItem
+          newPrices: [],
         }));
 
-        await this.applyInventoryMovements(tx, purchase, items);
+        // DRAFT -> COMPLETED
+        if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+          await this.applyInventoryMovements(tx, purchase, items);
+        }
+
+        // COMPLETED -> DRAFT (or CANCELLED)
+        // Revert the purchase (decrease stock)
+        if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
+          // Check for negative stock before reverting
+          await this.validateStockForRevert(tx, purchase.storeId, items);
+
+          // Apply revert (negative quantity)
+          const revertItems = items.map((i) => ({
+            ...i,
+            quantity: i.quantity.negated(),
+          }));
+
+          await this.applyInventoryMovements(tx, purchase, revertItems);
+        }
 
         // Update status
         return tx.documentPurchase.update({
           where: { id },
-          data: { status: 'COMPLETED' },
+          data: { status: newStatus },
           include: { items: true },
         });
       },
@@ -127,6 +152,43 @@ export class DocumentPurchaseService {
         isolationLevel: 'Serializable',
       },
     );
+  }
+
+  private async validateStockForRevert(
+    tx: Prisma.TransactionClient,
+    storeId: string,
+    items: PreparedPurchaseItem[],
+  ) {
+    const productIds = items.map((i) => i.productId);
+    const stocks = await tx.stock.findMany({
+      where: { storeId, productId: { in: productIds } },
+    });
+    const stockMap = new Map(stocks.map((s) => [s.productId, s]));
+
+    for (const item of items) {
+      const currentQty = stockMap.get(item.productId)?.quantity || new Decimal(0);
+      const currentWap = stockMap.get(item.productId)?.averagePurchasePrice || new Decimal(0);
+
+      // 1. Quantity Check
+      if (currentQty.lessThan(item.quantity)) {
+        throw new BadRequestException(
+          `Insufficient stock for product ${item.productId} to revert purchase`,
+        );
+      }
+
+      // 2. Financial Check (prevent negative WAP)
+      // Current Value = 100 * 55 = 5500
+      // Revert Value = 100 * 100 = 10000
+      // Result = -4500 (Invalid)
+      const currentTotalValue = currentQty.mul(currentWap);
+      const revertTotalValue = item.quantity.mul(item.price);
+
+      if (currentTotalValue.lessThan(revertTotalValue)) {
+        throw new BadRequestException(
+          `Cannot revert purchase for product ${item.productId}: remaining stock value would be negative. Use Adjustment or Return instead.`,
+        );
+      }
+    }
   }
 
   private async applyInventoryMovements(

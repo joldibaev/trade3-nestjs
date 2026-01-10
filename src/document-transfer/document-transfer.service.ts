@@ -22,7 +22,7 @@ export class DocumentTransferService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) {}
+  ) { }
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
     const { sourceStoreId, destinationStoreId, date, status, items } = createDocumentTransferDto;
@@ -81,7 +81,7 @@ export class DocumentTransferService {
     );
   }
 
-  async complete(id: string) {
+  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentTransfer.findUniqueOrThrow({
@@ -89,22 +89,30 @@ export class DocumentTransferService {
           include: { items: true },
         });
 
-        if (doc.status !== 'DRAFT') {
-          throw new Error('Only DRAFT documents can be completed');
+        if (doc.status === newStatus) {
+          return doc;
         }
 
-        const items = doc.items.map((i) => ({
-          productId: i.productId,
-          quantity: i.quantity,
-        }));
+        if (newStatus === 'COMPLETED') {
+          if (doc.status !== 'DRAFT') {
+            throw new BadRequestException('Only DRAFT documents can be completed');
+          }
 
-        await this.applyInventoryMovements(tx, doc, items);
+          const items = doc.items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+          }));
 
-        return tx.documentTransfer.update({
-          where: { id },
-          data: { status: 'COMPLETED' },
-          include: { items: true },
-        });
+          await this.applyInventoryMovements(tx, doc, items);
+
+          return tx.documentTransfer.update({
+            where: { id },
+            data: { status: 'COMPLETED' },
+            include: { items: true },
+          });
+        }
+
+        throw new BadRequestException('Only COMPLETED status transition is currently supported for Transfers');
       },
       {
         isolationLevel: 'Serializable',

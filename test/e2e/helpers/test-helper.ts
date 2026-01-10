@@ -27,7 +27,7 @@ export class TestHelper {
     private readonly documentReturnService: DocumentReturnService,
     private readonly documentAdjustmentService: DocumentAdjustmentService,
     private readonly documentTransferService: DocumentTransferService,
-  ) {}
+  ) { }
 
   public createdIds = {
     stores: [] as string[],
@@ -338,7 +338,7 @@ export class TestHelper {
   }
 
   async completePurchase(id: string) {
-    return this.documentPurchaseService.complete(id);
+    return this.documentPurchaseService.updateStatus(id, 'COMPLETED');
   }
 
   async completeSale(id: string) {
@@ -350,10 +350,10 @@ export class TestHelper {
   }
 
   async completeAdjustment(id: string) {
-    return this.documentAdjustmentService.complete(id);
+    return this.documentAdjustmentService.updateStatus(id, 'COMPLETED');
   }
 
   async completeTransfer(id: string) {
-    return this.documentTransferService.complete(id);
+    return this.documentTransferService.updateStatus(id, 'COMPLETED');
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
@@ -22,7 +22,7 @@ export class DocumentAdjustmentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) {}
+  ) { }
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
     const { storeId, date, status, items } = createDocumentAdjustmentDto;
@@ -97,7 +97,7 @@ export class DocumentAdjustmentService {
     );
   }
 
-  async complete(id: string) {
+  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
@@ -105,50 +105,58 @@ export class DocumentAdjustmentService {
           include: { items: true },
         });
 
-        if (doc.status !== 'DRAFT') {
-          throw new Error('Only DRAFT documents can be completed');
+        if (doc.status === newStatus) {
+          return doc;
         }
 
-        const productIds = doc.items.map((i) => i.productId);
-        const fallbackWapMap = await this.inventoryService.getFallbackWapMap(productIds);
-        const existingStocks = await tx.stock.findMany({
-          where: {
-            storeId: doc.storeId,
-            productId: { in: productIds },
-          },
-        });
-        const stockMap = new Map(existingStocks.map((s) => [s.productId, s]));
+        if (newStatus === 'COMPLETED') {
+          if (doc.status !== 'DRAFT') {
+            throw new BadRequestException('Only DRAFT documents can be completed');
+          }
 
-        const preparedItems: PreparedAdjustmentItem[] = [];
-        for (const item of doc.items) {
-          const stock = stockMap.get(item.productId);
-          const quantity = item.quantity; // Delta
-          const oldQty = stock ? stock.quantity : new Decimal(0);
-          const newQty = oldQty.add(quantity);
-
-          // Update snapshots in the item
-          await tx.documentAdjustmentItem.update({
-            where: { id: item.id },
-            data: {
-              quantityBefore: oldQty,
-              quantityAfter: newQty,
+          const productIds = doc.items.map((i) => i.productId);
+          const fallbackWapMap = await this.inventoryService.getFallbackWapMap(productIds);
+          const existingStocks = await tx.stock.findMany({
+            where: {
+              storeId: doc.storeId,
+              productId: { in: productIds },
             },
           });
+          const stockMap = new Map(existingStocks.map((s) => [s.productId, s]));
 
-          preparedItems.push({
-            productId: item.productId,
-            quantityRelative: quantity,
-            quantityAfter: newQty,
+          const preparedItems: PreparedAdjustmentItem[] = [];
+          for (const item of doc.items) {
+            const stock = stockMap.get(item.productId);
+            const quantity = item.quantity; // Delta
+            const oldQty = stock ? stock.quantity : new Decimal(0);
+            const newQty = oldQty.add(quantity);
+
+            // Update snapshots in the item
+            await tx.documentAdjustmentItem.update({
+              where: { id: item.id },
+              data: {
+                quantityBefore: oldQty,
+                quantityAfter: newQty,
+              },
+            });
+
+            preparedItems.push({
+              productId: item.productId,
+              quantityRelative: quantity,
+              quantityAfter: newQty,
+            });
+          }
+
+          await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
+
+          return tx.documentAdjustment.update({
+            where: { id },
+            data: { status: 'COMPLETED' },
+            include: { items: true },
           });
         }
 
-        await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
-
-        return tx.documentAdjustment.update({
-          where: { id },
-          data: { status: 'COMPLETED' },
-          include: { items: true },
-        });
+        throw new BadRequestException('Only COMPLETED status transition is currently supported for Adjustments');
       },
       {
         isolationLevel: 'Serializable',

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
@@ -22,7 +22,7 @@ export class DocumentReturnService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) {}
+  ) { }
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
     const { storeId, clientId, date, status, items } = createDocumentReturnDto;
@@ -93,7 +93,7 @@ export class DocumentReturnService {
     );
   }
 
-  async complete(id: string) {
+  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
@@ -101,8 +101,14 @@ export class DocumentReturnService {
           include: { items: true },
         });
 
-        if (doc.status !== 'DRAFT') {
-          throw new Error('Only DRAFT documents can be completed');
+        const oldStatus = doc.status;
+
+        if (oldStatus === newStatus) {
+          return doc;
+        }
+
+        if (oldStatus === 'CANCELLED') {
+          throw new BadRequestException('Cannot change status of CANCELLED document');
         }
 
         const productIds = doc.items.map((i) => i.productId);
@@ -114,11 +120,30 @@ export class DocumentReturnService {
           fallbackWap: wapMap.get(i.productId) || new Decimal(0),
         }));
 
-        await this.applyInventoryMovements(tx, doc, items);
+        // DRAFT -> COMPLETED
+        if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+          await this.applyInventoryMovements(tx, doc, items);
+        }
+
+        // COMPLETED -> DRAFT (or CANCELLED)
+        if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
+          // Revert stock (Decrease Stock)
+
+          // 1. Validate Stock Availability (Must have enough to remove)
+          await this.validateStockForRevert(tx, doc.storeId, items);
+
+          // 2. Apply revert (negative quantity)
+          const revertItems = items.map((i) => ({
+            ...i,
+            quantity: i.quantity.negated(),
+          }));
+
+          await this.applyInventoryMovements(tx, doc, revertItems);
+        }
 
         return tx.documentReturn.update({
           where: { id },
-          data: { status: 'COMPLETED' },
+          data: { status: newStatus },
           include: { items: true },
         });
       },
@@ -126,6 +151,30 @@ export class DocumentReturnService {
         isolationLevel: 'Serializable',
       },
     );
+  }
+
+  private async validateStockForRevert(
+    tx: Prisma.TransactionClient,
+    storeId: string,
+    items: PreparedReturnItem[],
+  ) {
+    // To revert a return, we remove items from stock.
+    // We must ensure stock >= items.quantity
+    const productIds = items.map((i) => i.productId);
+    const stocks = await tx.stock.findMany({
+      where: { storeId, productId: { in: productIds } },
+    });
+    const stockMap = new Map(stocks.map((s) => [s.productId, s.quantity]));
+
+    for (const item of items) {
+      const currentQty = stockMap.get(item.productId) || new Decimal(0);
+
+      if (currentQty.lessThan(item.quantity)) {
+        throw new BadRequestException(
+          `Insufficient stock for product ${item.productId} to revert return (items were already sold/moved)`,
+        );
+      }
+    }
   }
 
   private async applyInventoryMovements(

@@ -26,7 +26,7 @@ export class DocumentSaleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) {}
+  ) { }
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
     const { storeId, cashboxId, clientId, date, status, priceTypeId, items } =
@@ -155,7 +155,7 @@ export class DocumentSaleService {
     );
   }
 
-  async complete(id: string) {
+  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
@@ -163,8 +163,14 @@ export class DocumentSaleService {
           include: { items: true },
         });
 
-        if (sale.status !== 'DRAFT') {
-          throw new BadRequestException('Only DRAFT documents can be completed');
+        const oldStatus = sale.status;
+
+        if (oldStatus === newStatus) {
+          return sale;
+        }
+
+        if (oldStatus === 'CANCELLED') {
+          throw new BadRequestException('Cannot change status of CANCELLED document');
         }
 
         const items = sale.items.map((i) => ({
@@ -173,21 +179,37 @@ export class DocumentSaleService {
           price: i.price,
         }));
 
-        // 1. Update items with CURRENT cost price before completing
-        await this.updateItemCostPrices(tx, sale);
+        // DRAFT -> COMPLETED
+        if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+          // 1. Update items with CURRENT cost price before completing
+          await this.updateItemCostPrices(tx, sale);
 
-        // 2. Apply stock movements
-        await this.applyInventoryMovements(tx, sale, items);
+          // 2. Apply stock movements (Decrease Stock)
+          await this.applyInventoryMovements(tx, sale, items);
+        }
 
-        // 3. Update status
+        // COMPLETED -> DRAFT (or CANCELLED)
+        if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
+          // Revert stock (Increase Stock)
+          // We pass negative quantity to applyInventoryMovements.
+          // Since it does `decrement: qty`, decrementing a negative number = increment.
+          const revertItems = items.map((i) => ({
+            ...i,
+            quantity: i.quantity.negated(),
+          }));
+
+          await this.applyInventoryMovements(tx, sale, revertItems);
+        }
+
+        // Update status
         return tx.documentSale.update({
           where: { id },
-          data: { status: 'COMPLETED' },
+          data: { status: newStatus },
           include: { items: true },
         });
       },
       {
-        isolationLevel: 'Serializable', // Use stricter isolation for completion to avoid race conditions on stock
+        isolationLevel: 'Serializable',
       },
     );
   }

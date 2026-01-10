@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
 import { DocumentReturnService } from './document-return.service';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { ApiTags } from '@nestjs/swagger';
+import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
 import {
   ApiStandardResponse,
   ApiStandardResponseArray,
@@ -11,7 +12,7 @@ import { DocumentReturn } from '../generated/entities/document-return.entity';
 @ApiTags('document-returns')
 @Controller('document-returns')
 export class DocumentReturnController {
-  constructor(private readonly documentReturnService: DocumentReturnService) {}
+  constructor(private readonly documentReturnService: DocumentReturnService) { }
 
   @Post()
   @ApiStandardResponse(DocumentReturn)
@@ -31,9 +32,9 @@ export class DocumentReturnController {
     return this.documentReturnService.findOne(id);
   }
 
-  @Patch(':id/complete')
+  @Patch(':id/status')
   @ApiStandardResponse(DocumentReturn)
-  complete(@Param('id') id: string) {
-    return this.documentReturnService.complete(id);
+  updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateDocumentStatusDto) {
+    return this.documentReturnService.updateStatus(id, updateStatusDto.status);
   }
 }

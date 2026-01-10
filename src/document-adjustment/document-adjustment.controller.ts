@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
 import { DocumentAdjustmentService } from './document-adjustment.service';
 import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
 import { ApiTags } from '@nestjs/swagger';
+import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
 import {
   ApiStandardResponse,
   ApiStandardResponseArray,
@@ -11,7 +12,7 @@ import { DocumentAdjustment } from '../generated/entities/document-adjustment.en
 @ApiTags('document-adjustments')
 @Controller('document-adjustments')
 export class DocumentAdjustmentController {
-  constructor(private readonly documentAdjustmentService: DocumentAdjustmentService) {}
+  constructor(private readonly documentAdjustmentService: DocumentAdjustmentService) { }
 
   @Post()
   @ApiStandardResponse(DocumentAdjustment)
@@ -31,9 +32,9 @@ export class DocumentAdjustmentController {
     return this.documentAdjustmentService.findOne(id);
   }
 
-  @Patch(':id/complete')
+  @Patch(':id/status')
   @ApiStandardResponse(DocumentAdjustment)
-  complete(@Param('id') id: string) {
-    return this.documentAdjustmentService.complete(id);
+  updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateDocumentStatusDto) {
+    return this.documentAdjustmentService.updateStatus(id, updateStatusDto.status);
   }
 }
