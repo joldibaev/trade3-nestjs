@@ -342,11 +342,11 @@ export class TestHelper {
   }
 
   async completeSale(id: string) {
-    return this.documentSaleService.complete(id);
+    return this.documentSaleService.updateStatus(id, 'COMPLETED');
   }
 
   async completeReturn(id: string) {
-    return this.documentReturnService.complete(id);
+    return this.documentReturnService.updateStatus(id, 'COMPLETED');
   }
 
   async completeAdjustment(id: string) {
@@ -355,5 +355,9 @@ export class TestHelper {
 
   async completeTransfer(id: string) {
     return this.documentTransferService.updateStatus(id, 'COMPLETED');
+  }
+
+  async addStock(storeId: string, productId: string, quantity: number, price: number) {
+    await this.createPurchase(storeId, (await this.createVendor()).id, productId, quantity, price, 'COMPLETED');
   }
 }

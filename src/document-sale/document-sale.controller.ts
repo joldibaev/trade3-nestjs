@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query } from '@nestjs/common';
 import { DocumentSaleService } from './document-sale.service';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -41,5 +41,17 @@ export class DocumentSaleController {
   @ApiStandardResponse(DocumentSale)
   updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateDocumentStatusDto) {
     return this.documentSaleService.updateStatus(id, updateStatusDto.status);
+  }
+
+  @Patch(':id')
+  @ApiStandardResponse(DocumentSale)
+  update(@Param('id') id: string, @Body() updateDto: CreateDocumentSaleDto) {
+    return this.documentSaleService.update(id, updateDto);
+  }
+
+  @Delete(':id')
+  @ApiStandardResponse(DocumentSale)
+  remove(@Param('id') id: string) {
+    return this.documentSaleService.remove(id);
   }
 }

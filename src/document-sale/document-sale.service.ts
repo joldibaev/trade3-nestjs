@@ -289,6 +289,118 @@ export class DocumentSaleService {
     }
   }
 
+  async update(id: string, updateDto: CreateDocumentSaleDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const sale = await tx.documentSale.findUniqueOrThrow({
+          where: { id },
+          include: { items: true },
+        });
+
+        if (sale.status !== 'DRAFT') {
+          throw new BadRequestException('Only DRAFT documents can be updated');
+        }
+
+        const { storeId, cashboxId, clientId, date, priceTypeId, items } = updateDto;
+
+        // 1. Prepare new Items
+        const productIds = items.map((i) => i.productId);
+
+        const products = await tx.product.findMany({
+          where: { id: { in: productIds } },
+          include: { prices: true },
+        });
+        const productsMap = new Map(products.map((p) => [p.id, p]));
+
+        const preparedItems: {
+          productId: string;
+          quantity: Decimal;
+          price: Decimal;
+          total: Decimal;
+        }[] = [];
+        let totalAmount = new Decimal(0);
+
+        for (const item of items) {
+          const product = productsMap.get(item.productId);
+          if (!product) {
+            throw new NotFoundException(`Product ${item.productId} not found`);
+          }
+
+          let finalPrice = new Decimal(item.price ?? 0);
+          if (item.price === undefined) {
+            if (priceTypeId) {
+              const priceObj = product.prices.find((p) => p.priceTypeId === priceTypeId);
+              finalPrice = priceObj ? priceObj.value : new Decimal(0);
+            } else {
+              finalPrice = product.prices[0] ? product.prices[0].value : new Decimal(0);
+            }
+          }
+
+          const quantity = new Decimal(item.quantity);
+          const total = finalPrice.mul(quantity);
+          totalAmount = totalAmount.add(total);
+
+          preparedItems.push({
+            productId: item.productId,
+            quantity,
+            price: finalPrice,
+            total,
+          });
+        }
+
+        // 2. Delete existing items
+        await tx.documentSaleItem.deleteMany({
+          where: { saleId: id },
+        });
+
+        // 3. Update Document
+        return tx.documentSale.update({
+          where: { id },
+          data: {
+            storeId,
+            cashboxId,
+            clientId,
+            date: date ? new Date(date) : new Date(),
+            priceTypeId,
+            totalAmount,
+            items: {
+              create: preparedItems.map((i) => ({
+                productId: i.productId,
+                quantity: i.quantity,
+                price: i.price,
+                total: i.total,
+              })),
+            },
+          },
+          include: { items: true },
+        });
+      },
+      {
+        isolationLevel: 'ReadCommitted',
+      },
+    );
+  }
+
+  async remove(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const sale = await tx.documentSale.findUniqueOrThrow({
+        where: { id },
+      });
+
+      if (sale.status !== 'DRAFT') {
+        throw new BadRequestException('Only DRAFT documents can be deleted');
+      }
+
+      await tx.documentSaleItem.deleteMany({
+        where: { saleId: id },
+      });
+
+      return tx.documentSale.delete({
+        where: { id },
+      });
+    });
+  }
+
   findAll(include?: Record<string, boolean>) {
     return this.prisma.documentSale.findMany({
       include,

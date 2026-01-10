@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/common';
 import { DocumentReturnService } from './document-return.service';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -36,5 +36,17 @@ export class DocumentReturnController {
   @ApiStandardResponse(DocumentReturn)
   updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateDocumentStatusDto) {
     return this.documentReturnService.updateStatus(id, updateStatusDto.status);
+  }
+
+  @Patch(':id')
+  @ApiStandardResponse(DocumentReturn)
+  update(@Param('id') id: string, @Body() updateDto: CreateDocumentReturnDto) {
+    return this.documentReturnService.update(id, updateDto);
+  }
+
+  @Delete(':id')
+  @ApiStandardResponse(DocumentReturn)
+  remove(@Param('id') id: string) {
+    return this.documentReturnService.remove(id);
   }
 }

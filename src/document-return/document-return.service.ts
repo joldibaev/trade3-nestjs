@@ -225,6 +225,92 @@ export class DocumentReturnService {
     }
   }
 
+  async update(id: string, updateDto: CreateDocumentReturnDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentReturn.findUniqueOrThrow({
+          where: { id },
+          include: { items: true },
+        });
+
+        if (doc.status !== 'DRAFT') {
+          throw new BadRequestException('Only DRAFT documents can be updated');
+        }
+
+        const { storeId, clientId, date, items } = updateDto;
+
+        // 1. Prepare Items
+        const productIds = items.map((i) => i.productId);
+        const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
+
+        let totalAmount = new Decimal(0);
+        const returnItems = items.map((item) => {
+          const price = new Decimal(item.price || 0);
+          const quantity = new Decimal(item.quantity);
+          const total = quantity.mul(price);
+          totalAmount = totalAmount.add(total);
+          const fallbackWap = wapMap.get(item.productId) || new Decimal(0);
+
+          return {
+            productId: item.productId,
+            quantity,
+            price,
+            total,
+            fallbackWap,
+          };
+        });
+
+        // 2. Delete existing items
+        await tx.documentReturnItem.deleteMany({
+          where: { returnId: id },
+        });
+
+        // 3. Update Document
+        return tx.documentReturn.update({
+          where: { id },
+          data: {
+            storeId,
+            clientId,
+            date: date ? new Date(date) : new Date(),
+            totalAmount,
+            items: {
+              create: returnItems.map((i) => ({
+                productId: i.productId,
+                quantity: i.quantity,
+                price: i.price,
+                total: i.total,
+              })),
+            },
+          },
+          include: { items: true },
+        });
+      },
+      {
+        isolationLevel: 'ReadCommitted',
+      },
+    );
+  }
+
+  async remove(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const doc = await tx.documentReturn.findUniqueOrThrow({
+        where: { id },
+      });
+
+      if (doc.status !== 'DRAFT') {
+        throw new BadRequestException('Only DRAFT documents can be deleted');
+      }
+
+      await tx.documentReturnItem.deleteMany({
+        where: { returnId: id },
+      });
+
+      return tx.documentReturn.delete({
+        where: { id },
+      });
+    });
+  }
+
   findAll(include?: Record<string, boolean>) {
     return this.prisma.documentReturn.findMany({
       include,

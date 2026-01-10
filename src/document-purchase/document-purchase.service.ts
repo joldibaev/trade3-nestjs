@@ -280,6 +280,100 @@ export class DocumentPurchaseService {
     }
   }
 
+  async update(id: string, updateDto: CreateDocumentPurchaseDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentPurchase.findUniqueOrThrow({
+          where: { id },
+          include: { items: true },
+        });
+
+        if (doc.status !== 'DRAFT') {
+          throw new BadRequestException('Only DRAFT documents can be updated');
+        }
+
+        const { storeId, vendorId, date, items } = updateDto;
+
+        // 1. Prepare new Items
+        const productIds = items.map((i) => i.productId);
+
+        // Validate products exist (Optional but good practice)
+        const productsCount = await tx.product.count({
+          where: { id: { in: productIds } },
+        });
+        if (productsCount !== productIds.length) {
+          throw new BadRequestException('Some products not found');
+        }
+
+        const preparedItems = items.map((item) => {
+          const quantity = new Decimal(item.quantity);
+          const price = new Decimal(item.price);
+          return {
+            productId: item.productId,
+            quantity,
+            price,
+            total: quantity.mul(price),
+            newPrices: item.newPrices,
+          };
+        });
+
+        const totalAmount = preparedItems.reduce((sum, item) => sum.add(item.total), new Decimal(0));
+
+        // 2. Delete existing items
+        await tx.documentPurchaseItem.deleteMany({
+          where: { purchaseId: id },
+        });
+
+        // 3. Update Document
+        return tx.documentPurchase.update({
+          where: { id },
+          data: {
+            storeId,
+            vendorId,
+            date: date ? new Date(date) : new Date(),
+            totalAmount,
+            items: {
+              create: preparedItems.map((i) => ({
+                productId: i.productId,
+                quantity: i.quantity,
+                price: i.price,
+                total: i.total,
+              })),
+            },
+          },
+          include: { items: true },
+        });
+      },
+      {
+        isolationLevel: 'ReadCommitted', // Sufficient for DRAFT updates
+      },
+    );
+  }
+
+  async remove(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const doc = await tx.documentPurchase.findUniqueOrThrow({
+        where: { id },
+      });
+
+      if (doc.status !== 'DRAFT') {
+        throw new BadRequestException('Only DRAFT documents can be deleted');
+      }
+
+      // Cascade delete is usually handled by DB, but explicit delete is safer if relations are complex
+      // Prisma schema should ideally have onDelete: Cascade for items. 
+      // Let's assume schema handles it or we delete items explicitly. 
+      // Based on typical Prisma setup without explicit relation mode, we delete items first.
+      await tx.documentPurchaseItem.deleteMany({
+        where: { purchaseId: id },
+      });
+
+      return tx.documentPurchase.delete({
+        where: { id },
+      });
+    });
+  }
+
   findAll(include?: Record<string, boolean>) {
     return this.prisma.documentPurchase.findMany({
       include,

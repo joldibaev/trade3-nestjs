@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query } from '@nestjs/common';
 import { DocumentPurchaseService } from './document-purchase.service';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
@@ -47,5 +47,20 @@ export class DocumentPurchaseController {
       id,
       updateDocumentStatusDto.status,
     );
+  }
+
+  @Patch(':id')
+  @ApiStandardResponse(DocumentPurchase)
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: CreateDocumentPurchaseDto,
+  ) {
+    return this.documentPurchaseService.update(id, updateDto);
+  }
+
+  @Delete(':id')
+  @ApiStandardResponse(DocumentPurchase)
+  remove(@Param('id') id: string) {
+    return this.documentPurchaseService.remove(id);
   }
 }
