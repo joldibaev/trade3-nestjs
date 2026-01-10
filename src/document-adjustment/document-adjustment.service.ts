@@ -22,7 +22,7 @@ export class DocumentAdjustmentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) { }
+  ) {}
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
     const { storeId, date, status, items } = createDocumentAdjustmentDto;
@@ -156,7 +156,9 @@ export class DocumentAdjustmentService {
           });
         }
 
-        throw new BadRequestException('Only COMPLETED status transition is currently supported for Adjustments');
+        throw new BadRequestException(
+          'Only COMPLETED status transition is currently supported for Adjustments',
+        );
       },
       {
         isolationLevel: 'Serializable',

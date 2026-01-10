@@ -26,7 +26,7 @@ export class DocumentSaleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) { }
+  ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
     const { storeId, cashboxId, clientId, date, status, priceTypeId, items } =

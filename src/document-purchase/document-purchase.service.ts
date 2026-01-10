@@ -23,7 +23,7 @@ export class DocumentPurchaseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) { }
+  ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, status, items } = createDocumentPurchaseDto;
@@ -317,7 +317,10 @@ export class DocumentPurchaseService {
           };
         });
 
-        const totalAmount = preparedItems.reduce((sum, item) => sum.add(item.total), new Decimal(0));
+        const totalAmount = preparedItems.reduce(
+          (sum, item) => sum.add(item.total),
+          new Decimal(0),
+        );
 
         // 2. Delete existing items
         await tx.documentPurchaseItem.deleteMany({
@@ -361,8 +364,8 @@ export class DocumentPurchaseService {
       }
 
       // Cascade delete is usually handled by DB, but explicit delete is safer if relations are complex
-      // Prisma schema should ideally have onDelete: Cascade for items. 
-      // Let's assume schema handles it or we delete items explicitly. 
+      // Prisma schema should ideally have onDelete: Cascade for items.
+      // Let's assume schema handles it or we delete items explicitly.
       // Based on typical Prisma setup without explicit relation mode, we delete items first.
       await tx.documentPurchaseItem.deleteMany({
         where: { purchaseId: id },

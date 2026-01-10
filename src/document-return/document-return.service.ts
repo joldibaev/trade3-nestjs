@@ -22,7 +22,7 @@ export class DocumentReturnService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) { }
+  ) {}
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
     const { storeId, clientId, date, status, items } = createDocumentReturnDto;

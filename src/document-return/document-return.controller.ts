@@ -12,7 +12,7 @@ import { DocumentReturn } from '../generated/entities/document-return.entity';
 @ApiTags('document-returns')
 @Controller('document-returns')
 export class DocumentReturnController {
-  constructor(private readonly documentReturnService: DocumentReturnService) { }
+  constructor(private readonly documentReturnService: DocumentReturnService) {}
 
   @Post()
   @ApiStandardResponse(DocumentReturn)

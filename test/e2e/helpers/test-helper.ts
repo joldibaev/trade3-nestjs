@@ -27,7 +27,7 @@ export class TestHelper {
     private readonly documentReturnService: DocumentReturnService,
     private readonly documentAdjustmentService: DocumentAdjustmentService,
     private readonly documentTransferService: DocumentTransferService,
-  ) { }
+  ) {}
 
   public createdIds = {
     stores: [] as string[],
@@ -358,6 +358,13 @@ export class TestHelper {
   }
 
   async addStock(storeId: string, productId: string, quantity: number, price: number) {
-    await this.createPurchase(storeId, (await this.createVendor()).id, productId, quantity, price, 'COMPLETED');
+    await this.createPurchase(
+      storeId,
+      (await this.createVendor()).id,
+      productId,
+      quantity,
+      price,
+      'COMPLETED',
+    );
   }
 }

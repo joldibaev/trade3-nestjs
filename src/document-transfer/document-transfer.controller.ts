@@ -12,7 +12,7 @@ import { DocumentTransfer } from '../generated/entities/document-transfer.entity
 @ApiTags('document-transfers')
 @Controller('document-transfers')
 export class DocumentTransferController {
-  constructor(private readonly documentTransferService: DocumentTransferService) { }
+  constructor(private readonly documentTransferService: DocumentTransferService) {}
 
   @Post()
   @ApiStandardResponse(DocumentTransfer)

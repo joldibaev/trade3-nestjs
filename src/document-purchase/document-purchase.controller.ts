@@ -15,7 +15,7 @@ import { DocumentPurchaseRelations } from '../generated/relations/document-purch
 @ApiTags('document-purchases')
 @Controller('document-purchases')
 export class DocumentPurchaseController {
-  constructor(private readonly documentPurchaseService: DocumentPurchaseService) { }
+  constructor(private readonly documentPurchaseService: DocumentPurchaseService) {}
 
   @Post()
   @ApiStandardResponse(DocumentPurchase)
@@ -39,22 +39,13 @@ export class DocumentPurchaseController {
 
   @Patch(':id/status')
   @ApiStandardResponse(DocumentPurchase)
-  updateStatus(
-    @Param('id') id: string,
-    @Body() updateDocumentStatusDto: UpdateDocumentStatusDto,
-  ) {
-    return this.documentPurchaseService.updateStatus(
-      id,
-      updateDocumentStatusDto.status,
-    );
+  updateStatus(@Param('id') id: string, @Body() updateDocumentStatusDto: UpdateDocumentStatusDto) {
+    return this.documentPurchaseService.updateStatus(id, updateDocumentStatusDto.status);
   }
 
   @Patch(':id')
   @ApiStandardResponse(DocumentPurchase)
-  update(
-    @Param('id') id: string,
-    @Body() updateDto: CreateDocumentPurchaseDto,
-  ) {
+  update(@Param('id') id: string, @Body() updateDto: CreateDocumentPurchaseDto) {
     return this.documentPurchaseService.update(id, updateDto);
   }
 

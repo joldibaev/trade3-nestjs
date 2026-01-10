@@ -22,7 +22,7 @@ export class DocumentTransferService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
-  ) { }
+  ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
     const { sourceStoreId, destinationStoreId, date, status, items } = createDocumentTransferDto;
@@ -112,7 +112,9 @@ export class DocumentTransferService {
           });
         }
 
-        throw new BadRequestException('Only COMPLETED status transition is currently supported for Transfers');
+        throw new BadRequestException(
+          'Only COMPLETED status transition is currently supported for Transfers',
+        );
       },
       {
         isolationLevel: 'Serializable',

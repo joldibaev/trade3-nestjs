@@ -15,7 +15,7 @@ import { DocumentSaleRelations } from '../generated/relations/document-sale-rela
 @ApiTags('document-sales')
 @Controller('document-sales')
 export class DocumentSaleController {
-  constructor(private readonly documentSaleService: DocumentSaleService) { }
+  constructor(private readonly documentSaleService: DocumentSaleService) {}
 
   @Post()
   @ApiStandardResponse(DocumentSale)
