@@ -1,12 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
-import { StockMovementType } from '../../generated/prisma/enums';
+import { StockMovementService } from '../../stock-movement/stock-movement.service';
 import Decimal = Prisma.Decimal;
 
 @Injectable()
 export class InventoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stockMovementService: StockMovementService,
+  ) {}
 
   /**
    * Validates if a store exists. Throws NotFoundException if not.
@@ -85,9 +88,6 @@ export class InventoryService {
     return new Decimal(0);
   }
 
-  /**
-   * Logs a standardized StockMovement record ensuring strong relations and snapshots.
-   */
   async logStockMovement(
     tx: Prisma.TransactionClient,
     data: {
@@ -96,42 +96,11 @@ export class InventoryService {
       productId: string;
       quantity: Decimal;
       date: Date | string;
-      documentId: string; // The ID of the specific document
+      documentId: string;
       quantityAfter: Decimal;
       averagePurchasePrice: Decimal;
     },
   ) {
-    const {
-      type,
-      storeId,
-      productId,
-      quantity,
-      date,
-      documentId,
-      quantityAfter,
-      averagePurchasePrice,
-    } = data;
-
-    const dataInput: Prisma.StockMovementUncheckedCreateInput = {
-      type: type as StockMovementType,
-      storeId,
-      productId,
-      quantity,
-      date: new Date(date),
-      quantityAfter,
-      averagePurchasePrice,
-    };
-
-    // Map the generic documentId to the specific relation field
-    if (type === 'PURCHASE') dataInput.documentPurchaseId = documentId;
-    if (type === 'SALE') dataInput.documentSaleId = documentId;
-    if (type === 'RETURN') dataInput.documentReturnId = documentId;
-    if (type === 'ADJUSTMENT') dataInput.documentAdjustmentId = documentId;
-    if (type === 'TRANSFER_IN' || type === 'TRANSFER_OUT')
-      dataInput.documentTransferId = documentId;
-
-    await tx.stockMovement.create({
-      data: dataInput,
-    });
+    return this.stockMovementService.create(tx, data);
   }
 }
