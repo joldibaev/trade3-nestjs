@@ -6,6 +6,8 @@ import {
   IsOptional,
   IsString,
   ValidateNested,
+  IsPositive,
+  Min,
 } from 'class-validator';
 import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
@@ -18,10 +20,12 @@ class CreateDocumentReturnItemDto {
 
   @ApiProperty({ example: 5 })
   @IsNumber()
+  @IsPositive()
   quantity: number;
 
   @ApiProperty({ example: 15000, required: false })
   @IsNumber()
+  @Min(0)
   @IsOptional()
   price?: number;
 }

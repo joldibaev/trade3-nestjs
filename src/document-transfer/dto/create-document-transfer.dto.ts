@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   ValidateNested,
+  IsPositive,
 } from 'class-validator';
 import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
@@ -18,6 +19,7 @@ class CreateDocumentTransferItemDto {
 
   @ApiProperty({ example: 5 })
   @IsNumber()
+  @IsPositive()
   quantity: number;
 }
 
