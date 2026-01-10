@@ -21,11 +21,14 @@ interface SaleWithItems extends SaleMinimal {
   items: { id: string; productId: string }[];
 }
 
+import { StoreService } from '../store/store.service';
+// ...
 @Injectable()
 export class DocumentSaleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
+    private readonly storeService: StoreService,
   ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
@@ -35,7 +38,7 @@ export class DocumentSaleService {
     const targetStatus = status || 'COMPLETED';
 
     // 1. Validate Store
-    await this.inventoryService.validateStore(storeId);
+    await this.storeService.validateStore(storeId);
 
     // 2. Prepare Items (Fetch Products & Calculate Prices)
     const productIds = items.map((i) => i.productId);

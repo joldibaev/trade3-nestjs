@@ -18,11 +18,14 @@ interface PurchaseContext {
   date?: Date;
 }
 
+import { StoreService } from '../store/store.service';
+// ...
 @Injectable()
 export class DocumentPurchaseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
+    private readonly storeService: StoreService,
   ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
@@ -31,7 +34,7 @@ export class DocumentPurchaseService {
     const targetStatus = status || 'COMPLETED';
 
     // 1. Validate Store
-    await this.inventoryService.validateStore(storeId);
+    await this.storeService.validateStore(storeId);
 
     // 2. Prepare Items
     const productIds = items.map((i) => i.productId);

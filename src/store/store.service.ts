@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateStoreDto } from '../generated/dto/store/create-store.dto';
 import { UpdateStoreDto } from '../generated/dto/store/update-store.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
@@ -38,5 +38,12 @@ export class StoreService {
     return this.prisma.store.delete({
       where: { id },
     });
+  }
+
+  async validateStore(storeId: string): Promise<void> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+    });
+    if (!store) throw new NotFoundException('Store not found');
   }
 }

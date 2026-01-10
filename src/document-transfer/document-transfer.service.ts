@@ -17,11 +17,14 @@ interface TransferContext {
   date?: Date;
 }
 
+import { StoreService } from '../store/store.service';
+// ...
 @Injectable()
 export class DocumentTransferService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
+    private readonly storeService: StoreService,
   ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
@@ -36,10 +39,10 @@ export class DocumentTransferService {
     // 1. Validate Stores
     // Use concurrent validation
     await Promise.all([
-      this.inventoryService.validateStore(sourceStoreId).catch(() => {
+      this.storeService.validateStore(sourceStoreId).catch(() => {
         throw new NotFoundException('Source Store not found');
       }),
-      this.inventoryService.validateStore(destinationStoreId).catch(() => {
+      this.storeService.validateStore(destinationStoreId).catch(() => {
         throw new NotFoundException('Destination Store not found');
       }),
     ]);

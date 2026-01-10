@@ -12,16 +12,6 @@ export class InventoryService {
   ) {}
 
   /**
-   * Validates if a store exists. Throws NotFoundException if not.
-   */
-  async validateStore(storeId: string): Promise<void> {
-    const store = await this.prisma.store.findUnique({
-      where: { id: storeId },
-    });
-    if (!store) throw new NotFoundException('Store not found');
-  }
-
-  /**
    * Calculates the new Weighted Average Price (WAP).
    * Formula: (OldQty * OldWap + NewQty * NewPrice) / (OldQty + NewQty)
    */

@@ -17,11 +17,14 @@ interface AdjustmentContext {
   date?: Date;
 }
 
+import { StoreService } from '../store/store.service';
+// ...
 @Injectable()
 export class DocumentAdjustmentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
+    private readonly storeService: StoreService,
   ) {}
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
@@ -30,7 +33,7 @@ export class DocumentAdjustmentService {
     const targetStatus = status || 'COMPLETED';
 
     // 1. Validate Store
-    await this.inventoryService.validateStore(storeId);
+    await this.storeService.validateStore(storeId);
 
     // Prepare IDs
     const productIds = items.map((i) => i.productId);
