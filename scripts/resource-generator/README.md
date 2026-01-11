@@ -2,22 +2,37 @@
 
 Этот скрипт автоматически генерирует NestJS Entity, DTO, Interface и Enum классы на основе вашей схемы Prisma (`prisma/schema.prisma`).
 
-## Возможности
+## Key Features
 
-1.  **Единый источник истины**: Изменения в `schema.prisma` автоматически отражаются в коде.
-2.  **Централизованная генерация**: Все файлы создаются в директории `src/generated/`, что позволяет избежать дублирования кода и упрощает управление зависимостями.
-3.  **Swagger Support**: Автоматическое добавление `@ApiProperty` с правильными типами и форматами (UUID, date-time) в Entity и DTO.
-4.  **Interfaces**: Генерация чистых TypeScript-интерфейсов без декораторов Swagger для использования во внутренней логике и типизации.
-5.  **Валидация**: Добавление декораторов `class-validator` в DTO.
-6.  **Relation Enums**: Генерация перечислений для связей (напр. `ProductRelations`), которые удобно использовать для `include` в Prisma.
-7.  **Чистая генерация**: Перед каждым запуском директория `src/generated/` полностью очищается, что гарантирует отсутствие устаревших файлов при удалении или переименовании моделей в Prisma.
+1.  **Single Source of Truth**: Define your schema once in `prisma/schema.prisma` and sync everything.
+2.  **Dual Generation**: Generates resources for both Backend (NestJS) and Frontend (clean TypeScript).
+3.  **Frontend Purity**:
+    - **Clean DTOs**: Automatically stripped of all decorators (Swagger, `class-validator`, etc.) and external dependencies.
+    - **Decimal to Number**: Automatically converts Prisma `Decimal` type to standard TypeScript `number` for frontend compatibility.
+    - **Import Normalization**: Cleanly redirects all Enum imports to a centralized frontend constants file.
+4.  **Custom Overrides**: If a custom DTO exists in `src/<module>/dto/`, the script skips backend generation and copies/cleans the custom DTO for the frontend.
+5.  **Centralized Enums**: Generates `src/generated/frontend/constants.ts` with all enums defined as `const` objects and types.
 
-## Как использовать
+## Output Structure
 
-Запустите команду:
+The script generates files in `src/generated/`:
+
+- `entities/`: Backend entities with Swagger decorators.
+- `dto/`: Backend DTOs with Swagger and validation decorators.
+- `relations/`: Centralized relation enums for backend use.
+- `frontend/`: Clean resources for client-side use:
+  - `constants.ts`: Centralized enums (value-objects and types).
+  - `entities/`: Model interfaces (referencing common constants).
+  - `dtos/`: Clean DTO classes (stripped of decorators, using `number` types).
+
+## Usage
 
 ```bash
+# Generate all resources
 npm run postprisma:generate
+
+# Run unit tests for the generator
+npm test scripts/resource-generator/index.spec.ts
 ```
 
 Скрипт создаст/обновит следующие папки в `src/generated/`:

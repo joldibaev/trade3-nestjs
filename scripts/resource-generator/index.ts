@@ -109,7 +109,7 @@ export function generateInterfaceContent(model: Model, allModels: Models): strin
 
   relevantFields.forEach((f) => {
     if (f.isEnum) {
-      importLines.add(`import { ${f.type} } from './constants';`);
+      importLines.add(`import { ${f.type} } from '../constants';`);
     } else {
       const relModel = allModels[f.type];
       if (relModel && relModel.name !== model.name) {
@@ -293,6 +293,95 @@ export function generateAllEnumsContent(enums: Enums): string {
 }
 
 /**
+ * Strips all decorators and specific imports (swagger, validator, transformer)
+ */
+export function stripDecorators(content: string): string {
+  // Remove imports
+  content = content.replace(/import {[^}]*} from '@nestjs\/swagger';\n?/g, '');
+  content = content.replace(/import {[^}]*} from '@nestjs\/mapped-types';\n?/g, '');
+  content = content.replace(/import {[^}]*} from 'class-validator';\n?/g, '');
+  content = content.replace(/import {[^}]*} from 'class-transformer';\n?/g, '');
+  content = content.replace(/import .* from '@nestjs\/swagger';\n?/g, '');
+  content = content.replace(
+    /import { Decimal } from '..\/..\/prisma\/internal\/prismaNamespace';\n?/g,
+    '',
+  );
+
+  // Redirect enum imports to frontend constants
+  content = content.replace(/import {([^}]*)} from '.*\/prisma\/enums';\n?/g, (_, p1) => {
+    const cleanedEnums = p1
+      .split(',')
+      .map((e: string) => e.trim())
+      .filter(Boolean)
+      .join(', ');
+    return `import { ${cleanedEnums} } from '../constants';\n`;
+  });
+
+  // Remove decorators with balanced parentheses (supports nesting for @ApiProperty({ ... }))
+  content = content.replace(/@\w+\s*\((?:[^()]*|\((?:[^()]*|\([^()]*\))*\))*\)\s*\n?/g, '');
+
+  // Remove single-line decorators without parentheses
+  content = content.replace(/^\s*@\w+\s*\n?/gm, '');
+
+  // Redirect local DTO imports to interface files
+  content = content.replace(/from '(\.\.?\/[^']+)\.dto';/g, "from '$1.interface';");
+
+  // Replace Decimal with number for frontend compatibility
+  content = content.replace(/:\s*Decimal/g, ': number');
+
+  // Replace any class (exported or not) with export interface for frontend purity
+  content = content.replace(/(?:export\s+)?class (\w+)\s*{/g, 'export interface $1 {');
+
+  // Replace PartialType(X) with Partial<X> and convert class to type alias
+  // Matches: export class UpdateUserDto extends PartialType(CreateUserDto) {}
+  content = content.replace(
+    /export class (\w+) extends PartialType\((\w+)\)\s*{?\s*}?/g,
+    'export type $1 = Partial<$2>;',
+  );
+
+  // Replace any remaining PartialType(X) within the file
+  content = content.replace(/PartialType\((\w+)\)/g, 'Partial<$1>');
+
+  // Cleanup: Remove multiple consecutive newlines (collapse to single newline)
+  content = content.replace(/\n\s*\n/g, '\n');
+
+  return content;
+}
+
+/**
+ * Generates Create DTO content for frontend (clean, no decorators)
+ */
+export function generateFrontendCreateDtoContent(model: Model): string {
+  const customImports = new Set<string>();
+  let fieldsContent = '';
+  const filteredFields = model.fields.filter((f) => !f.isSystem && !f.isRelation && !f.isArray);
+
+  filteredFields.forEach((f) => {
+    // Clean fields without decorators
+
+    if (f.isEnum) {
+      customImports.add(`import { ${f.type} } from '../constants';`);
+    }
+
+    const tsType = mapType(f.type); // mapType already maps Decimal to number
+    const suffix = f.isOptional ? '?' : '';
+    fieldsContent += `  ${f.name}${suffix}: ${tsType};\n`;
+  });
+
+  let createContent = '';
+  // Removed Decimal import for frontend
+  if (customImports.size > 0) {
+    createContent += Array.from(customImports).sort().join('\n') + '\n';
+  }
+  if (createContent) createContent += '\n';
+
+  createContent += `export interface Create${model.name}Dto {\n`;
+  createContent += fieldsContent;
+  createContent += `}\n`;
+  return createContent;
+}
+
+/**
  * Main execution logic
  */
 function run(): void {
@@ -337,11 +426,10 @@ function run(): void {
 
   const generatedDir = path.join(process.cwd(), 'src', 'generated');
 
-  // Clear old files
   // Clear old files (Specific directories only to preserve prisma client)
   const dirsToClean = [
     path.join(generatedDir, 'entities'),
-    path.join(generatedDir, 'interfaces'),
+    path.join(generatedDir, 'frontend'),
     path.join(generatedDir, 'dto'),
     path.join(generatedDir, 'relations'),
   ];
@@ -355,7 +443,9 @@ function run(): void {
 
   const dirs = {
     entities: path.join(generatedDir, 'entities'),
-    interfaces: path.join(generatedDir, 'interfaces'),
+    frontend: path.join(generatedDir, 'frontend'),
+    frontendEntities: path.join(generatedDir, 'frontend', 'entities'),
+    frontendDtos: path.join(generatedDir, 'frontend', 'dtos'),
     dto: path.join(generatedDir, 'dto'),
     relations: path.join(generatedDir, 'relations'),
   };
@@ -365,8 +455,8 @@ function run(): void {
     fs.mkdirSync(dir, { recursive: true });
   });
 
-  // Generate common constants for interfaces
-  fs.writeFileSync(path.join(dirs.interfaces, 'constants.ts'), generateAllEnumsContent(enums));
+  // Generate common constants for interfaces (Now at frontend root)
+  fs.writeFileSync(path.join(dirs.frontend, 'constants.ts'), generateAllEnumsContent(enums));
 
   console.log('🚀 Starting centralized resource generation...');
 
@@ -374,31 +464,98 @@ function run(): void {
     const model = models[modelName];
 
     // Entities
-    fs.writeFileSync(
-      path.join(dirs.entities, `${model.singular}.entity.ts`),
-      generateEntityContent(model, models),
-    );
+    const customEntityPaths = [
+      path.join(process.cwd(), 'src', model.singular, `${model.singular}.entity.ts`),
+      path.join(process.cwd(), 'src', model.singular, 'entities', `${model.singular}.entity.ts`),
+    ];
+    const hasCustomEntity = customEntityPaths.some((p) => fs.existsSync(p));
 
-    // Interfaces
+    if (!hasCustomEntity) {
+      fs.writeFileSync(
+        path.join(dirs.entities, `${model.singular}.entity.ts`),
+        generateEntityContent(model, models),
+      );
+    } else {
+      console.log(`ℹ️ Skipping Entity for ${model.name} (Custom found)`);
+    }
+
+    // Interfaces (Frontend Entities)
     fs.writeFileSync(
-      path.join(dirs.interfaces, `${model.singular}.interface.ts`),
+      path.join(dirs.frontendEntities, `${model.singular}.interface.ts`),
       generateInterfaceContent(model, models),
     );
 
     // DTOs
-    const modelDtoDir = path.join(dirs.dto, model.singular);
-    if (!fs.existsSync(modelDtoDir)) fs.mkdirSync(modelDtoDir, { recursive: true });
+    const customDtoPath = path.join(
+      process.cwd(),
+      'src',
+      model.singular,
+      'dto',
+      `create-${model.singular}.dto.ts`,
+    );
 
-    fs.writeFileSync(
-      path.join(modelDtoDir, `create-${model.singular}.dto.ts`),
-      generateCreateDtoContent(model),
-    );
-    fs.writeFileSync(
-      path.join(modelDtoDir, `update-${model.singular}.dto.ts`),
+    const frontendDtoDir = dirs.frontendDtos;
+    const createDtoContent = generateCreateDtoContent(model); // Backend version (with Swagger)
+    const updateDtoContent =
       "import { PartialType } from '@nestjs/swagger';\n" +
-        `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
-        `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`,
-    );
+      `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
+      `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`;
+
+    if (!fs.existsSync(customDtoPath)) {
+      // Logic A: Standard Generation
+
+      // 1. Backend Generated DTOs
+      const modelDtoDir = path.join(dirs.dto, model.singular);
+      if (!fs.existsSync(modelDtoDir)) fs.mkdirSync(modelDtoDir, { recursive: true });
+
+      fs.writeFileSync(path.join(modelDtoDir, `create-${model.singular}.dto.ts`), createDtoContent);
+      fs.writeFileSync(path.join(modelDtoDir, `update-${model.singular}.dto.ts`), updateDtoContent);
+
+      // 2. Frontend DTOs (Clean version) - Interfaces
+      const frontendCreateContent = generateFrontendCreateDtoContent(model);
+
+      // Use TypeScript Pattern for Frontend Update DTO (No Dependencies)
+      const frontendUpdateContent =
+        `import { Create${model.name}Dto } from './create-${model.singular}.interface';\n\n` +
+        `export type Update${model.name}Dto = Partial<Create${model.name}Dto>;\n`;
+
+      fs.writeFileSync(
+        path.join(frontendDtoDir, `create-${model.singular}.interface.ts`),
+        frontendCreateContent,
+      );
+      fs.writeFileSync(
+        path.join(frontendDtoDir, `update-${model.singular}.interface.ts`),
+        frontendUpdateContent,
+      );
+    } else {
+      // Logic B: Custom Exists -> Copy to Frontend AND Strip Swagger/Validators
+      console.log(`ℹ️ Skipping Backend DTOs for ${model.name} (Custom found)`);
+      console.log(`📋 Copying Custom DTOs for ${model.name} to Frontend (Stripping Decorators)`);
+
+      // Copy & Strip Create DTO
+      const customCreateContent = fs.readFileSync(customDtoPath, 'utf8');
+      fs.writeFileSync(
+        path.join(frontendDtoDir, `create-${model.singular}.interface.ts`),
+        stripDecorators(customCreateContent),
+      );
+
+      // Try Copy & Strip Update DTO
+      const customUpdateDtoPath = path.join(
+        process.cwd(),
+        'src',
+        model.singular,
+        'dto',
+        `update-${model.singular}.dto.ts`,
+      );
+
+      if (fs.existsSync(customUpdateDtoPath)) {
+        const customUpdateContent = fs.readFileSync(customUpdateDtoPath, 'utf8');
+        fs.writeFileSync(
+          path.join(frontendDtoDir, `update-${model.singular}.interface.ts`),
+          stripDecorators(customUpdateContent),
+        );
+      }
+    }
 
     // Enums
     const relationEnums = generateRelationEnumsContent(model);

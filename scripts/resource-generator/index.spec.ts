@@ -5,6 +5,8 @@ import {
   generateInterfaceContent,
   generateAllEnumsContent,
   generateCreateDtoContent,
+  generateFrontendCreateDtoContent,
+  stripDecorators,
   toKebabCase,
   Model,
   Models,
@@ -238,12 +240,12 @@ describe('Resource Generator', () => {
         ],
       };
 
-      const content = generateInterfaceContent(model, allModels, { ProductStatus: ['ACTIVE'] });
+      const content = generateInterfaceContent(model, allModels);
 
       expect(content).toContain('export interface Product {');
       expect(content).toContain('category: Category;');
       expect(content).toContain("import { Category } from './category.interface';");
-      expect(content).toContain("import { ProductStatus } from './constants';");
+      expect(content).toContain("import { ProductStatus } from '../constants';");
       expect(content).not.toContain('@ApiProperty');
       expect(content).not.toContain('export const ProductStatus = {');
     });
@@ -264,7 +266,7 @@ describe('Resource Generator', () => {
           },
         ],
       };
-      const content = generateInterfaceContent(model, {}, {});
+      const content = generateInterfaceContent(model, {});
       expect(content).toContain('id: string;');
       expect(content).not.toContain('id?: string;');
     });
@@ -285,7 +287,7 @@ describe('Resource Generator', () => {
           },
         ],
       };
-      const content = generateInterfaceContent(model, {}, {});
+      const content = generateInterfaceContent(model, {});
       expect(content).toContain('value: number;');
     });
   });
@@ -336,6 +338,135 @@ describe('Resource Generator', () => {
       expect(content).toContain('@IsUUID(7)');
       expect(content).toContain("import { Decimal } from '../../prisma/internal/prismaNamespace';");
       expect(content).toContain('export class CreateStockDto {');
+    });
+  });
+
+  describe('generateFrontendCreateDtoContent', () => {
+    it('should generate clean DTO for frontend without decorators and with number instead of Decimal', () => {
+      const model: Model = {
+        name: 'Product',
+        singular: 'product',
+        fields: [
+          {
+            name: 'name',
+            type: 'String',
+            isOptional: false,
+            isArray: false,
+            isRelation: false,
+            isSystem: false,
+            isEnum: false,
+          },
+          {
+            name: 'price',
+            type: 'Decimal',
+            isOptional: true,
+            isArray: false,
+            isRelation: false,
+            isSystem: false,
+            isEnum: false,
+          },
+          {
+            name: 'status',
+            type: 'ProductStatus',
+            isOptional: false,
+            isArray: false,
+            isRelation: false,
+            isSystem: false,
+            isEnum: true,
+          },
+        ],
+      };
+
+      const content = generateFrontendCreateDtoContent(model);
+
+      expect(content).toContain('export interface CreateProductDto {');
+      expect(content).toContain('name: string;');
+      expect(content).toContain('price?: number;');
+      expect(content).toContain("import { ProductStatus } from '../constants';");
+      expect(content).not.toContain('@ApiProperty');
+      expect(content).not.toContain('@IsString');
+      expect(content).not.toContain('Decimal');
+    });
+  });
+
+  describe('stripDecorators', () => {
+    it('should strip all decorators and nested object literals', () => {
+      const input = `
+        import { ApiProperty } from '@nestjs/swagger';
+        import { IsString, IsNotEmpty } from 'class-validator';
+
+        export class CreateTestDto {
+          @ApiProperty({
+            description: 'Test field',
+            required: true,
+          })
+          @IsNotEmpty()
+          @IsString()
+          name: string;
+        }
+      `;
+      const output = stripDecorators(input);
+      expect(output).not.toContain('@ApiProperty');
+      expect(output).not.toContain('@IsNotEmpty');
+      expect(output).not.toContain('@IsString');
+      expect(output).not.toContain('import { ApiProperty }');
+      expect(output).toContain('name: string;');
+    });
+
+    it('should replace Decimal with number and remove Decimal import', () => {
+      const input = `
+        import { Decimal } from '../../prisma/internal/prismaNamespace';
+        export class CreateTestDto {
+          price: Decimal;
+          total?: Decimal;
+        }
+      `;
+      const output = stripDecorators(input);
+      expect(output).not.toContain('import { Decimal }');
+      expect(output).not.toContain(': Decimal');
+      expect(output).toContain('price: number;');
+      expect(output).toContain('total?: number;');
+    });
+
+    it('should redirect enum imports to frontend constants', () => {
+      const input = `
+        import { DocumentStatus } from '../../generated/prisma/enums';
+        export class CreateTestDto {
+          status: DocumentStatus;
+        }
+      `;
+      const output = stripDecorators(input);
+      expect(output).toContain("import { DocumentStatus } from '../constants';");
+      expect(output).toContain('export interface CreateTestDto {');
+      expect(output).not.toContain('prisma/enums');
+    });
+
+    it('should redirect local DTO imports to interface files', () => {
+      const input = "import { CreateTestDto } from './create-test.dto';";
+      const output = stripDecorators(input);
+      expect(output).toContain("import { CreateTestDto } from './create-test.interface';");
+    });
+
+    it('should convert internal classes to exported interfaces', () => {
+      const input = 'class InternalDto { field: string; }';
+      const output = stripDecorators(input);
+      expect(output).toContain('export interface InternalDto {');
+    });
+
+    it('should cleanup extra newlines', () => {
+      const input = `
+        export class Test {
+
+          field: string;
+
+
+          another: number;
+
+        }
+      `;
+      const output = stripDecorators(input);
+      // Multiple newlines should be collapsed to one
+      expect(output).not.toMatch(/\n\s*\n\s*\n/);
     });
   });
 });
