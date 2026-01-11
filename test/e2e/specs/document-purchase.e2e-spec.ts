@@ -68,19 +68,38 @@ describe('Document Purchase (e2e)', () => {
     expect(stock!.averagePurchasePrice.toFixed(2)).toBe('5400.00');
   });
 
-  it('should update product prices during purchase', async () => {
+  it('should delayed update product prices during purchase', async () => {
     const store = await helper.createStore();
     const vendor = await helper.createVendor();
     const category = await helper.createCategory();
     const product = await helper.createProduct(category.id);
     const { retail, wholesale } = await helper.createPriceTypes();
 
-    await helper.createPurchase(store.id, vendor.id, product.id, 10, 1000, 'COMPLETED', [
-      { priceTypeId: retail.id, value: 1500 },
-      { priceTypeId: wholesale.id, value: 1200 },
-    ]);
+    // 1. Create as DRAFT
+    const purchase = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      10,
+      1000,
+      'DRAFT',
+      [
+        { priceTypeId: retail.id, value: 1500 },
+        { priceTypeId: wholesale.id, value: 1200 },
+      ],
+    );
 
-    const prices = await app.get(PrismaService).price.findMany({
+    // Verify prices NOT updated
+    let prices = await app.get(PrismaService).price.findMany({
+      where: { productId: product.id },
+    });
+    expect(prices.length).toBe(0);
+
+    // 2. Complete the purchase
+    await helper.completePurchase(purchase.id);
+
+    // Verify prices UPDATED
+    prices = await app.get(PrismaService).price.findMany({
       where: { productId: product.id },
     });
     expect(prices.length).toBe(2);
@@ -118,5 +137,55 @@ describe('Document Purchase (e2e)', () => {
     const stockAfter = await helper.getStock(product.id, store.id);
     expect(stockAfter?.quantity.toString()).toBe('20');
     expect(stockAfter?.averagePurchasePrice.toString()).toBe('1000');
+  });
+
+  it('should apply updated prices after modifying DRAFT purchase', async () => {
+    const store = await helper.createStore();
+    const vendor = await helper.createVendor();
+    const category = await helper.createCategory();
+    const product = await helper.createProduct(category.id);
+    const { retail } = await helper.createPriceTypes();
+
+    // 1. Create DRAFT with price 1500
+    const purchase = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      10,
+      1000,
+      'DRAFT',
+      [{ priceTypeId: retail.id, value: 1500 }],
+    );
+
+    // 2. Update DRAFT: Change price to 2000
+    const updatePayload = {
+      storeId: store.id,
+      vendorId: vendor.id,
+      date: new Date().toISOString(),
+      items: [
+        {
+          productId: product.id,
+          quantity: 10,
+          price: 1000,
+          newPrices: [{ priceTypeId: retail.id, value: 2000 }],
+        },
+      ],
+    };
+
+    const request = require('supertest');
+    await request(app.getHttpServer())
+      .patch(`/document-purchases/${purchase.id}`)
+      .send(updatePayload)
+      .expect(200);
+
+    // 3. Complete
+    await helper.completePurchase(purchase.id);
+
+    // 4. Verify price is 2000
+    const prices = await app.get(PrismaService).price.findMany({
+      where: { productId: product.id },
+    });
+    const splitRetail = prices.find((p) => p.priceTypeId === retail.id);
+    expect(splitRetail?.value.toString()).toBe('2000');
   });
 });

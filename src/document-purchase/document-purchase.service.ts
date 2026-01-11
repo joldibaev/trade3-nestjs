@@ -11,7 +11,12 @@ interface PreparedPurchaseItem {
   productId: string;
   quantity: Decimal;
   price: Decimal;
-  newPrices: { priceTypeId: string; value: number }[];
+  newPrices: PriceUpdate[];
+}
+
+interface PriceUpdate {
+  priceTypeId: string;
+  value: number;
 }
 
 interface PurchaseContext {
@@ -27,7 +32,7 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) {}
+  ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items } = createDocumentPurchaseDto;
@@ -79,18 +84,18 @@ export class DocumentPurchaseService {
                 quantity: i.quantity,
                 price: i.price,
                 total: i.total,
+                newPrices: {
+                  create:
+                    i.newPrices?.map((np) => ({
+                      priceTypeId: np.priceTypeId,
+                      value: new Decimal(np.value),
+                    })) || [],
+                },
               })),
             },
           },
           include: { items: true },
         });
-
-        // Update Stock if COMPLETED
-        // if (targetStatus === 'COMPLETED') {
-        //   await this.applyInventoryMovements(tx, purchase, preparedItems);
-        // }
-
-        // return purchase;
       },
       {
         isolationLevel: 'Serializable',
@@ -103,7 +108,11 @@ export class DocumentPurchaseService {
       async (tx) => {
         const purchase = await tx.documentPurchase.findUniqueOrThrow({
           where: { id },
-          include: { items: true },
+          include: {
+            items: {
+              include: { newPrices: true },
+            },
+          },
         });
 
         const oldStatus = purchase.status;
@@ -127,7 +136,11 @@ export class DocumentPurchaseService {
 
         // DRAFT -> COMPLETED
         if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+          // 1. Apply Inventory Movements
           await this.applyInventoryMovements(tx, purchase, items);
+
+          // 2. Apply Pending Price Updates
+          await this.applyDelayedProductPriceUpdates(tx, purchase.id, purchase.items);
         }
 
         // COMPLETED -> DRAFT (or CANCELLED)
@@ -248,28 +261,6 @@ export class DocumentPurchaseService {
         },
       });
 
-      // Update Sales Prices if provided (only during initial creation with DTO)
-      if (item.newPrices && item.newPrices.length > 0) {
-        for (const priceUpdate of item.newPrices) {
-          await tx.price.upsert({
-            where: {
-              productId_priceTypeId: {
-                productId: item.productId,
-                priceTypeId: priceUpdate.priceTypeId,
-              },
-            },
-            create: {
-              productId: item.productId,
-              priceTypeId: priceUpdate.priceTypeId,
-              value: new Decimal(priceUpdate.value),
-            },
-            update: {
-              value: new Decimal(priceUpdate.value),
-            },
-          });
-        }
-      }
-
       // Audit: Log Stock Movement
       await this.stockMovementService.create(tx, {
         type: 'PURCHASE',
@@ -326,6 +317,9 @@ export class DocumentPurchaseService {
           new Decimal(0),
         );
 
+        // Apply Price Updates Immediately - REVERTED per user request
+        // await this.applyProductPriceUpdates(tx, preparedItems);
+
         // 2. Delete existing items
         await tx.documentPurchaseItem.deleteMany({
           where: { purchaseId: id },
@@ -345,6 +339,12 @@ export class DocumentPurchaseService {
                 quantity: i.quantity,
                 price: i.price,
                 total: i.total,
+                newPrices: {
+                  create: i.newPrices?.map((np) => ({
+                    priceTypeId: np.priceTypeId,
+                    value: new Decimal(np.value),
+                  })) || [],
+                },
               })),
             },
           },
@@ -393,5 +393,28 @@ export class DocumentPurchaseService {
       where: { id },
       include,
     });
+  }
+  async applyDelayedProductPriceUpdates(
+    tx: Prisma.TransactionClient,
+    documentId: string,
+    items: Prisma.DocumentPurchaseItemGetPayload<{
+      include: { newPrices: true };
+    }>[],
+  ) {
+    for (const item of items) {
+      if (item.newPrices && item.newPrices.length > 0) {
+        for (const priceUpdate of item.newPrices) {
+          // Create NEW Price record for history
+          await tx.price.create({
+            data: {
+              productId: item.productId,
+              priceTypeId: priceUpdate.priceTypeId,
+              value: priceUpdate.value,
+              documentPurchaseId: documentId,
+            },
+          });
+        }
+      }
+    }
   }
 }

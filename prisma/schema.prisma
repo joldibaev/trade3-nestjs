@@ -62,12 +62,13 @@ model Cashbox {
 
 // Price
 model PriceType {
-  id        String         @id @default(uuid(7))
-  name      String
-  prices    Price[]
-  sales     DocumentSale[]
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id                         String                      @id @default(uuid(7))
+  name                       String
+  prices                     Price[]
+  sales                      DocumentSale[]
+  documentPurchaseItemPrices DocumentPurchaseItemPrice[]
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
 
   @@unique([name])
 }
@@ -79,10 +80,15 @@ model Price {
   productId   String
   priceType   PriceType @relation(fields: [priceTypeId], references: [id])
   priceTypeId String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
 
-  @@unique([productId, priceTypeId])
+  // Source Document linking
+  documentPurchase   DocumentPurchase? @relation(fields: [documentPurchaseId], references: [id])
+  documentPurchaseId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, priceTypeId]) // Optimized for finding latest price
 }
 
 // Product
@@ -218,31 +224,49 @@ model DocumentSaleItem {
 }
 
 model DocumentPurchase {
-  id          String                 @id @default(uuid(7))
-  date        DateTime               @default(now())
-  vendor      Vendor?                @relation(fields: [vendorId], references: [id])
-  vendorId    String?
-  store       Store                  @relation(fields: [storeId], references: [id])
-  storeId     String
-  totalAmount Decimal
-  items       DocumentPurchaseItem[]
-  status      DocumentStatus         @default(DRAFT)
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-  movements   StockMovement[]
+  id              String                 @id @default(uuid(7))
+  date            DateTime               @default(now())
+  vendor          Vendor?                @relation(fields: [vendorId], references: [id])
+  vendorId        String?
+  store           Store                  @relation(fields: [storeId], references: [id])
+  storeId         String
+  totalAmount     Decimal
+  items           DocumentPurchaseItem[]
+  status          DocumentStatus         @default(DRAFT)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  movements       StockMovement[]
+  generatedPrices Price[]
 }
 
 model DocumentPurchaseItem {
   id         String           @id @default(uuid(7))
-  purchase   DocumentPurchase @relation(fields: [purchaseId], references: [id])
+  purchase   DocumentPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   purchaseId String
   product    Product          @relation(fields: [productId], references: [id])
   productId  String
   quantity   Decimal
   price      Decimal
   total      Decimal
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+
+  newPrices DocumentPurchaseItemPrice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DocumentPurchaseItemPrice {
+  id     String               @id @default(uuid(7))
+  item   DocumentPurchaseItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId String
+
+  priceType   PriceType @relation(fields: [priceTypeId], references: [id])
+  priceTypeId String
+
+  value Decimal
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model DocumentReturn {

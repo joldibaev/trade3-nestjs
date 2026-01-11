@@ -65,12 +65,6 @@ async function main() {
           create: {
             name: productName,
             categoryId,
-            prices: {
-              create: {
-                value: Math.floor(Math.random() * 1000) + 50, // Random price 50-1050
-                priceTypeId: retailPriceType.id,
-              },
-            },
           },
         }),
       );

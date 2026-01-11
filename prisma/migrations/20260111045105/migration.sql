@@ -54,6 +54,7 @@ CREATE TABLE "Price" (
     "value" DECIMAL(65,30) NOT NULL,
     "productId" TEXT NOT NULL,
     "priceTypeId" TEXT NOT NULL,
+    "documentPurchaseId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -194,6 +195,18 @@ CREATE TABLE "DocumentPurchaseItem" (
 );
 
 -- CreateTable
+CREATE TABLE "DocumentPurchaseItemPrice" (
+    "id" TEXT NOT NULL,
+    "itemId" TEXT NOT NULL,
+    "priceTypeId" TEXT NOT NULL,
+    "value" DECIMAL(65,30) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "DocumentPurchaseItemPrice_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "DocumentReturn" (
     "id" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -306,7 +319,7 @@ CREATE UNIQUE INDEX "Cashbox_name_storeId_key" ON "Cashbox"("name", "storeId");
 CREATE UNIQUE INDEX "PriceType_name_key" ON "PriceType"("name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Price_productId_priceTypeId_key" ON "Price"("productId", "priceTypeId");
+CREATE INDEX "Price_productId_priceTypeId_idx" ON "Price"("productId", "priceTypeId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Category_name_key" ON "Category"("name");
@@ -340,6 +353,9 @@ ALTER TABLE "Price" ADD CONSTRAINT "Price_productId_fkey" FOREIGN KEY ("productI
 
 -- AddForeignKey
 ALTER TABLE "Price" ADD CONSTRAINT "Price_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Price" ADD CONSTRAINT "Price_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Category" ADD CONSTRAINT "Category_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Category"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -381,10 +397,16 @@ ALTER TABLE "DocumentPurchase" ADD CONSTRAINT "DocumentPurchase_vendorId_fkey" F
 ALTER TABLE "DocumentPurchase" ADD CONSTRAINT "DocumentPurchase_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentPurchaseItem" ADD CONSTRAINT "DocumentPurchaseItem_purchaseId_fkey" FOREIGN KEY ("purchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "DocumentPurchaseItem" ADD CONSTRAINT "DocumentPurchaseItem_purchaseId_fkey" FOREIGN KEY ("purchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DocumentPurchaseItem" ADD CONSTRAINT "DocumentPurchaseItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DocumentPurchaseItemPrice" ADD CONSTRAINT "DocumentPurchaseItemPrice_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "DocumentPurchaseItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DocumentPurchaseItemPrice" ADD CONSTRAINT "DocumentPurchaseItemPrice_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DocumentReturn" ADD CONSTRAINT "DocumentReturn_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
