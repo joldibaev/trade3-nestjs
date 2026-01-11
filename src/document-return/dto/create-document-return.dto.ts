@@ -21,12 +21,14 @@ class CreateDocumentReturnItemDto {
   @ApiProperty({ example: 5 })
   @IsNumber()
   @IsPositive()
+  @Type(() => Number)
   quantity: number;
 
   @ApiProperty({ example: 15000, required: false })
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Type(() => Number)
   price?: number;
 }
 

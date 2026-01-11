@@ -17,6 +17,7 @@ export class UpdateProductPriceDto {
 
   @ApiProperty({ example: 15000 })
   @IsNumber()
+  @Type(() => Number)
   value: number;
 }
 
@@ -28,11 +29,13 @@ export class CreateDocumentPurchaseItemDto {
   @ApiProperty({ example: 100 })
   @IsNumber()
   @IsPositive()
+  @Type(() => Number)
   quantity: number;
 
   @ApiProperty({ example: 12000, description: 'Cost price per unit' })
   @IsNumber()
   @Min(0)
+  @Type(() => Number)
   price: number; // Cost price is mandatory for Purchase
 
   @ApiProperty({

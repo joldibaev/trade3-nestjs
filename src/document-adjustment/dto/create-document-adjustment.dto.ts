@@ -21,6 +21,7 @@ class CreateDocumentAdjustmentItemDto {
     description: 'Positive to add, negative to remove',
   })
   @IsNumber()
+  @Type(() => Number)
   quantity: number;
 }
 

@@ -20,6 +20,7 @@ class CreateDocumentTransferItemDto {
   @ApiProperty({ example: 5 })
   @IsNumber()
   @IsPositive()
+  @Type(() => Number)
   quantity: number;
 }
 
