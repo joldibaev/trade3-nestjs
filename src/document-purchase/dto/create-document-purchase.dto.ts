@@ -1,15 +1,12 @@
 import {
   IsArray,
   IsDateString,
-  IsEnum,
   IsNumber,
-  IsOptional,
-  IsString,
-  ValidateNested,
   IsPositive,
+  IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
-import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -48,13 +45,11 @@ export class CreateDocumentPurchaseItemDto {
         value: { type: 'number' },
       },
     },
-    required: false,
   })
   @IsArray()
-  @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => UpdateProductPriceDto)
-  newPrices?: UpdateProductPriceDto[];
+  newPrices: UpdateProductPriceDto[];
 }
 
 export class CreateDocumentPurchaseDto {
@@ -62,24 +57,13 @@ export class CreateDocumentPurchaseDto {
   @IsString()
   storeId: string;
 
-  @ApiProperty({ example: 'uuid-vendor-id', required: false })
+  @ApiProperty({ example: 'uuid-vendor-id' })
   @IsString()
-  @IsOptional()
-  vendorId?: string;
+  vendorId: string;
 
-  @ApiProperty({ example: '2023-10-25T12:00:00Z', required: false })
+  @ApiProperty({ example: '2023-10-25T12:00:00Z' })
   @IsDateString()
-  @IsOptional()
-  date?: string;
-
-  @ApiProperty({
-    enum: DocumentStatus,
-    required: false,
-    default: DocumentStatus.COMPLETED,
-  })
-  @IsEnum(DocumentStatus)
-  @IsOptional()
-  status?: DocumentStatus;
+  date: string;
 
   @ApiProperty({ type: [CreateDocumentPurchaseItemDto] })
   @IsArray()

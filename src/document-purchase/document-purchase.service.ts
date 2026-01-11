@@ -11,7 +11,7 @@ interface PreparedPurchaseItem {
   productId: string;
   quantity: Decimal;
   price: Decimal;
-  newPrices?: { priceTypeId: string; value: number }[];
+  newPrices: { priceTypeId: string; value: number }[];
 }
 
 interface PurchaseContext {
@@ -30,9 +30,9 @@ export class DocumentPurchaseService {
   ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
-    const { storeId, vendorId, date, status, items } = createDocumentPurchaseDto;
+    const { storeId, vendorId, date, items } = createDocumentPurchaseDto;
 
-    const targetStatus = status || 'COMPLETED';
+    const targetStatus = 'DRAFT';
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -66,11 +66,11 @@ export class DocumentPurchaseService {
     return this.prisma.$transaction(
       async (tx) => {
         // Create DocumentPurchase
-        const purchase = await tx.documentPurchase.create({
+        return tx.documentPurchase.create({
           data: {
             storeId,
             vendorId,
-            date: date ? new Date(date) : new Date(),
+            date: new Date(date),
             status: targetStatus,
             totalAmount,
             items: {
@@ -86,11 +86,11 @@ export class DocumentPurchaseService {
         });
 
         // Update Stock if COMPLETED
-        if (targetStatus === 'COMPLETED') {
-          await this.applyInventoryMovements(tx, purchase, preparedItems);
-        }
+        // if (targetStatus === 'COMPLETED') {
+        //   await this.applyInventoryMovements(tx, purchase, preparedItems);
+        // }
 
-        return purchase;
+        // return purchase;
       },
       {
         isolationLevel: 'Serializable',
@@ -337,7 +337,7 @@ export class DocumentPurchaseService {
           data: {
             storeId,
             vendorId,
-            date: date ? new Date(date) : new Date(),
+            date: new Date(date),
             totalAmount,
             items: {
               create: preparedItems.map((i) => ({
