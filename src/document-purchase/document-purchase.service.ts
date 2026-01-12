@@ -32,7 +32,7 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items } = createDocumentPurchaseDto;
@@ -340,10 +340,11 @@ export class DocumentPurchaseService {
                 price: i.price,
                 total: i.total,
                 newPrices: {
-                  create: i.newPrices?.map((np) => ({
-                    priceTypeId: np.priceTypeId,
-                    value: new Decimal(np.value),
-                  })) || [],
+                  create:
+                    i.newPrices?.map((np) => ({
+                      priceTypeId: np.priceTypeId,
+                      value: new Decimal(np.value),
+                    })) || [],
                 },
               })),
             },

@@ -27,8 +27,18 @@ export class ProductController {
   @ApiIncludeQuery(ProductRelations)
   @ApiStandardResponseArray(Product)
   @ApiQuery({ name: 'categoryId', required: false, type: String })
-  findAll(@Query('categoryId') categoryId?: string, @Query('include') include?: string | string[]) {
-    return this.productsService.findAll(categoryId, parseInclude(include));
+  @ApiQuery({
+    name: 'query',
+    required: false,
+    type: String,
+    description: 'Search by name, article or barcode',
+  })
+  findAll(
+    @Query('categoryId') categoryId?: string,
+    @Query('query') query?: string,
+    @Query('include') include?: string | string[],
+  ) {
+    return this.productsService.findAll(categoryId, query, parseInclude(include));
   }
 
   @Get(':id')
