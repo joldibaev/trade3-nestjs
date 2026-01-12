@@ -6,7 +6,7 @@ export class TestHelper {
   constructor(
     private readonly app: INestApplication,
     private readonly prismaService: PrismaService,
-  ) {}
+  ) { }
 
   // ... (previous code)
 
@@ -337,10 +337,11 @@ export class TestHelper {
     return category;
   }
 
-  async createProduct(categoryId: string) {
+  async createProduct(categoryId: string, data?: any) {
     const product = await this.prismaService.product.create({
       data: {
         name: this.uniqueName('Product'),
+        ...data,
         categoryId,
       },
     });

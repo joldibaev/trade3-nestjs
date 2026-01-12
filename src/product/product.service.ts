@@ -13,9 +13,28 @@ export class ProductService {
     });
   }
 
-  findAll(categoryId?: string, include?: Record<string, boolean>) {
+  findAll(categoryId?: string, query?: string, include?: Record<string, boolean>) {
     return this.prisma.product.findMany({
-      where: { categoryId },
+      where: {
+        AND: [
+          categoryId ? { categoryId } : {},
+          query
+            ? {
+                OR: [
+                  { name: { contains: query, mode: 'insensitive' } },
+                  { article: { contains: query, mode: 'insensitive' } },
+                  {
+                    barcodes: {
+                      some: {
+                        value: { contains: query, mode: 'insensitive' },
+                      },
+                    },
+                  },
+                ],
+              }
+            : {},
+        ],
+      },
       orderBy: { createdAt: 'desc' },
       include,
     });
