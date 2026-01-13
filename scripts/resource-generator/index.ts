@@ -330,7 +330,10 @@ export function stripDecorators(content: string): string {
   content = content.replace(/:\s*Decimal/g, ': number');
 
   // Replace any class (exported or not) with export interface for frontend purity
-  content = content.replace(/(?:export\s+)?class (\w+)\s*{/g, 'export interface $1 {');
+  // Supports inheritance: export class A extends B { -> export interface A extends B {
+  content = content.replace(/(?:export\s+)?class (\w+)(?:\s+extends\s+([\w<>]+))?\s*{/g, (_, name, parent) => {
+    return `export interface ${name}${parent ? ` extends ${parent}` : ''} {`;
+  });
 
   // Replace PartialType(X) with Partial<X> and convert class to type alias
   // Matches: export class UpdateUserDto extends PartialType(CreateUserDto) {}
@@ -342,10 +345,15 @@ export function stripDecorators(content: string): string {
   // Replace any remaining PartialType(X) within the file
   content = content.replace(/PartialType\((\w+)\)/g, 'Partial<$1>');
 
-  // Cleanup: Remove multiple consecutive newlines (collapse to single newline)
-  content = content.replace(/\n\s*\n/g, '\n');
+  // Cleanup:
+  // 1. Collapse multiple empty lines (including lines with whitespace) to a single newline
+  // This preserves the indentation of the following line because the match must end with a newline.
+  content = content.replace(/(\r?\n[ \t]*)+\r?\n/g, '\n');
 
-  return content;
+  // 2. Add blank line before top-level exports to separate them from imports or other blocks
+  content = content.replace(/\nexport (interface|type|const|enum|class)/g, '\n\nexport $1');
+
+  return content.trim();
 }
 
 /**

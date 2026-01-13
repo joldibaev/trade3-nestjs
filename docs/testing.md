@@ -17,7 +17,7 @@
 Класс-помощник, инкапсулирующий рутину по настройке окружения.
 
 *   `createStore`, `createProduct`: Создание справочников через Prisma.
-*   `createPurchase`, `createSale`, `createReturn`, ...: Отправка POST-запросов на создание документов. Поддерживает аргументы `status` (DRAFT/COMPLETED/CANCELLED) и ожидаемый код ответа (`expectedStatus`) для негативных тестов.
+*   `createPurchase`: 2-этапное создание (POST header + PATCH items). Для остальных (`createSale`, `createReturn`, etc.) - стандартный POST. Поддерживает аргументы `status` и ожидаемый код.
 *   `completePurchase`, `completeSale`: Отправка PATCH-запросов для смены статуса.
 *   `cleanup`: Каскадное удаление данных.
 

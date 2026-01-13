@@ -42,21 +42,33 @@ describe('Document CRUD (e2e)', () => {
     });
 
     it('should create a DRAFT purchase', async () => {
+      // 1. Create Header
       const res = await request(app.getHttpServer())
         .post('/document-purchases')
         .send({
           storeId,
           vendorId,
           date: new Date(),
-          status: 'DRAFT',
-          items: [{ productId, quantity: 10, price: 100 }],
         })
         .expect(201);
 
       purchaseId = res.body.id;
       expect(res.body.status).toBe('DRAFT');
-      expect(res.body.items).toHaveLength(1);
-      expect(res.body.items[0].quantity).toBe('10');
+      expect(res.body.items).toHaveLength(0);
+
+      // 2. Add Items
+      const updateRes = await request(app.getHttpServer())
+        .patch(`/document-purchases/${purchaseId}`)
+        .send({
+          storeId,
+          vendorId,
+          date: new Date(),
+          items: [{ productId, quantity: 10, price: 100 }],
+        })
+        .expect(200);
+
+      expect(updateRes.body.items).toHaveLength(1);
+      expect(updateRes.body.items[0].quantity).toBe('10');
     });
 
     it('should update DRAFT purchase', async () => {

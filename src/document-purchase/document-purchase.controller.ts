@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, Query } from '@nestj
 import { DocumentPurchaseService } from './document-purchase.service';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
+import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { ApiTags } from '@nestjs/swagger';
 import {
   ApiStandardResponse,
@@ -45,7 +46,7 @@ export class DocumentPurchaseController {
 
   @Patch(':id')
   @ApiStandardResponse(DocumentPurchase)
-  update(@Param('id') id: string, @Body() updateDto: CreateDocumentPurchaseDto) {
+  update(@Param('id') id: string, @Body() updateDto: UpdateDocumentPurchaseDto) {
     return this.documentPurchaseService.update(id, updateDto);
   }
 

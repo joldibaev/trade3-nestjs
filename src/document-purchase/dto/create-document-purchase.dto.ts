@@ -67,10 +67,4 @@ export class CreateDocumentPurchaseDto {
   @ApiProperty({ example: '2023-10-25T12:00:00Z' })
   @IsDateString()
   date: string;
-
-  @ApiProperty({ type: [CreateDocumentPurchaseItemDto] })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateDocumentPurchaseItemDto)
-  items: CreateDocumentPurchaseItemDto[];
 }

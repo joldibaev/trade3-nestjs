@@ -3,6 +3,7 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
+import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { StoreService } from '../store/store.service';
 import { StockMovementService } from '../stock-movement/stock-movement.service';
 import Decimal = Prisma.Decimal;
@@ -32,42 +33,17 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) {}
+  ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
-    const { storeId, vendorId, date, items } = createDocumentPurchaseDto;
+    const { storeId, vendorId, date } = createDocumentPurchaseDto;
 
     const targetStatus = 'DRAFT';
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
-    // 2. Prepare Items
-    const productIds = items.map((i) => i.productId);
-
-    // Optional: Validate products exist
-    const productsCount = await this.prisma.product.count({
-      where: { id: { in: productIds } },
-    });
-    if (productsCount !== productIds.length) {
-      throw new BadRequestException('Some products not found');
-    }
-
-    const preparedItems = items.map((item) => {
-      const quantity = new Decimal(item.quantity);
-      const price = new Decimal(item.price);
-      return {
-        productId: item.productId,
-        quantity,
-        price,
-        total: quantity.mul(price),
-        newPrices: item.newPrices,
-      };
-    });
-
-    const totalAmount = preparedItems.reduce((sum, item) => sum.add(item.total), new Decimal(0));
-
-    // 3. Execute Transaction
+    // 2. Execute Transaction
     return this.prisma.$transaction(
       async (tx) => {
         // Create DocumentPurchase
@@ -77,22 +53,7 @@ export class DocumentPurchaseService {
             vendorId,
             date: new Date(date),
             status: targetStatus,
-            totalAmount,
-            items: {
-              create: preparedItems.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantity,
-                price: i.price,
-                total: i.total,
-                newPrices: {
-                  create:
-                    i.newPrices?.map((np) => ({
-                      priceTypeId: np.priceTypeId,
-                      value: new Decimal(np.value),
-                    })) || [],
-                },
-              })),
-            },
+            totalAmount: new Decimal(0),
           },
           include: { items: true },
         });
@@ -275,7 +236,7 @@ export class DocumentPurchaseService {
     }
   }
 
-  async update(id: string, updateDto: CreateDocumentPurchaseDto) {
+  async update(id: string, updateDto: UpdateDocumentPurchaseDto) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentPurchase.findUniqueOrThrow({

@@ -6,7 +6,7 @@ export class TestHelper {
   constructor(
     private readonly app: INestApplication,
     private readonly prismaService: PrismaService,
-  ) { }
+  ) {}
 
   // ... (previous code)
 
@@ -23,11 +23,30 @@ export class TestHelper {
     const date = new Date();
     date.setHours(10, 0, 0, 0);
 
-    const payload: any = {
+    // 1. Create Header (POST)
+    const createPayload: any = {
       storeId,
       vendorId,
       date: date.toISOString(),
-      status: status,
+    };
+
+    let res = await request(this.app.getHttpServer())
+      .post('/document-purchases')
+      .send(createPayload)
+      .expect(expectedStatus);
+
+    if (expectedStatus !== 201 && expectedStatus !== 200) {
+      return res.body;
+    }
+
+    const purchaseId = res.body.id;
+    this.createdIds.purchases.push(purchaseId);
+
+    // 2. Add Items (PATCH)
+    const updatePayload: any = {
+      storeId,
+      vendorId,
+      date: date.toISOString(),
       items: [
         {
           productId,
@@ -38,30 +57,19 @@ export class TestHelper {
       ],
     };
 
-    let res = await request(this.app.getHttpServer())
-      .post('/document-purchases')
-      .send(payload)
-      .expect(expectedStatus);
+    res = await request(this.app.getHttpServer())
+      .patch(`/document-purchases/${purchaseId}`)
+      .send(updatePayload)
+      .expect(200);
 
-    if (expectedStatus !== 201 && expectedStatus !== 200) {
-      return res.body;
-    }
-
-    let purchaseId = res.body.id;
-
-    // Only PATCH if we created as DRAFT but want COMPLETED (and didn't create as COMPLETED)
-    // But if we passed status=COMPLETED in payload, res.body.status should be COMPLETED.
-    // However, if the API *ignores* status=COMPLETED in create and forces DRAFT, we still need patch.
-    // Let's assume API respects it. If not, we check res.body.status.
-
-    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
+    // 3. Update Status if needed
+    if (status === 'COMPLETED') {
       res = await request(this.app.getHttpServer())
         .patch(`/document-purchases/${purchaseId}/status`)
         .send({ status: 'COMPLETED' })
         .expect(200);
     }
 
-    this.createdIds.purchases.push(purchaseId);
     return res.body;
   }
 

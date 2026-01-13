@@ -47,12 +47,15 @@ describe('Product Search (e2e)', () => {
   describe('GET /products?query=...', () => {
     it('should find product by name', async () => {
       const category = await helper.createCategory();
-      const product = await helper.createProduct(category.id, { name: 'Searchable Product' });
-      await helper.createProduct(category.id, { name: 'Other Product' });
+      const uniqueName = helper.uniqueName('Searchable Product');
+      const product = await helper.createProduct(category.id, { name: uniqueName });
+      await helper.createProduct(category.id, { name: helper.uniqueName('Other Product') });
 
       const res = await request(app.getHttpServer())
         .get('/products')
-        .query({ query: 'Searchable' })
+        .query({ query: uniqueName.split('_')[0] + ' ' + uniqueName.split('_')[2] }) // Search by parts of unique name or just full unique name
+        // actually full unique name is safer
+        .query({ query: uniqueName })
         .expect(200);
 
       expect(res.body).toHaveLength(1);
@@ -61,15 +64,19 @@ describe('Product Search (e2e)', () => {
 
     it('should find product by article', async () => {
       const category = await helper.createCategory();
+      const uniqueArticle = `ART-${Date.now()}`;
       const product = await helper.createProduct(category.id, {
         name: 'Product with Article',
-        article: 'ART-123',
+        article: uniqueArticle,
       });
-      await helper.createProduct(category.id, { name: 'Other Product', article: 'ART-456' });
+      await helper.createProduct(category.id, {
+        name: 'Other Product',
+        article: `ART-${Date.now() + 1}`,
+      });
 
       const res = await request(app.getHttpServer())
         .get('/products')
-        .query({ query: 'ART-123' })
+        .query({ query: uniqueArticle })
         .expect(200);
 
       expect(res.body).toHaveLength(1);
@@ -81,25 +88,22 @@ describe('Product Search (e2e)', () => {
       const product = await helper.createProduct(category.id, { name: 'Product with Barcode' });
       const otherProduct = await helper.createProduct(category.id, { name: 'Other Product' });
 
-      // Add barcode using API or Prisma? Helper probably has a way or we can use API.
-      // Looking at master-catalog.e2e-spec.ts, it uses API /barcodes.
-      // But helper might be faster. checking helper methods involves reading test-helper.ts.
-      // For now, I'll assume I can just use API or maybe I should check helper.
-      // Let's use API to be safe as per master-catalog spec.
+      const uniqueBarcode = `CODE${Date.now()}`;
+      const otherBarcode = `CODE${Date.now() + 1}`;
 
       await request(app.getHttpServer())
         .post('/barcodes')
-        .send({ value: '111222333', productId: product.id })
+        .send({ value: uniqueBarcode, productId: product.id })
         .expect(201);
 
       await request(app.getHttpServer())
         .post('/barcodes')
-        .send({ value: '444555666', productId: otherProduct.id })
+        .send({ value: otherBarcode, productId: otherProduct.id })
         .expect(201);
 
       const res = await request(app.getHttpServer())
         .get('/products')
-        .query({ query: '111222333' })
+        .query({ query: uniqueBarcode })
         .expect(200);
 
       expect(res.body).toHaveLength(1);
@@ -108,11 +112,11 @@ describe('Product Search (e2e)', () => {
 
     it('should return empty list if no matches', async () => {
       const category = await helper.createCategory();
-      await helper.createProduct(category.id, { name: 'Product A' });
+      await helper.createProduct(category.id, { name: helper.uniqueName('Product A') });
 
       const res = await request(app.getHttpServer())
         .get('/products')
-        .query({ query: 'NonExistent' })
+        .query({ query: `NonExistent_${Date.now()}` })
         .expect(200);
 
       expect(res.body).toHaveLength(0);
@@ -120,11 +124,13 @@ describe('Product Search (e2e)', () => {
 
     it('should be case insensitive', async () => {
       const category = await helper.createCategory();
-      const product = await helper.createProduct(category.id, { name: 'MIXED Case Product' });
+      const suffix = Date.now().toString();
+      const mixedCaseName = `MIXED Case Product ${suffix}`;
+      const product = await helper.createProduct(category.id, { name: mixedCaseName });
 
       const res = await request(app.getHttpServer())
         .get('/products')
-        .query({ query: 'mixed' })
+        .query({ query: `mixed case product ${suffix}`.toLowerCase() }) // Search lower case unique string
         .expect(200);
 
       expect(res.body).toHaveLength(1);

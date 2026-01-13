@@ -453,9 +453,10 @@ describe('Resource Generator', () => {
       expect(output).toContain('export interface InternalDto {');
     });
 
-    it('should cleanup extra newlines', () => {
+    it('should cleanup extra newlines but preserve structure', () => {
       const input = `
         export class Test {
+
 
           field: string;
 
@@ -465,8 +466,19 @@ describe('Resource Generator', () => {
         }
       `;
       const output = stripDecorators(input);
-      // Multiple newlines should be collapsed to one
+      // Multiple newlines should be collapsed to max 2 (one blank line)
       expect(output).not.toMatch(/\n\s*\n\s*\n/);
+      expect(output).toBe('export interface Test {\n          field: string;\n          another: number;\n        }');
+    });
+    it('should support class inheritance', () => {
+      const input = `
+        import { CreateTestDto } from './create-test.dto';
+        export class UpdateTestDto extends CreateTestDto {
+          id: string;
+        }
+      `;
+      const output = stripDecorators(input);
+      expect(output).toContain('export interface UpdateTestDto extends CreateTestDto {');
     });
   });
 });
