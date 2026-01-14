@@ -412,10 +412,16 @@ export class DocumentSaleService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string) {
     return this.prisma.documentSale.findUniqueOrThrow({
       where: { id },
-      include,
+      include: {
+        items: true,
+        client: true,
+        store: true,
+        cashbox: true,
+        priceType: true,
+      },
     });
   }
 }

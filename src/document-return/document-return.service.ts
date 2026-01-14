@@ -322,10 +322,14 @@ export class DocumentReturnService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string) {
     return this.prisma.documentReturn.findUniqueOrThrow({
       where: { id },
-      include,
+      include: {
+        items: true,
+        client: true,
+        store: true,
+      },
     });
   }
 }

@@ -32,10 +32,9 @@ export class DocumentPurchaseController {
   }
 
   @Get(':id')
-  @ApiIncludeQuery(DocumentPurchaseRelations)
   @ApiStandardResponse(DocumentPurchase)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.documentPurchaseService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string) {
+    return this.documentPurchaseService.findOne(id);
   }
 
   @Patch(':id/status')

@@ -231,10 +231,13 @@ export class DocumentAdjustmentService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string) {
     return this.prisma.documentAdjustment.findUniqueOrThrow({
       where: { id },
-      include,
+      include: {
+        items: true,
+        store: true,
+      },
     });
   }
 }

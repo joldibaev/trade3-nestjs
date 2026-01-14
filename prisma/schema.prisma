@@ -192,7 +192,7 @@ model Client {
 
 model DocumentSale {
   id          String             @id @default(uuid(7))
-  code        Int                @default(autoincrement()) @unique
+  code        Int                @unique @default(autoincrement())
   date        DateTime           @default(now())
   store       Store              @relation(fields: [storeId], references: [id])
   storeId     String
@@ -226,7 +226,7 @@ model DocumentSaleItem {
 
 model DocumentPurchase {
   id              String                 @id @default(uuid(7))
-  code            Int                    @default(autoincrement()) @unique
+  code            Int                    @unique @default(autoincrement())
   date            DateTime               @default(now())
   vendor          Vendor?                @relation(fields: [vendorId], references: [id])
   vendorId        String?
@@ -273,7 +273,7 @@ model DocumentPurchaseItemPrice {
 
 model DocumentReturn {
   id          String               @id @default(uuid(7))
-  code        Int                  @default(autoincrement()) @unique
+  code        Int                  @unique @default(autoincrement())
   date        DateTime             @default(now())
   store       Store                @relation(fields: [storeId], references: [id])
   storeId     String
@@ -302,7 +302,7 @@ model DocumentReturnItem {
 
 model DocumentAdjustment {
   id        String                   @id @default(uuid(7))
-  code      Int                      @default(autoincrement()) @unique
+  code      Int                      @unique @default(autoincrement())
   date      DateTime                 @default(now())
   store     Store                    @relation(fields: [storeId], references: [id])
   storeId   String
@@ -328,7 +328,7 @@ model DocumentAdjustmentItem {
 
 model DocumentTransfer {
   id                 String                 @id @default(uuid(7))
-  code               Int                    @default(autoincrement()) @unique
+  code               Int                    @unique @default(autoincrement())
   date               DateTime               @default(now())
   sourceStore        Store                  @relation("SourceStore", fields: [sourceStoreId], references: [id])
   sourceStoreId      String

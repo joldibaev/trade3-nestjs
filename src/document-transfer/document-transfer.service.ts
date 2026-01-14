@@ -256,10 +256,14 @@ export class DocumentTransferService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string) {
     return this.prisma.documentTransfer.findUniqueOrThrow({
       where: { id },
-      include,
+      include: {
+        items: true,
+        sourceStore: true,
+        destinationStore: true,
+      },
     });
   }
 }

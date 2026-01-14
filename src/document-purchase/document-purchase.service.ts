@@ -33,7 +33,7 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date } = createDocumentPurchaseDto;
@@ -350,10 +350,17 @@ export class DocumentPurchaseService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string) {
     return this.prisma.documentPurchase.findUniqueOrThrow({
       where: { id },
-      include,
+      include: {
+        items: true,
+        vendor: true,
+        store: true,
+        generatedPrices: {
+          include: { priceType: true },
+        },
+      },
     });
   }
   async applyDelayedProductPriceUpdates(

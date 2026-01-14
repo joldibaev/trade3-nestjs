@@ -31,10 +31,9 @@ export class DocumentSaleController {
   }
 
   @Get(':id')
-  @ApiIncludeQuery(DocumentSaleRelations)
   @ApiStandardResponse(DocumentSale)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.documentSaleService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string) {
+    return this.documentSaleService.findOne(id);
   }
 
   @Patch(':id/status')
