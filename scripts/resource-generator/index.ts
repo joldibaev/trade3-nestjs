@@ -294,8 +294,14 @@ export function generateAllEnumsContent(enums: Enums): string {
 
 /**
  * Strips all decorators and specific imports (swagger, validator, transformer)
+ * AND renames nested DTO classes to prevent conflicts.
+ * sharedRenames: A map to store/retrieve renames across files (e.g. from Create to Update DTO)
  */
-export function stripDecorators(content: string): string {
+export function stripDecorators(
+  content: string,
+  mainModelName?: string,
+  sharedRenames?: Map<string, string>,
+): string {
   // Remove imports
   content = content.replace(/import {[^}]*} from '@nestjs\/swagger';\n?/g, '');
   content = content.replace(/import {[^}]*} from '@nestjs\/mapped-types';\n?/g, '');
@@ -355,6 +361,77 @@ export function stripDecorators(content: string): string {
 
   // 2. Add blank line before top-level exports to separate them from imports or other blocks
   content = content.replace(/\nexport (interface|type|const|enum|class)/g, '\n\nexport $1');
+
+  // RENAME NESTED DTOs logic
+  // If mainModelName is provided, we assume any exported class/interface that ends with 'Dto'
+  // AND is NOT the main DTO (Create<Main>Dto or Update<Main>Dto) should be renamed.
+  if (mainModelName) {
+    const mainCreateDto = `Create${mainModelName}Dto`;
+    // We don't strictly know the update dto name if it's custom, but usually it matches pattern
+    // However, usually we process one file at a time.
+    // Let's protect the "Expected Main DTO" for this file context.
+    // Actually, usually we are processing either Create or Update file.
+
+    // Find all exported interfaces that look like DTOs
+    const interfaceRegex = /export interface (\w+Dto)/g;
+    let match;
+    const interfacesToRename = new Set<string>();
+
+    while ((match = interfaceRegex.exec(content)) !== null) {
+      const interfaceName = match[1];
+      // If it's NOT the main one we expect for this file context...
+      // But we call stripDecorators for both Create and Update files.
+      // Heuristic: If it matches Create{mainModelName}Dto or Update{mainModelName}Dto, keep it.
+      // Everything else -> Rename to ...Input
+      if (
+        interfaceName !== `Create${mainModelName}Dto` &&
+        interfaceName !== `Update${mainModelName}Dto`
+      ) {
+        interfacesToRename.add(interfaceName);
+      }
+    }
+
+    interfacesToRename.forEach((oldName) => {
+      const newName = oldName.replace(/Dto$/, 'Input');
+
+      // Store in shared map
+      if (sharedRenames) {
+        sharedRenames.set(oldName, newName);
+      }
+
+      // 1. Rename definition
+      const defRegex = new RegExp(`export interface ${oldName}\\b`, 'g');
+      content = content.replace(defRegex, `export interface ${newName}`);
+
+      // 2. Rename usages (as type, array, or generic)
+      // Use boundary to avoid replacing substrings
+      const usageRegex = new RegExp(`\\b${oldName}\\b`, 'g');
+      content = content.replace(usageRegex, newName);
+    });
+  }
+
+  // Apply PREVIOUSLY known renames (e.g. from Create DTO when processing Update DTO)
+  if (sharedRenames && sharedRenames.size > 0) {
+    sharedRenames.forEach((newName, oldName) => {
+      // Avoid re-renaming if already handled by the logic above (for definitions in current file)
+      // But for Imports and Usages of types defined in OTHER files (like Create DTO), we must replace.
+
+      // We don't want to break "export interface NewName" if it was just renamed above.
+      // But the map contains Old->New. 
+      // Safe strategy: Replace whole word matches of OldName with NewName everywhere 
+      // EXCEPT if we just renamed it (which handled it).
+
+      // Simpler: Just run replacement. Any usages of OldName should be NewName.
+      // Note: This might overlap with the loop above if the same file re-exports it?
+      // But typically sharedRenames comes from the PREVIOUS file.
+
+      // Check if this OldName is still present
+      if (content.includes(oldName)) {
+        const usageRegex = new RegExp(`\\b${oldName}\\b`, 'g');
+        content = content.replace(usageRegex, newName);
+      }
+    });
+  }
 
   return content.trim();
 }
@@ -543,11 +620,13 @@ function run(): void {
       console.log(`ℹ️ Skipping Backend DTOs for ${model.name} (Custom found)`);
       console.log(`📋 Copying Custom DTOs for ${model.name} to Frontend (Stripping Decorators)`);
 
+      const sharedRenames = new Map<string, string>();
+
       // Copy & Strip Create DTO
       const customCreateContent = fs.readFileSync(customDtoPath, 'utf8');
       fs.writeFileSync(
         path.join(frontendDtoDir, `create-${model.singular}.interface.ts`),
-        stripDecorators(customCreateContent),
+        stripDecorators(customCreateContent, model.name, sharedRenames),
       );
 
       // Try Copy & Strip Update DTO
@@ -563,7 +642,7 @@ function run(): void {
         const customUpdateContent = fs.readFileSync(customUpdateDtoPath, 'utf8');
         fs.writeFileSync(
           path.join(frontendDtoDir, `update-${model.singular}.interface.ts`),
-          stripDecorators(customUpdateContent),
+          stripDecorators(customUpdateContent, model.name, sharedRenames),
         );
       }
     }

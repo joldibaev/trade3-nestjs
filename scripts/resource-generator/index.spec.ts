@@ -482,5 +482,59 @@ describe('Resource Generator', () => {
       const output = stripDecorators(input);
       expect(output).toContain('export interface UpdateTestDto extends CreateTestDto {');
     });
+
+    it('should rename nested helper DTOs to Input when mainModelName is provided', () => {
+      const input = `
+        import { ApiProperty } from '@nestjs/swagger';
+
+        export class CreateNestedItemDto {
+          @ApiProperty()
+          name: string;
+        }
+
+        export class CreateMainDto {
+          @ApiProperty({ type: [CreateNestedItemDto] })
+          items: CreateNestedItemDto[];
+        }
+      `;
+      const output = stripDecorators(input, 'Main');
+
+      // Main DTO should stay as DTO (interface)
+      expect(output).toContain('export interface CreateMainDto {');
+
+      // Nested DTO definition should be renamed to Input
+      expect(output).toContain('export interface CreateNestedItemInput {');
+      expect(output).not.toContain('export interface CreateNestedItemDto {');
+
+      // Usage inside Main DTO should be renamed
+      expect(output).toContain('items: CreateNestedItemInput[];');
+    });
+
+    it('should apply sharedRenames to subsequent calls', () => {
+      const sharedRenames = new Map<string, string>();
+
+      // 1. Process Create DTO - populates sharedRenames
+      const createInput = `
+        export class NestedDto {}
+        export class CreateMainDto {
+          nested: NestedDto;
+        }
+      `;
+      stripDecorators(createInput, 'Main', sharedRenames);
+      expect(sharedRenames.get('NestedDto')).toBe('NestedInput');
+
+      // 2. Process Update DTO - uses sharedRenames
+      const updateInput = `
+        import { NestedDto } from './create-main.dto';
+        export class UpdateMainDto {
+          nested: NestedDto;
+        }
+      `;
+      const output = stripDecorators(updateInput, 'Main', sharedRenames);
+
+      // Should rename usage of NestedDto to NestedInput based on map
+      expect(output).toContain('nested: NestedInput;');
+      expect(output).not.toContain('nested: NestedDto;');
+    });
   });
 });
