@@ -405,9 +405,9 @@ export class DocumentSaleService {
     });
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll() {
     return this.prisma.documentSale.findMany({
-      include,
+      include: { store: true, client: true },
       orderBy: { createdAt: 'desc' },
     });
   }

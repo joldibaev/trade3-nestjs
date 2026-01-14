@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { DocumentSaleService } from './document-sale.service';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -6,11 +6,8 @@ import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-documen
 import {
   ApiStandardResponse,
   ApiStandardResponseArray,
-  ApiIncludeQuery,
 } from '../common/decorators/swagger-response.decorator';
-import { parseInclude } from '../common/utils/prisma-helpers';
 import { DocumentSale } from '../generated/entities/document-sale.entity';
-import { DocumentSaleRelations } from '../generated/relations/document-sale-relations.enum';
 
 @ApiTags('document-sales')
 @Controller('document-sales')
@@ -24,10 +21,9 @@ export class DocumentSaleController {
   }
 
   @Get()
-  @ApiIncludeQuery(DocumentSaleRelations)
   @ApiStandardResponseArray(DocumentSale)
-  findAll(@Query('include') include?: string | string[]) {
-    return this.documentSaleService.findAll(parseInclude(include));
+  findAll() {
+    return this.documentSaleService.findAll();
   }
 
   @Get(':id')

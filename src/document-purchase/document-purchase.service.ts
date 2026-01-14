@@ -331,7 +331,7 @@ export class DocumentPurchaseService {
 
       // Cascade delete is usually handled by DB, but explicit delete is safer if relations are complex
       // Prisma schema should ideally have onDelete: Cascade for items.
-      // Let's assume schema handles it or we delete items explicitly.
+      // Let's assume schema handles it, or we delete items explicitly.
       // Based on typical Prisma setup without explicit relation mode, we delete items first.
       await tx.documentPurchaseItem.deleteMany({
         where: { purchaseId: id },
@@ -343,9 +343,12 @@ export class DocumentPurchaseService {
     });
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll() {
     return this.prisma.documentPurchase.findMany({
-      include,
+      include: {
+        store: true,
+        vendor: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
