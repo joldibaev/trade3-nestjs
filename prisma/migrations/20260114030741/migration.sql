@@ -49,12 +49,24 @@ CREATE TABLE "PriceType" (
 );
 
 -- CreateTable
-CREATE TABLE "Price" (
+CREATE TABLE "PriceHistory" (
     "id" TEXT NOT NULL,
     "value" DECIMAL(65,30) NOT NULL,
     "productId" TEXT NOT NULL,
     "priceTypeId" TEXT NOT NULL,
     "documentPurchaseId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PriceHistory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Price" (
+    "id" TEXT NOT NULL,
+    "value" DECIMAL(65,30) NOT NULL,
+    "productId" TEXT NOT NULL,
+    "priceTypeId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -138,6 +150,7 @@ CREATE TABLE "Client" (
 -- CreateTable
 CREATE TABLE "DocumentSale" (
     "id" TEXT NOT NULL,
+    "code" SERIAL NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "cashboxId" TEXT,
@@ -169,6 +182,7 @@ CREATE TABLE "DocumentSaleItem" (
 -- CreateTable
 CREATE TABLE "DocumentPurchase" (
     "id" TEXT NOT NULL,
+    "code" SERIAL NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "vendorId" TEXT,
     "storeId" TEXT NOT NULL,
@@ -209,6 +223,7 @@ CREATE TABLE "DocumentPurchaseItemPrice" (
 -- CreateTable
 CREATE TABLE "DocumentReturn" (
     "id" TEXT NOT NULL,
+    "code" SERIAL NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "clientId" TEXT,
@@ -237,6 +252,7 @@ CREATE TABLE "DocumentReturnItem" (
 -- CreateTable
 CREATE TABLE "DocumentAdjustment" (
     "id" TEXT NOT NULL,
+    "code" SERIAL NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
@@ -263,6 +279,7 @@ CREATE TABLE "DocumentAdjustmentItem" (
 -- CreateTable
 CREATE TABLE "DocumentTransfer" (
     "id" TEXT NOT NULL,
+    "code" SERIAL NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "sourceStoreId" TEXT NOT NULL,
     "destinationStoreId" TEXT NOT NULL,
@@ -319,7 +336,10 @@ CREATE UNIQUE INDEX "Cashbox_name_storeId_key" ON "Cashbox"("name", "storeId");
 CREATE UNIQUE INDEX "PriceType_name_key" ON "PriceType"("name");
 
 -- CreateIndex
-CREATE INDEX "Price_productId_priceTypeId_idx" ON "Price"("productId", "priceTypeId");
+CREATE INDEX "PriceHistory_productId_priceTypeId_idx" ON "PriceHistory"("productId", "priceTypeId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Price_productId_priceTypeId_key" ON "Price"("productId", "priceTypeId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Category_name_key" ON "Category"("name");
@@ -340,6 +360,21 @@ CREATE UNIQUE INDEX "Vendor_name_key" ON "Vendor"("name");
 CREATE UNIQUE INDEX "Client_name_key" ON "Client"("name");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "DocumentSale_code_key" ON "DocumentSale"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "DocumentPurchase_code_key" ON "DocumentPurchase"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "DocumentReturn_code_key" ON "DocumentReturn"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "DocumentAdjustment_code_key" ON "DocumentAdjustment"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "DocumentTransfer_code_key" ON "DocumentTransfer"("code");
+
+-- CreateIndex
 CREATE INDEX "StockMovement_storeId_productId_idx" ON "StockMovement"("storeId", "productId");
 
 -- CreateIndex
@@ -349,13 +384,19 @@ CREATE INDEX "StockMovement_date_idx" ON "StockMovement"("date");
 ALTER TABLE "Cashbox" ADD CONSTRAINT "Cashbox_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Price" ADD CONSTRAINT "Price_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Price" ADD CONSTRAINT "Price_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Price" ADD CONSTRAINT "Price_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Category" ADD CONSTRAINT "Category_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Category"("id") ON DELETE CASCADE ON UPDATE CASCADE;

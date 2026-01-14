@@ -354,15 +354,15 @@ export class DocumentPurchaseService {
     return this.prisma.documentPurchase.findUniqueOrThrow({
       where: { id },
       include: {
-        items: true,
+        items: {
+          include: { product: true, newPrices: true },
+        },
         vendor: true,
         store: true,
-        generatedPrices: {
-          include: { priceType: true },
-        },
       },
     });
   }
+
   async applyDelayedProductPriceUpdates(
     tx: Prisma.TransactionClient,
     documentId: string,
@@ -373,13 +373,31 @@ export class DocumentPurchaseService {
     for (const item of items) {
       if (item.newPrices && item.newPrices.length > 0) {
         for (const priceUpdate of item.newPrices) {
-          // Create NEW Price record for history
-          await tx.price.create({
+          // 1. Create History Record (Audit)
+          await tx.priceHistory.create({
             data: {
               productId: item.productId,
               priceTypeId: priceUpdate.priceTypeId,
               value: priceUpdate.value,
               documentPurchaseId: documentId,
+            },
+          });
+
+          // 2. Update Current Price (Showcase)
+          await tx.price.upsert({
+            where: {
+              productId_priceTypeId: {
+                productId: item.productId,
+                priceTypeId: priceUpdate.priceTypeId,
+              },
+            },
+            create: {
+              productId: item.productId,
+              priceTypeId: priceUpdate.priceTypeId,
+              value: priceUpdate.value,
+            },
+            update: {
+              value: priceUpdate.value,
             },
           });
         }

@@ -8,8 +8,18 @@ export class PriceService {
   constructor(private readonly prisma: PrismaService) {}
 
   create(createPriceDto: CreatePriceDto) {
-    return this.prisma.price.create({
-      data: createPriceDto,
+    // Upsert to handle unique constraint (update if exists)
+    return this.prisma.price.upsert({
+      where: {
+        productId_priceTypeId: {
+          productId: createPriceDto.productId,
+          priceTypeId: createPriceDto.priceTypeId,
+        },
+      },
+      create: createPriceDto,
+      update: {
+        value: createPriceDto.value,
+      },
     });
   }
 

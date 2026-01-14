@@ -6,7 +6,7 @@ export class TestHelper {
   constructor(
     private readonly app: INestApplication,
     private readonly prismaService: PrismaService,
-  ) {}
+  ) { }
 
   // ... (previous code)
 
@@ -238,6 +238,9 @@ export class TestHelper {
         where: { productId: { in: this.createdIds.products } },
       });
       await this.prismaService.price.deleteMany({
+        where: { productId: { in: this.createdIds.products } },
+      });
+      await this.prismaService.priceHistory.deleteMany({
         where: { productId: { in: this.createdIds.products } },
       });
       await this.prismaService.barcode.deleteMany({

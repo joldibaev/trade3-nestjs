@@ -108,6 +108,13 @@ describe('Document Purchase (e2e)', () => {
 
     expect(splitRetail?.value.toString()).toBe('1500');
     expect(splitWholesale?.value.toString()).toBe('1200');
+
+    // Verify Price History Created
+    const priceHistory = await app.get(PrismaService).priceHistory.findMany({
+      where: { productId: product.id },
+    });
+    expect(priceHistory.length).toBe(2);
+    expect(priceHistory.find((p) => p.priceTypeId === retail.id)?.value.toString()).toBe('1500');
   });
 
   it('should not update stock if DRAFT and update when completed', async () => {
