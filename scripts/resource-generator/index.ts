@@ -331,9 +331,12 @@ export function stripDecorators(content: string): string {
 
   // Replace any class (exported or not) with export interface for frontend purity
   // Supports inheritance: export class A extends B { -> export interface A extends B {
-  content = content.replace(/(?:export\s+)?class (\w+)(?:\s+extends\s+([\w<>]+))?\s*{/g, (_, name, parent) => {
-    return `export interface ${name}${parent ? ` extends ${parent}` : ''} {`;
-  });
+  content = content.replace(
+    /(?:export\s+)?class (\w+)(?:\s+extends\s+([\w<>]+))?\s*{/g,
+    (_, name, parent) => {
+      return `export interface ${name}${parent ? ` extends ${parent}` : ''} {`;
+    },
+  );
 
   // Replace PartialType(X) with Partial<X> and convert class to type alias
   // Matches: export class UpdateUserDto extends PartialType(CreateUserDto) {}

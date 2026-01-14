@@ -468,7 +468,9 @@ describe('Resource Generator', () => {
       const output = stripDecorators(input);
       // Multiple newlines should be collapsed to max 2 (one blank line)
       expect(output).not.toMatch(/\n\s*\n\s*\n/);
-      expect(output).toBe('export interface Test {\n          field: string;\n          another: number;\n        }');
+      expect(output).toBe(
+        'export interface Test {\n          field: string;\n          another: number;\n        }',
+      );
     });
     it('should support class inheritance', () => {
       const input = `
