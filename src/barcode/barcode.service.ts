@@ -32,10 +32,9 @@ export class BarcodeService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string) {
     return this.prisma.barcode.findUniqueOrThrow({
       where: { id },
-      include,
     });
   }
 

@@ -40,10 +40,16 @@ export class ProductService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string) {
     return this.prisma.product.findUniqueOrThrow({
       where: { id },
-      include,
+      include: {
+        category: true,
+        prices: true,
+        stocks: true,
+        priceHistory: true,
+        barcodes: true,
+      },
     });
   }
 

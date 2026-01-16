@@ -21,10 +21,9 @@ export class CashboxService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string) {
     return this.prisma.cashbox.findUniqueOrThrow({
       where: { id },
-      include,
     });
   }
 
