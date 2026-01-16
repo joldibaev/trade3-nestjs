@@ -104,7 +104,9 @@ export function mapType(prismaType: string, target: 'backend' | 'frontend' = 'ba
  * Generates an interface file content (no swagger decorators)
  */
 export function generateInterfaceContent(model: Model, allModels: Models): string {
-  const relevantFields = model.fields.filter((f) => f.isEnum || (f.isRelation && allModels[f.type]));
+  const relevantFields = model.fields.filter(
+    (f) => f.isEnum || (f.isRelation && allModels[f.type]),
+  );
   const importLines = new Set<string>();
 
   relevantFields.forEach((f) => {

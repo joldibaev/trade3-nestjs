@@ -44,6 +44,6 @@ export class StoreService {
     const store = await this.prisma.store.findUnique({
       where: { id: storeId },
     });
-    if (!store) throw new NotFoundException('Store not found');
+    if (!store) throw new NotFoundException('Магазин не найден');
   }
 }

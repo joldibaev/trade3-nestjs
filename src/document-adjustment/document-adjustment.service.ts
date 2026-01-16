@@ -115,7 +115,7 @@ export class DocumentAdjustmentService {
 
         if (newStatus === 'COMPLETED') {
           if (doc.status !== 'DRAFT') {
-            throw new BadRequestException('Only DRAFT documents can be completed');
+            throw new BadRequestException('Только черновики могут быть проведены');
           }
 
           const productIds = doc.items.map((i) => i.productId);
@@ -161,7 +161,7 @@ export class DocumentAdjustmentService {
         }
 
         throw new BadRequestException(
-          'Only COMPLETED status transition is currently supported for Adjustments',
+          "Поддерживается только переход в статус 'Выполнено' (COMPLETED)",
         );
       },
       {

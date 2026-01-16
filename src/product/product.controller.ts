@@ -35,9 +35,8 @@ export class ProductController {
   }
 
   @Get(':id')
-  @ApiIncludeQuery(ProductRelations)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.productsService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string) {
+    return this.productsService.findOne(id);
   }
 
   @Patch(':id')

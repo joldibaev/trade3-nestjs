@@ -24,9 +24,8 @@ export class PriceController {
   }
 
   @Get(':id')
-  @ApiIncludeQuery(PriceRelations)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.priceService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string) {
+    return this.priceService.findOne(id);
   }
 
   @Patch(':id')

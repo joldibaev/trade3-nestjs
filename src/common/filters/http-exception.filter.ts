@@ -21,8 +21,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-    let title = 'Internal Server Error';
-    let message: string | object = 'An unexpected error occurred';
+    let title = 'Внутренняя ошибка сервера';
+    let message: string | object = 'Произошла непредвиденная ошибка';
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       const prismaError = this.handlePrismaError(exception);
@@ -78,18 +78,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
   private handleP2002(exception: Prisma.PrismaClientKnownRequestError) {
     const status = HttpStatus.CONFLICT;
     const target = exception.meta?.target;
-    let message = 'Unique constraint failed';
+    let message = 'Нарушение уникальности';
 
     if (Array.isArray(target) && target.length > 0) {
-      message = `Unique constraint failed on the fields: (${target.join(', ')})`;
+      message = `Нарушение уникальности полей: (${target.join(', ')})`;
     } else if (typeof target === 'string') {
-      message = `Unique constraint failed on the field: ${target}`;
+      message = `Нарушение уникальности поля: ${target}`;
     }
 
     return {
       statusCode: status,
       message,
-      error: 'Conflict',
+      error: 'Конфликт',
     };
   }
 
@@ -97,8 +97,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status = HttpStatus.NOT_FOUND;
     return {
       statusCode: status,
-      message: 'Record not found or invalid ID format',
-      error: 'Not Found',
+      message: 'Запись не найдена или неверный формат ID',
+      error: 'Не найдено',
     };
   }
 }

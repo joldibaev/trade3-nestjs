@@ -60,7 +60,7 @@ export class DocumentSaleService {
     for (const item of items) {
       const product = productsMap.get(item.productId);
       if (!product) {
-        throw new NotFoundException(`Product ${item.productId} not found`);
+        throw new NotFoundException(`Товар ${item.productId} не найден`);
       }
 
       let finalPrice = new Decimal(item.price ?? 0);
@@ -115,7 +115,7 @@ export class DocumentSaleService {
           if (targetStatus === 'COMPLETED') {
             if (currentQty.lessThan(item.quantity)) {
               throw new BadRequestException(
-                `Insufficient stock for product ${item.productId}. Available: ${currentQty.toString()}, Requested: ${item.quantity.toString()}`,
+                `Недостаточно остатка для товара ${item.productId}. Доступно: ${currentQty.toString()}, Запрошено: ${item.quantity.toString()}`,
               );
             }
           }
@@ -174,7 +174,7 @@ export class DocumentSaleService {
         }
 
         if (oldStatus === 'CANCELLED') {
-          throw new BadRequestException('Cannot change status of CANCELLED document');
+          throw new BadRequestException('Нельзя изменить статус отмененного документа');
         }
 
         const items = sale.items.map((i) => ({
@@ -268,7 +268,7 @@ export class DocumentSaleService {
         const available = currentStock ? currentStock.quantity : 0;
 
         throw new BadRequestException(
-          `Insufficient stock for product ${item.productId}. Available: ${available.toString()}, Requested: ${item.quantity.toString()}`,
+          `Недостаточно остатка для товара ${item.productId}. Доступно: ${available.toString()}, Запрошено: ${item.quantity.toString()}`,
         );
       }
 
@@ -302,7 +302,7 @@ export class DocumentSaleService {
         });
 
         if (sale.status !== 'DRAFT') {
-          throw new BadRequestException('Only DRAFT documents can be updated');
+          throw new BadRequestException('Только черновики могут быть изменены');
         }
 
         const { storeId, cashboxId, clientId, date, priceTypeId, items } = updateDto;
@@ -327,7 +327,7 @@ export class DocumentSaleService {
         for (const item of items) {
           const product = productsMap.get(item.productId);
           if (!product) {
-            throw new NotFoundException(`Product ${item.productId} not found`);
+            throw new NotFoundException(`Товар ${item.productId} не найден`);
           }
 
           let finalPrice = new Decimal(item.price ?? 0);
@@ -392,7 +392,7 @@ export class DocumentSaleService {
       });
 
       if (sale.status !== 'DRAFT') {
-        throw new BadRequestException('Only DRAFT documents can be deleted');
+        throw new BadRequestException('Только черновики могут быть удалены');
       }
 
       await tx.documentSaleItem.deleteMany({

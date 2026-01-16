@@ -25,9 +25,8 @@ export class CashboxController {
   }
 
   @Get(':id')
-  @ApiIncludeQuery(CashboxRelations)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.cashboxesService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string) {
+    return this.cashboxesService.findOne(id);
   }
 
   @Patch(':id')

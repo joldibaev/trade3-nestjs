@@ -112,7 +112,7 @@ export class DocumentReturnService {
         }
 
         if (oldStatus === 'CANCELLED') {
-          throw new BadRequestException('Cannot change status of CANCELLED document');
+          throw new BadRequestException('Нельзя изменить статус отмененного документа');
         }
 
         const productIds = doc.items.map((i) => i.productId);
@@ -175,7 +175,7 @@ export class DocumentReturnService {
 
       if (currentQty.lessThan(item.quantity)) {
         throw new BadRequestException(
-          `Insufficient stock for product ${item.productId} to revert return (items were already sold/moved)`,
+          `Недостаточно остатка товара ${item.productId} для отмены возврата (товар уже продан или перемещен)`,
         );
       }
     }
@@ -238,7 +238,7 @@ export class DocumentReturnService {
         });
 
         if (doc.status !== 'DRAFT') {
-          throw new BadRequestException('Only DRAFT documents can be updated');
+          throw new BadRequestException('Только черновики могут быть изменены');
         }
 
         const { storeId, clientId, date, items } = updateDto;
@@ -302,7 +302,7 @@ export class DocumentReturnService {
       });
 
       if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Only DRAFT documents can be deleted');
+        throw new BadRequestException('Только черновики могут быть удалены');
       }
 
       await tx.documentReturnItem.deleteMany({

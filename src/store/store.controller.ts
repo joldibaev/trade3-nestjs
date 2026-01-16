@@ -24,9 +24,8 @@ export class StoreController {
   }
 
   @Get(':id')
-  @ApiIncludeQuery(StoreRelations)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.storesService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string) {
+    return this.storesService.findOne(id);
   }
 
   @Patch(':id')

@@ -33,7 +33,7 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date } = createDocumentPurchaseDto;
@@ -53,9 +53,7 @@ export class DocumentPurchaseService {
             vendorId,
             date: new Date(date),
             status: targetStatus,
-            totalAmount: new Decimal(0),
           },
-          include: { items: true },
         });
       },
       {
@@ -86,7 +84,7 @@ export class DocumentPurchaseService {
 
         // Prevent modifying CANCELLED documents (unless business logic allows revival, but usually not)
         if (oldStatus === 'CANCELLED') {
-          throw new BadRequestException('Cannot change status of CANCELLED document');
+          throw new BadRequestException('Нельзя изменить статус отмененного документа');
         }
 
         // Prepare items
@@ -124,9 +122,9 @@ export class DocumentPurchaseService {
           // We must reprocess starting from the date of the purchase
           // Note: InventoryService will pick up the new "Revert" movement (created above with purchase.date)
           // and re-calculate everything chronologically.
-          itemsToReprocess = purchase.items.map(item => ({
+          itemsToReprocess = purchase.items.map((item) => ({
             productId: item.productId,
-            date: purchase.date
+            date: purchase.date,
           }));
         }
 
@@ -149,7 +147,7 @@ export class DocumentPurchaseService {
         await this.inventoryService.reprocessProductHistory(
           updatedPurchase.storeId,
           item.productId,
-          item.date
+          item.date,
         );
       }
     }
@@ -175,7 +173,7 @@ export class DocumentPurchaseService {
       // 1. Quantity Check
       if (currentQty.lessThan(item.quantity)) {
         throw new BadRequestException(
-          `Insufficient stock for product ${item.productId} to revert purchase`,
+          `Недостаточно остатка товара ${item.productId} для отмены закупки`,
         );
       }
 
@@ -188,7 +186,7 @@ export class DocumentPurchaseService {
 
       if (currentTotalValue.lessThan(revertTotalValue)) {
         throw new BadRequestException(
-          `Cannot revert purchase for product ${item.productId}: remaining stock value would be negative. Use Adjustment or Return instead.`,
+          `Нельзя отменить закупку товара ${item.productId}: остаточная стоимость станет отрицательной. Используйте Корректировку или Возврат.`,
         );
       }
     }
@@ -270,7 +268,7 @@ export class DocumentPurchaseService {
         });
 
         if (doc.status !== 'DRAFT') {
-          throw new BadRequestException('Only DRAFT documents can be updated');
+          throw new BadRequestException('Только черновики могут быть изменены');
         }
 
         const { storeId, vendorId, date, items } = updateDto;
@@ -283,7 +281,7 @@ export class DocumentPurchaseService {
           where: { id: { in: productIds } },
         });
         if (productsCount !== productIds.length) {
-          throw new BadRequestException('Some products not found');
+          throw new BadRequestException('Некоторые товары не найдены');
         }
 
         const preparedItems = items.map((item) => {
@@ -298,10 +296,7 @@ export class DocumentPurchaseService {
           };
         });
 
-        const totalAmount = preparedItems.reduce(
-          (sum, item) => sum.add(item.total),
-          new Decimal(0),
-        );
+        const total = preparedItems.reduce((sum, item) => sum.add(item.total), new Decimal(0));
 
         // Apply Price Updates Immediately - REVERTED per user request
         // await this.applyProductPriceUpdates(tx, preparedItems);
@@ -318,7 +313,7 @@ export class DocumentPurchaseService {
             storeId,
             vendorId,
             date: new Date(date),
-            totalAmount,
+            total,
             items: {
               create: preparedItems.map((i) => ({
                 productId: i.productId,
@@ -351,7 +346,7 @@ export class DocumentPurchaseService {
       });
 
       if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Only DRAFT documents can be deleted');
+        throw new BadRequestException('Только черновики могут быть удалены');
       }
 
       // Cascade delete is usually handled by DB, but explicit delete is safer if relations are complex

@@ -31,9 +31,8 @@ export class CategoryController {
   }
 
   @Get(':id')
-  @ApiIncludeQuery(CategoryRelations)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.categoriesService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string) {
+    return this.categoriesService.findOne(id);
   }
 
   @Patch(':id')

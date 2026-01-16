@@ -139,10 +139,9 @@ export class InventoryService {
 
         currentQty = currentQty.add(qtyChange);
       } else {
-
-      /*
-       * CASE 2: OUTGOING (Sale, TransferOut, Adjustment-, Return?)
-       */
+        /*
+         * CASE 2: OUTGOING (Sale, TransferOut, Adjustment-, Return?)
+         */
         // SPECIAL CASE: Negative PURCHASE (Revert/Cancellation)
         // If we are reverting a purchase, we must REMOVE its weighted value contribution.
         if (move.type === 'PURCHASE' && move.documentPurchase) {

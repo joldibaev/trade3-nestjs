@@ -18,14 +18,14 @@ export class BarcodeController {
   }
 
   @Get()
+  @ApiIncludeQuery(BarcodeRelations)
   findAll(@Query('include') include?: string | string[]) {
     return this.barcodeService.findAll(parseInclude(include));
   }
 
   @Get(':id')
-  @ApiIncludeQuery(BarcodeRelations)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.barcodeService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string) {
+    return this.barcodeService.findOne(id);
   }
 
   @Patch(':id')

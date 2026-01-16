@@ -34,17 +34,17 @@ export class DocumentTransferService {
     const targetStatus = status || 'COMPLETED';
 
     if (sourceStoreId === destinationStoreId) {
-      throw new BadRequestException('Source and Destination stores must be different');
+      throw new BadRequestException('Склад отправителя и получателя должны отличаться');
     }
 
     // 1. Validate Stores
     // Use concurrent validation
     await Promise.all([
       this.storeService.validateStore(sourceStoreId).catch(() => {
-        throw new NotFoundException('Source Store not found');
+        throw new NotFoundException('Склад отправителя не найден');
       }),
       this.storeService.validateStore(destinationStoreId).catch(() => {
-        throw new NotFoundException('Destination Store not found');
+        throw new NotFoundException('Склад получателя не найден');
       }),
     ]);
 
@@ -99,7 +99,7 @@ export class DocumentTransferService {
 
         if (newStatus === 'COMPLETED') {
           if (doc.status !== 'DRAFT') {
-            throw new BadRequestException('Only DRAFT documents can be completed');
+            throw new BadRequestException('Только черновики могут быть проведены');
           }
 
           const items = doc.items.map((i) => ({
@@ -117,7 +117,7 @@ export class DocumentTransferService {
         }
 
         throw new BadRequestException(
-          'Only COMPLETED status transition is currently supported for Transfers',
+          "Поддерживается только переход в статус 'Выполнено' (COMPLETED)",
         );
       },
       {
@@ -159,7 +159,7 @@ export class DocumentTransferService {
       // Validate Stock Availability
       if (sourceQty.lessThan(item.quantity)) {
         throw new BadRequestException(
-          `Insufficient stock for product ${item.productId} in source store`,
+          `Недостаточно остатка товара ${item.productId} на складе отправителя`,
         );
       }
 
