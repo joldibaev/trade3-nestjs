@@ -8,7 +8,9 @@
 2.  **Dual Generation**: Generates resources for both Backend (NestJS) and Frontend (clean TypeScript).
 3.  **Frontend Purity**:
     - **Clean DTOs**: Automatically stripped of all decorators (Swagger, `class-validator`, etc.) and external dependencies.
-    - **Decimal to Number**: Automatically converts Prisma `Decimal` type to standard TypeScript `number` for frontend compatibility.
+    - **Type Conversions**:
+      - **Decimal to Number**: Automatically converts Prisma `Decimal` to standard TypeScript `number`.
+      - **Date to String**: Automatically converts `DateTime`/`Date` to `string` for generic frontend use.
     - **Import Normalization**: Cleanly redirects all Enum imports to a centralized frontend constants file.
 4.  **Custom Overrides**: If a custom DTO exists in `src/<module>/dto/`, the script skips backend generation and copies/cleans the custom DTO for the frontend.
 5.  **Centralized Enums**: Generates `src/generated/frontend/constants.ts` with all enums defined as `const` objects and types.
@@ -22,8 +24,8 @@ The script generates files in `src/generated/`:
 - `relations/`: Centralized relation enums for backend use.
 - `frontend/`: Clean resources for client-side use:
   - `constants.ts`: Centralized enums (value-objects and types).
-  - `entities/`: Model interfaces (referencing common constants).
-  - `dtos/`: Clean DTO classes (stripped of decorators, using `number` types).
+  - `entities/`: Flat directory with model interfaces.
+  - `dtos/`: Model-specific subfolders with clean DTO interfaces.
 
 ## Usage
 

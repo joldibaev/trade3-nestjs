@@ -51,7 +51,7 @@ CREATE TABLE "PriceType" (
 -- CreateTable
 CREATE TABLE "PriceHistory" (
     "id" TEXT NOT NULL,
-    "value" DECIMAL(65,30) NOT NULL,
+    "value" DECIMAL(12,2) NOT NULL,
     "productId" TEXT NOT NULL,
     "priceTypeId" TEXT NOT NULL,
     "documentPurchaseId" TEXT,
@@ -64,7 +64,7 @@ CREATE TABLE "PriceHistory" (
 -- CreateTable
 CREATE TABLE "Price" (
     "id" TEXT NOT NULL,
-    "value" DECIMAL(65,30) NOT NULL,
+    "value" DECIMAL(12,2) NOT NULL,
     "productId" TEXT NOT NULL,
     "priceTypeId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -87,8 +87,8 @@ CREATE TABLE "Category" (
 -- CreateTable
 CREATE TABLE "Stock" (
     "id" TEXT NOT NULL,
-    "quantity" DECIMAL(65,30) NOT NULL DEFAULT 0,
-    "averagePurchasePrice" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "quantity" DECIMAL(12,3) NOT NULL DEFAULT 0,
+    "averagePurchasePrice" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "productId" TEXT NOT NULL,
     "storeId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -155,7 +155,7 @@ CREATE TABLE "DocumentSale" (
     "storeId" TEXT NOT NULL,
     "cashboxId" TEXT,
     "clientId" TEXT,
-    "totalAmount" DECIMAL(65,30) NOT NULL,
+    "totalAmount" DECIMAL(12,2) NOT NULL,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
     "priceTypeId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -169,10 +169,10 @@ CREATE TABLE "DocumentSaleItem" (
     "id" TEXT NOT NULL,
     "saleId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
-    "quantity" DECIMAL(65,30) NOT NULL,
-    "price" DECIMAL(65,30) NOT NULL,
-    "costPrice" DECIMAL(65,30) NOT NULL DEFAULT 0,
-    "total" DECIMAL(65,30) NOT NULL,
+    "quantity" DECIMAL(12,3) NOT NULL,
+    "price" DECIMAL(12,2) NOT NULL,
+    "costPrice" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "total" DECIMAL(12,2) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -186,7 +186,7 @@ CREATE TABLE "DocumentPurchase" (
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "vendorId" TEXT,
     "storeId" TEXT NOT NULL,
-    "totalAmount" DECIMAL(65,30) NOT NULL,
+    "totalAmount" DECIMAL(12,2) NOT NULL,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -199,9 +199,9 @@ CREATE TABLE "DocumentPurchaseItem" (
     "id" TEXT NOT NULL,
     "purchaseId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
-    "quantity" DECIMAL(65,30) NOT NULL,
-    "price" DECIMAL(65,30) NOT NULL,
-    "total" DECIMAL(65,30) NOT NULL,
+    "quantity" DECIMAL(12,3) NOT NULL,
+    "price" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -213,7 +213,7 @@ CREATE TABLE "DocumentPurchaseItemPrice" (
     "id" TEXT NOT NULL,
     "itemId" TEXT NOT NULL,
     "priceTypeId" TEXT NOT NULL,
-    "value" DECIMAL(65,30) NOT NULL,
+    "value" DECIMAL(12,2) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -227,7 +227,7 @@ CREATE TABLE "DocumentReturn" (
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "clientId" TEXT,
-    "totalAmount" DECIMAL(65,30) NOT NULL,
+    "totalAmount" DECIMAL(12,2) NOT NULL,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -240,9 +240,9 @@ CREATE TABLE "DocumentReturnItem" (
     "id" TEXT NOT NULL,
     "returnId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
-    "quantity" DECIMAL(65,30) NOT NULL,
-    "price" DECIMAL(65,30) NOT NULL,
-    "total" DECIMAL(65,30) NOT NULL,
+    "quantity" DECIMAL(12,3) NOT NULL,
+    "price" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -267,9 +267,9 @@ CREATE TABLE "DocumentAdjustmentItem" (
     "id" TEXT NOT NULL,
     "adjustmentId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
-    "quantity" DECIMAL(65,30) NOT NULL,
-    "quantityBefore" DECIMAL(65,30) NOT NULL DEFAULT 0,
-    "quantityAfter" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "quantity" DECIMAL(12,3) NOT NULL,
+    "quantityBefore" DECIMAL(12,3) NOT NULL DEFAULT 0,
+    "quantityAfter" DECIMAL(12,3) NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -295,7 +295,7 @@ CREATE TABLE "DocumentTransferItem" (
     "id" TEXT NOT NULL,
     "transferId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
-    "quantity" DECIMAL(65,30) NOT NULL,
+    "quantity" DECIMAL(12,3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -308,9 +308,9 @@ CREATE TABLE "StockMovement" (
     "type" "StockMovementType" NOT NULL,
     "storeId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
-    "quantity" DECIMAL(65,30) NOT NULL,
-    "quantityAfter" DECIMAL(65,30) NOT NULL DEFAULT 0,
-    "averagePurchasePrice" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "quantity" DECIMAL(12,3) NOT NULL,
+    "quantityAfter" DECIMAL(12,3) NOT NULL DEFAULT 0,
+    "averagePurchasePrice" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -351,7 +351,7 @@ CREATE UNIQUE INDEX "Stock_productId_storeId_key" ON "Stock"("productId", "store
 CREATE UNIQUE INDEX "Product_categoryId_name_key" ON "Product"("categoryId", "name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Barcode_productId_value_key" ON "Barcode"("productId", "value");
+CREATE UNIQUE INDEX "Barcode_value_key" ON "Barcode"("value");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Vendor_name_key" ON "Vendor"("name");

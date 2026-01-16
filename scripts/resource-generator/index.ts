@@ -82,7 +82,7 @@ export function parseFields(body: string): Field[] {
 /**
  * Maps Prisma types to TypeScript types
  */
-export function mapType(prismaType: string): string {
+export function mapType(prismaType: string, target: 'backend' | 'frontend' = 'backend'): string {
   switch (prismaType) {
     case 'String':
       return 'string';
@@ -94,7 +94,7 @@ export function mapType(prismaType: string): string {
     case 'Decimal':
       return 'number';
     case 'DateTime':
-      return 'Date';
+      return target === 'frontend' ? 'string' : 'Date';
     default:
       return prismaType;
   }
@@ -104,7 +104,7 @@ export function mapType(prismaType: string): string {
  * Generates an interface file content (no swagger decorators)
  */
 export function generateInterfaceContent(model: Model, allModels: Models): string {
-  const relevantFields = model.fields.filter((f) => f.isRelation || f.isEnum);
+  const relevantFields = model.fields.filter((f) => f.isEnum || (f.isRelation && allModels[f.type]));
   const importLines = new Set<string>();
 
   relevantFields.forEach((f) => {
@@ -127,7 +127,7 @@ export function generateInterfaceContent(model: Model, allModels: Models): strin
   model.fields.forEach((f) => {
     // For interfaces, id is always mandatory for frontend easy use
     const isId = f.name === 'id';
-    const tsType = mapType(f.type);
+    const tsType = mapType(f.type, 'frontend');
     const suffix = f.isOptional && !isId ? '?' : '';
     const arraySuffix = f.isArray ? '[]' : '';
 
@@ -320,7 +320,7 @@ export function stripDecorators(
       .map((e: string) => e.trim())
       .filter(Boolean)
       .join(', ');
-    return `import { ${cleanedEnums} } from '../constants';\n`;
+    return `import { ${cleanedEnums} } from '../../constants';\n`;
   });
 
   // Remove decorators with balanced parentheses (supports nesting for @ApiProperty({ ... }))
@@ -334,6 +334,9 @@ export function stripDecorators(
 
   // Replace Decimal with number for frontend compatibility
   content = content.replace(/:\s*Decimal/g, ': number');
+
+  // Replace Date with string for frontend compatibility
+  content = content.replace(/:\s*Date/g, ': string');
 
   // Replace any class (exported or not) with export interface for frontend purity
   // Supports inheritance: export class A extends B { -> export interface A extends B {
@@ -448,10 +451,10 @@ export function generateFrontendCreateDtoContent(model: Model): string {
     // Clean fields without decorators
 
     if (f.isEnum) {
-      customImports.add(`import { ${f.type} } from '../constants';`);
+      customImports.add(`import { ${f.type} } from '../../constants';`);
     }
 
-    const tsType = mapType(f.type); // mapType already maps Decimal to number
+    const tsType = mapType(f.type, 'frontend'); // mapType already maps Decimal to number
     const suffix = f.isOptional ? '?' : '';
     fieldsContent += `  ${f.name}${suffix}: ${tsType};\n`;
   });
@@ -567,27 +570,25 @@ function run(): void {
       console.log(`ℹ️ Skipping Entity for ${model.name} (Custom found)`);
     }
 
-    // Interfaces (Frontend Entities)
+    // 2. Frontend Interface (Clean version)
     fs.writeFileSync(
       path.join(dirs.frontendEntities, `${model.singular}.interface.ts`),
       generateInterfaceContent(model, models),
     );
 
     // DTOs
-    const customDtoPath = path.join(
-      process.cwd(),
-      'src',
-      model.singular,
-      'dto',
-      `create-${model.singular}.dto.ts`,
-    );
+    const singularDir = path.join(process.cwd(), 'src', model.singular);
+    const customDtoPath = path.join(singularDir, 'dto', `create-${model.singular}.dto.ts`);
 
     const frontendDtoDir = dirs.frontendDtos;
-    const createDtoContent = generateCreateDtoContent(model); // Backend version (with Swagger)
+    const createDtoContent = generateCreateDtoContent(model);
     const updateDtoContent =
       "import { PartialType } from '@nestjs/swagger';\n" +
       `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
       `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`;
+
+    const modelFrontendDtoDir = path.join(frontendDtoDir, model.singular);
+    if (!fs.existsSync(modelFrontendDtoDir)) fs.mkdirSync(modelFrontendDtoDir, { recursive: true });
 
     if (!fs.existsSync(customDtoPath)) {
       // Logic A: Standard Generation
@@ -608,11 +609,11 @@ function run(): void {
         `export type Update${model.name}Dto = Partial<Create${model.name}Dto>;\n`;
 
       fs.writeFileSync(
-        path.join(frontendDtoDir, `create-${model.singular}.interface.ts`),
+        path.join(modelFrontendDtoDir, `create-${model.singular}.interface.ts`),
         frontendCreateContent,
       );
       fs.writeFileSync(
-        path.join(frontendDtoDir, `update-${model.singular}.interface.ts`),
+        path.join(modelFrontendDtoDir, `update-${model.singular}.interface.ts`),
         frontendUpdateContent,
       );
     } else {
@@ -625,7 +626,7 @@ function run(): void {
       // Copy & Strip Create DTO
       const customCreateContent = fs.readFileSync(customDtoPath, 'utf8');
       fs.writeFileSync(
-        path.join(frontendDtoDir, `create-${model.singular}.interface.ts`),
+        path.join(modelFrontendDtoDir, `create-${model.singular}.interface.ts`),
         stripDecorators(customCreateContent, model.name, sharedRenames),
       );
 
@@ -641,7 +642,7 @@ function run(): void {
       if (fs.existsSync(customUpdateDtoPath)) {
         const customUpdateContent = fs.readFileSync(customUpdateDtoPath, 'utf8');
         fs.writeFileSync(
-          path.join(frontendDtoDir, `update-${model.singular}.interface.ts`),
+          path.join(modelFrontendDtoDir, `update-${model.singular}.interface.ts`),
           stripDecorators(customUpdateContent, model.name, sharedRenames),
         );
       }

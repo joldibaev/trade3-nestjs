@@ -13,6 +13,22 @@ import {
 } from './index';
 
 describe('Resource Generator', () => {
+  describe('Regex Pattern', () => {
+    it('should capture @nodto triple-slash comments', () => {
+      const schema = `
+        /// @nodto
+        model StockMovement {
+          id String @id
+        }
+      `;
+      const modelRegex = /(?:\s*\/\/\/.*?\n)*\s*model\s+(\w+)\s+{([\s\S]*?)}/g;
+      const match = modelRegex.exec(schema);
+      expect(match).not.toBeNull();
+      expect(match![0]).toContain('/// @nodto');
+      expect(match![1]).toBe('StockMovement');
+    });
+  });
+
   describe('toKebabCase', () => {
     it('should convert PascalCase to kebab-case', () => {
       expect(toKebabCase('DocumentAdjustment')).toBe('document-adjustment');
@@ -73,7 +89,7 @@ describe('Resource Generator', () => {
   });
 
   describe('mapType', () => {
-    it('should map Prisma types to TS types', () => {
+    it('should map Prisma types to TS types (backend)', () => {
       expect(mapType('String')).toBe('string');
       expect(mapType('Int')).toBe('number');
       expect(mapType('Float')).toBe('number');
@@ -81,6 +97,11 @@ describe('Resource Generator', () => {
       expect(mapType('Boolean')).toBe('boolean');
       expect(mapType('DateTime')).toBe('Date');
       expect(mapType('CustomModel')).toBe('CustomModel');
+    });
+
+    it('should map DateTime to string for frontend', () => {
+      expect(mapType('DateTime', 'frontend')).toBe('string');
+      expect(mapType('String', 'frontend')).toBe('string');
     });
   });
 
@@ -382,7 +403,7 @@ describe('Resource Generator', () => {
       expect(content).toContain('export interface CreateProductDto {');
       expect(content).toContain('name: string;');
       expect(content).toContain('price?: number;');
-      expect(content).toContain("import { ProductStatus } from '../constants';");
+      expect(content).toContain("import { ProductStatus } from '../../constants';");
       expect(content).not.toContain('@ApiProperty');
       expect(content).not.toContain('@IsString');
       expect(content).not.toContain('Decimal');
@@ -436,7 +457,7 @@ describe('Resource Generator', () => {
         }
       `;
       const output = stripDecorators(input);
-      expect(output).toContain("import { DocumentStatus } from '../constants';");
+      expect(output).toContain("import { DocumentStatus } from '../../constants';");
       expect(output).toContain('export interface CreateTestDto {');
       expect(output).not.toContain('prisma/enums');
     });
