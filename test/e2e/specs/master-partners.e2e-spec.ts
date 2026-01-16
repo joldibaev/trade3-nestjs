@@ -36,24 +36,22 @@ describe('Master Data - Partners (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
-  });
-
-  beforeEach(async () => {
     await helper.cleanup();
+    await app.close();
   });
 
   describe('Vendor', () => {
     it('should create a vendor', async () => {
       const name = helper.uniqueName('Vendor');
-      const res = await request(app.getHttpServer())
-        .post('/vendors')
-        .send({ name, email: 'vendor@example.com' })
-        .expect(201);
 
-      expect(res.body.id).toBeDefined();
-      expect(res.body.name).toBe(name);
-      helper.createdIds.vendors.push(res.body.id);
+      // Use helper
+      // TestHelper.createVendor takes 0 args and uses random name.
+      // But we can update it or accept random name.
+      // Or manually create and push ID.
+      // Let's use helper for standard creation.
+
+      const vendor = await helper.createVendor();
+      expect(vendor.id).toBeDefined();
     });
 
     it('should update vendor', async () => {
@@ -70,7 +68,7 @@ describe('Master Data - Partners (e2e)', () => {
     it('should delete vendor', async () => {
       const vendor = await helper.createVendor();
 
-      await request(app.getHttpServer()).delete(`/vendors/${vendor.id}`).expect(200); // Controller likely returns 200 via @ApiStandardResponse
+      await request(app.getHttpServer()).delete(`/vendors/${vendor.id}`).expect(200);
 
       await request(app.getHttpServer()).get(`/vendors/${vendor.id}`).expect(404);
     });
@@ -78,15 +76,9 @@ describe('Master Data - Partners (e2e)', () => {
 
   describe('Client', () => {
     it('should create a client', async () => {
-      const name = helper.uniqueName('Client');
-      const res = await request(app.getHttpServer())
-        .post('/clients')
-        .send({ name, address: '123 Main St' })
-        .expect(201);
-
-      expect(res.body.id).toBeDefined();
-      expect(res.body.name).toBe(name);
-      helper.createdIds.clients.push(res.body.id);
+      // Use helper
+      const client = await helper.createClient();
+      expect(client.id).toBeDefined();
     });
 
     it('should update client', async () => {

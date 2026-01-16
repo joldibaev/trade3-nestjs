@@ -37,6 +37,7 @@ describe('Product Search (e2e)', () => {
   });
 
   afterAll(async () => {
+    await helper.cleanup();
     await app.close();
   });
 
@@ -91,10 +92,17 @@ describe('Product Search (e2e)', () => {
       const uniqueBarcode = `CODE${Date.now()}`;
       const otherBarcode = `CODE${Date.now() + 1}`;
 
-      await request(app.getHttpServer())
+      const res1 = await request(app.getHttpServer())
         .post('/barcodes')
         .send({ value: uniqueBarcode, productId: product.id })
         .expect(201);
+      // Track barcode manually just in case
+      // helper.createdIds does not track barcodes explicitly in all helper versions,
+      // but let's assume it has no 'barcodes' array?
+      // Checking helper... `createdIds` has NO `barcodes` field.
+      // Ah, cleanup deletes barcodes via productId.
+      // So no need to push to non-existent array.
+      // This test is safe as long as products are tracked.
 
       await request(app.getHttpServer())
         .post('/barcodes')

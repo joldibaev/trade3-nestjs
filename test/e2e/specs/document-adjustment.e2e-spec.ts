@@ -37,9 +37,7 @@ describe('Document Adjustment (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 1000);
 
     // Adjustment: -2 (Shortage)
-    // Adjustment: -2 (Shortage)
     const adj = await helper.createAdjustment(store.id, product.id, -2, 'COMPLETED');
-    // helper.createdIds.adjustments.push(adj.id); // Handled by helper
 
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('8');
@@ -55,9 +53,7 @@ describe('Document Adjustment (e2e)', () => {
     await helper.createPurchase(store.id, vendor.id, product.id, 10, 1000);
 
     // Adjustment: +5 (Surplus)
-    // Adjustment: +5 (Surplus)
     const adj = await helper.createAdjustment(store.id, product.id, 5, 'COMPLETED');
-    // helper.createdIds.adjustments.push(adj.id); // Handled by helper
 
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('15');
@@ -84,15 +80,8 @@ describe('Document Adjustment (e2e)', () => {
     const category = await helper.createCategory();
     const product = await helper.createProduct(category.id);
 
-    // Initial stock: 10
-    await prisma.stock.create({
-      data: {
-        productId: product.id,
-        storeId: store.id,
-        quantity: 10,
-        averagePurchasePrice: 1000,
-      },
-    });
+    // Initial stock: 10 via Helper
+    await helper.addStock(store.id, product.id, 10, 1000);
 
     // 1. Create DRAFT adjustment (+5)
     const adj = await helper.createAdjustment(store.id, product.id, 5, 'DRAFT');

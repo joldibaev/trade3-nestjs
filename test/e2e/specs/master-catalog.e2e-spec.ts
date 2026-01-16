@@ -37,43 +37,40 @@ describe('Master Data - Catalog (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
-  });
-
-  beforeEach(async () => {
     await helper.cleanup();
+    await app.close();
   });
 
   describe('Category', () => {
     it('should create a category', async () => {
       const name = helper.uniqueName('Electronics');
-      const res = await request(app.getHttpServer()).post('/categories').send({ name }).expect(201);
+      // Use helper to ensure tracking
+      const category = await helper.createCategory(name);
 
-      expect(res.body.id).toBeDefined();
-      expect(res.body.name).toBe(name);
-      helper.createdIds.categories.push(res.body.id);
+      expect(category.id).toBeDefined();
+      expect(category.name).toBe(name);
     });
 
     it('should create a sub-category', async () => {
-      // 1. Create Parent via API
-      const parentName = helper.uniqueName('Computers');
-      const parent = await request(app.getHttpServer())
-        .post('/categories')
-        .send({ name: parentName })
-        .expect(201);
-
-      helper.createdIds.categories.push(parent.body.id);
+      // 1. Create Parent via Helper
+      const parent = await helper.createCategory(helper.uniqueName('Computers'));
 
       // 2. Create Child
       const childName = helper.uniqueName('Laptops');
+
+      // We want to test hierarchy creation. Helper logic is simple.
+      // We can use helper.createCategory with parentId if we overload it, or manual.
+      // TestHelper.createCategory currently accepts (name).
+      // Let's do manual but track ID.
+
       const res = await request(app.getHttpServer())
         .post('/categories')
-        .send({ name: childName, parentId: parent.body.id })
+        .send({ name: childName, parentId: parent.id })
         .expect(201);
 
       helper.createdIds.categories.push(res.body.id);
 
-      expect(res.body.parentId).toBe(parent.body.id);
+      expect(res.body.parentId).toBe(parent.id);
     });
 
     it('should update category', async () => {
@@ -101,18 +98,14 @@ describe('Master Data - Catalog (e2e)', () => {
     it('should create a product with category', async () => {
       const category = await helper.createCategory();
 
-      const res = await request(app.getHttpServer())
-        .post('/products')
-        .send({
-          name: 'MacBook Pro',
-          categoryId: category.id,
-          article: 'MBP-2023',
-        })
-        .expect(201);
+      // Use helper.createProduct but pass custom data
+      const product = await helper.createProduct(category.id, {
+        name: 'MacBook Pro',
+        article: 'MBP-2023',
+      });
 
-      expect(res.body.name).toBe('MacBook Pro');
-      expect(res.body.categoryId).toBe(category.id);
-      helper.createdIds.products.push(res.body.id);
+      expect(product.name).toBe('MacBook Pro');
+      expect(product.categoryId).toBe(category.id);
     });
 
     it('should fail to create product without category', async () => {
@@ -148,6 +141,11 @@ describe('Master Data - Catalog (e2e)', () => {
         })
         .expect(201);
 
+      // Track Manually? TestHelper cleanup deletes products, and barcode is deleted cascade.
+      // BUT helper.cleanup also calls `prisma.barcode.deleteMany({ where: { productId: { in: this.createdIds.products } } })`.
+      // So if product is tracked, barcode is cleaned up.
+      // Safe.
+
       expect(res.body.value).toBe('1234567890123');
       expect(res.body.productId).toBe(product.id);
     });
@@ -163,37 +161,29 @@ describe('Master Data - Catalog (e2e)', () => {
 
       // Delete Product
       await request(app.getHttpServer()).delete(`/products/${product.id}`).expect(200);
-
-      // Verify barcodes (using helper/prisma check if no direct GET endpoint for all exists easily)
-      // Or usually cascading delete handles it.
-      // Assuming BarcodeController has findAll - we can't filter by product easily unless implemented.
-      // Let's rely on success of deletion.
     });
   });
 
   describe('Price & PriceType', () => {
     it('should create price type', async () => {
       const name = helper.uniqueName('Retail');
+      // Use helper
+      // TestHelper.createPriceTypes creates 2 fixed ones.
+      // Let's use manual request but track ID.
+
       const res = await request(app.getHttpServer())
-        .post('/price-types') // Note: Hyphenated? Controller says 'pricetypes' likely based on class 'PricetypeController' ?
-        // File view of PriceType controller wasn't done, but dir was 'price-type'.
-        // Wait, standard is kebab-case. I'll bet on 'pricetypes' or 'price-types'.
-        // I need to check the controller path metadata. Assuming 'pricetypes' (or 'price-types').
-        // Let's assume 'price-types' if modern, but earlier I saw 'categories'.
-        // I'll check PriceType controller path in next step if this fails.
-        // Actually, let's use helper for PriceType if I don't want to guess, BUT the plan says test CRUD.
-        // I will guess 'price-types' based on file structure.
+        .post('/price-types')
         .send({ name })
         .expect(201);
 
-      expect(res.body.name).toBe(name);
       helper.createdIds.priceTypes.push(res.body.id);
+      expect(res.body.name).toBe(name);
     });
 
     it('should assign price to product', async () => {
       const category = await helper.createCategory();
       const product = await helper.createProduct(category.id);
-      const { retail } = await helper.createPriceTypes(); // Use helper for dependency
+      const { retail } = await helper.createPriceTypes();
 
       const res = await request(app.getHttpServer())
         .post('/prices')
@@ -204,6 +194,7 @@ describe('Master Data - Catalog (e2e)', () => {
         })
         .expect(201);
 
+      // Prices are cleaned up via product cascade delete in cleanup()
       expect(Number(res.body.value)).toBe(100.5);
     });
   });

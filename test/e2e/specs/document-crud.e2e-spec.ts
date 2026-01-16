@@ -25,6 +25,7 @@ describe('Document CRUD (e2e)', () => {
   });
 
   afterAll(async () => {
+    await helper.cleanup();
     await app.close();
   });
 
@@ -57,6 +58,8 @@ describe('Document CRUD (e2e)', () => {
       expect(res.body.items).toHaveLength(0);
       expect(res.body.code).toBeDefined();
       expect(typeof res.body.code).toBe('number');
+
+      helper.createdIds.purchases.push(purchaseId);
 
       // 2. Add Items
       const updateRes = await request(app.getHttpServer())
@@ -168,6 +171,8 @@ describe('Document CRUD (e2e)', () => {
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.code).toBeDefined();
       expect(typeof res.body.code).toBe('number');
+
+      helper.createdIds.sales.push(saleId);
     });
 
     it('should update DRAFT sale', async () => {
@@ -250,6 +255,8 @@ describe('Document CRUD (e2e)', () => {
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.code).toBeDefined();
       expect(typeof res.body.code).toBe('number');
+
+      helper.createdIds.returns.push(returnId);
     });
 
     it('should update DRAFT return', async () => {
