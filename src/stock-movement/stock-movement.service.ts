@@ -57,8 +57,29 @@ export class StockMovementService {
     });
   }
 
-  async findAll(include?: Record<string, boolean>) {
+  async findAll(
+    include?: Record<string, boolean>,
+    filters?: {
+      productId?: string;
+      storeId?: string;
+      type?: StockMovementType;
+      startDate?: Date;
+      endDate?: Date;
+    },
+  ) {
+    const where: Prisma.StockMovementWhereInput = {};
+
+    if (filters?.productId) where.productId = filters.productId;
+    if (filters?.storeId) where.storeId = filters.storeId;
+    if (filters?.type) where.type = filters.type;
+    if (filters?.startDate || filters?.endDate) {
+      where.date = {};
+      if (filters.startDate) where.date.gte = filters.startDate;
+      if (filters.endDate) where.date.lte = filters.endDate;
+    }
+
     return this.prisma.stockMovement.findMany({
+      where,
       include,
       orderBy: { date: 'desc' },
     });

@@ -417,8 +417,8 @@ export function stripDecorators(
       // But for Imports and Usages of types defined in OTHER files (like Create DTO), we must replace.
 
       // We don't want to break "export interface NewName" if it was just renamed above.
-      // But the map contains Old->New. 
-      // Safe strategy: Replace whole word matches of OldName with NewName everywhere 
+      // But the map contains Old->New.
+      // Safe strategy: Replace whole word matches of OldName with NewName everywhere
       // EXCEPT if we just renamed it (which handled it).
 
       // Simpler: Just run replacement. Any usages of OldName should be NewName.

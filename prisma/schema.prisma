@@ -241,19 +241,19 @@ model DocumentSaleItem {
 }
 
 model DocumentPurchase {
-  id              String                 @id @default(uuid(7))
-  code            Int                    @unique @default(autoincrement())
-  date            DateTime               @default(now())
-  vendor          Vendor?                @relation(fields: [vendorId], references: [id])
-  vendorId        String?
-  store           Store                  @relation(fields: [storeId], references: [id])
-  storeId         String
-  totalAmount     Decimal
-  items           DocumentPurchaseItem[]
-  status          DocumentStatus         @default(DRAFT)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  movements       StockMovement[]
+  id                      String                 @id @default(uuid(7))
+  code                    Int                    @unique @default(autoincrement())
+  date                    DateTime               @default(now())
+  vendor                  Vendor?                @relation(fields: [vendorId], references: [id])
+  vendorId                String?
+  store                   Store                  @relation(fields: [storeId], references: [id])
+  storeId                 String
+  totalAmount             Decimal
+  items                   DocumentPurchaseItem[]
+  status                  DocumentStatus         @default(DRAFT)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  movements               StockMovement[]
   generatedPriceHistories PriceHistory[]
 }
 
