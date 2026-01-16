@@ -31,25 +31,26 @@ export class DocumentReturnService {
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
     const { storeId, clientId, date, status, items } = createDocumentReturnDto;
 
-    const targetStatus = status || 'COMPLETED';
+    const targetStatus = status || 'DRAFT';
+    const safeItems = items || [];
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
     // 2. Prepare Items
-    const productIds = items.map((i) => i.productId);
+    const productIds = safeItems.map((i) => i.productId);
 
     // Fetch fallback WAPs for all products in one go
     const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
     // Calculate totals & Prepare items
-    let totalAmount = new Decimal(0);
-    const returnItems = items.map((item) => {
+    let total = new Decimal(0);
+    const returnItems = safeItems.map((item) => {
       // Default price to 0 if not provided
       const price = new Decimal(item.price || 0);
       const quantity = new Decimal(item.quantity);
-      const total = quantity.mul(price);
-      totalAmount = totalAmount.add(total);
+      const itemTotal = quantity.mul(price);
+      total = total.add(itemTotal);
 
       // Determine fallback WAP for this product
       // Strategy: Use WAP from another store if available
@@ -72,7 +73,7 @@ export class DocumentReturnService {
             clientId,
             date: date ? new Date(date) : new Date(),
             status: targetStatus,
-            totalAmount,
+            total,
             items: {
               create: returnItems.map((i) => ({
                 productId: i.productId,
@@ -85,7 +86,7 @@ export class DocumentReturnService {
           include: { items: true },
         });
 
-        if (doc.status === 'COMPLETED') {
+        if (doc.status === 'COMPLETED' && returnItems.length > 0) {
           await this.applyInventoryMovements(tx, doc, returnItems);
         }
 
@@ -242,17 +243,18 @@ export class DocumentReturnService {
         }
 
         const { storeId, clientId, date, items } = updateDto;
+        const safeItems = items || [];
 
         // 1. Prepare Items
-        const productIds = items.map((i) => i.productId);
+        const productIds = safeItems.map((i) => i.productId);
         const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
-        let totalAmount = new Decimal(0);
-        const returnItems = items.map((item) => {
+        let total = new Decimal(0);
+        const returnItems = safeItems.map((item) => {
           const price = new Decimal(item.price || 0);
           const quantity = new Decimal(item.quantity);
-          const total = quantity.mul(price);
-          totalAmount = totalAmount.add(total);
+          const itemTotal = quantity.mul(price);
+          total = total.add(itemTotal);
           const fallbackWap = wapMap.get(item.productId) || new Decimal(0);
 
           return {
@@ -276,7 +278,7 @@ export class DocumentReturnService {
             storeId,
             clientId,
             date: date ? new Date(date) : new Date(),
-            totalAmount,
+            total,
             items: {
               create: returnItems.map((i) => ({
                 productId: i.productId,

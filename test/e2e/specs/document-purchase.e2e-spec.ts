@@ -33,7 +33,7 @@ describe('Document Purchase (e2e)', () => {
 
     const purchase = await helper.createPurchase(store.id, vendor.id, product.id, 10, 5000);
 
-    expect(purchase.totalAmount.toString()).toBe('50000');
+    expect(purchase.total.toString()).toBe('50000');
     const stock = await helper.getStock(product.id, store.id);
     expect(stock!.quantity.toString()).toBe('10');
     expect(stock!.averagePurchasePrice.toFixed(2)).toBe('5000.00');

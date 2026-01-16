@@ -6,7 +6,10 @@ import {
   IsString,
   Min,
   ValidateNested,
+  IsOptional,
+  IsEnum,
 } from 'class-validator';
+import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -67,4 +70,20 @@ export class CreateDocumentPurchaseDto {
   @ApiProperty({ example: '2023-10-25T12:00:00Z' })
   @IsDateString()
   date: string;
+
+  @ApiProperty({
+    enum: DocumentStatus,
+    required: false,
+    default: DocumentStatus.DRAFT,
+  })
+  @IsEnum(DocumentStatus)
+  @IsOptional()
+  status?: DocumentStatus;
+
+  @ApiProperty({ type: [CreateDocumentPurchaseItemDto], required: false })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateDocumentPurchaseItemDto)
+  @IsOptional()
+  items?: CreateDocumentPurchaseItemDto[];
 }

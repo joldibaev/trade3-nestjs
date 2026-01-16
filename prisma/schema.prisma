@@ -216,7 +216,7 @@ model DocumentSale {
   cashboxId   String?
   client      Client?            @relation(fields: [clientId], references: [id])
   clientId    String?
-  totalAmount Decimal            @db.Decimal(12, 2)
+  total       Decimal            @default(0) @db.Decimal(12, 2)
   items       DocumentSaleItem[]
   status      DocumentStatus     @default(DRAFT)
   priceType   PriceType?         @relation(fields: [priceTypeId], references: [id])
@@ -288,19 +288,19 @@ model DocumentPurchaseItemPrice {
 }
 
 model DocumentReturn {
-  id          String               @id @default(uuid(7))
-  code        Int                  @unique @default(autoincrement())
-  date        DateTime             @default(now())
-  store       Store                @relation(fields: [storeId], references: [id])
-  storeId     String
-  client      Client?              @relation(fields: [clientId], references: [id])
-  clientId    String?
-  totalAmount Decimal              @db.Decimal(12, 2)
-  items       DocumentReturnItem[]
-  status      DocumentStatus       @default(DRAFT)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  movements   StockMovement[]
+  id        String               @id @default(uuid(7))
+  code      Int                  @unique @default(autoincrement())
+  date      DateTime             @default(now())
+  store     Store                @relation(fields: [storeId], references: [id])
+  storeId   String
+  client    Client?              @relation(fields: [clientId], references: [id])
+  clientId  String?
+  total     Decimal              @default(0) @db.Decimal(12, 2)
+  items     DocumentReturnItem[]
+  status    DocumentStatus       @default(DRAFT)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  movements StockMovement[]
 }
 
 model DocumentReturnItem {

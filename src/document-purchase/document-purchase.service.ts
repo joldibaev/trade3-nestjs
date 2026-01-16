@@ -12,7 +12,8 @@ interface PreparedPurchaseItem {
   productId: string;
   quantity: Decimal;
   price: Decimal;
-  newPrices: PriceUpdate[];
+  total: Decimal;
+  newPrices?: PriceUpdate[];
 }
 
 interface PriceUpdate {
@@ -36,9 +37,10 @@ export class DocumentPurchaseService {
   ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
-    const { storeId, vendorId, date } = createDocumentPurchaseDto;
+    const { storeId, vendorId, date, items, status } = createDocumentPurchaseDto;
 
-    const targetStatus = 'DRAFT';
+    const targetStatus = status || 'DRAFT';
+    const safeItems = items || [];
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -46,15 +48,86 @@ export class DocumentPurchaseService {
     // 2. Execute Transaction
     return this.prisma.$transaction(
       async (tx) => {
+        let preparedItems: PreparedPurchaseItem[] = [];
+        let total = new Decimal(0);
+
+        if (safeItems.length > 0) {
+          const productIds = safeItems.map((i) => i.productId);
+          // Validate products exist
+          const productsCount = await tx.product.count({
+            where: { id: { in: productIds } },
+          });
+          if (productsCount !== productIds.length) {
+            throw new BadRequestException('Некоторые товары не найдены');
+          }
+
+          preparedItems = safeItems.map((item) => {
+            const quantity = new Decimal(item.quantity);
+            const price = new Decimal(item.price);
+            const lineTotal = quantity.mul(price);
+            total = total.add(lineTotal);
+
+            return {
+              productId: item.productId,
+              quantity,
+              price,
+              total: lineTotal,
+              newPrices: item.newPrices,
+            };
+          });
+        }
+
         // Create DocumentPurchase
-        return tx.documentPurchase.create({
+        // Create DocumentPurchase
+        const doc = await tx.documentPurchase.create({
           data: {
             storeId,
             vendorId,
             date: new Date(date),
             status: targetStatus,
+            total,
+            items: {
+              create: preparedItems.map((i) => ({
+                productId: i.productId,
+                quantity: i.quantity,
+                price: i.price,
+                total: i.total,
+                newPrices: {
+                  create:
+                    i.newPrices?.map((np) => ({
+                      priceTypeId: np.priceTypeId,
+                      value: new Decimal(np.value),
+                    })) || [],
+                },
+              })),
+            },
           },
+          include: { items: true },
         });
+
+        // 3. Apply Inventory Movements (Only if COMPLETED)
+        if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
+          // Re-map items to simple format expected by private method if needed
+          // Actually applyInventoryMovements expects PreparedPurchaseItem[] which we have
+          await this.applyInventoryMovements(tx, doc, preparedItems);
+
+          // 4. Apply Pending Price Updates
+          // We need items with newPrices here. `doc.items` doesn't include newPrices unless we include it in create return
+          // But `preparedItems` has `newPrices`.
+          // `applyDelayedProductPriceUpdates` expects Prisma payload.
+          // Let's refactor applyDelayedProductPriceUpdates or manually construct payload.
+          // Or just fetch the doc again? No, unused overhead.
+          // The method takes `Prisma.DocumentPurchaseItemGetPayload...`
+          // We can construct it or just refactor helper.
+          // Let's fetch the doc with newPrices to be safe and type-compliant.
+          const createdDoc = await tx.documentPurchase.findUniqueOrThrow({
+            where: { id: doc.id },
+            include: { items: { include: { newPrices: true } } },
+          });
+          await this.applyDelayedProductPriceUpdates(tx, doc.id, createdDoc.items);
+        }
+
+        return doc;
       },
       {
         isolationLevel: 'Serializable',
@@ -92,6 +165,7 @@ export class DocumentPurchaseService {
           productId: i.productId,
           quantity: i.quantity,
           price: i.price,
+          total: i.total,
           newPrices: [],
         }));
 
@@ -114,6 +188,7 @@ export class DocumentPurchaseService {
           const revertItems = items.map((i) => ({
             ...i,
             quantity: i.quantity.negated(),
+            total: i.total.negated(),
           }));
 
           await this.applyInventoryMovements(tx, purchase, revertItems);
@@ -272,9 +347,10 @@ export class DocumentPurchaseService {
         }
 
         const { storeId, vendorId, date, items } = updateDto;
+        const safeItems = items || [];
 
         // 1. Prepare new Items
-        const productIds = items.map((i) => i.productId);
+        const productIds = safeItems.map((i) => i.productId);
 
         // Validate products exist (Optional but good practice)
         const productsCount = await tx.product.count({
@@ -284,7 +360,7 @@ export class DocumentPurchaseService {
           throw new BadRequestException('Некоторые товары не найдены');
         }
 
-        const preparedItems = items.map((item) => {
+        const preparedItems = safeItems.map((item) => {
           const quantity = new Decimal(item.quantity);
           const price = new Decimal(item.price);
           return {

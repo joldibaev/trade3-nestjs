@@ -38,15 +38,16 @@ export class CreateDocumentAdjustmentDto {
   @ApiProperty({
     enum: DocumentStatus,
     required: false,
-    default: DocumentStatus.COMPLETED,
+    default: DocumentStatus.DRAFT,
   })
   @IsEnum(DocumentStatus)
   @IsOptional()
   status?: DocumentStatus;
 
-  @ApiProperty({ type: [CreateDocumentAdjustmentItemDto] })
+  @ApiProperty({ type: [CreateDocumentAdjustmentItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateDocumentAdjustmentItemDto)
-  items: CreateDocumentAdjustmentItemDto[];
+  @IsOptional()
+  items?: CreateDocumentAdjustmentItemDto[];
 }

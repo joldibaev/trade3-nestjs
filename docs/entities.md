@@ -107,7 +107,7 @@
 - `purchaseId`: Ссылка на закупку.
 - `productId`: Ссылка на товар.
 - `quantity`: Количество (Decimal(12, 3)).
-- `price`: Цена закупки (Decimal(12, 2)).
+- `total`: Сумма (Decimal(12, 2)).
 - `newPrices`: Список отложенных обновлений цен (`DocumentPurchaseItemPrice`), которые вступят в силу при проведении документа.
 
 ### DocumentSale (Продажа)

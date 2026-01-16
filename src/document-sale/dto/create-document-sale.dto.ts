@@ -58,15 +58,16 @@ export class CreateDocumentSaleDto {
   @ApiProperty({
     enum: DocumentStatus,
     required: false,
-    default: DocumentStatus.COMPLETED,
+    default: DocumentStatus.DRAFT,
   })
   @IsEnum(DocumentStatus)
   @IsOptional()
   status?: DocumentStatus;
 
-  @ApiProperty({ type: [CreateDocumentSaleItemDto] })
+  @ApiProperty({ type: [CreateDocumentSaleItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateDocumentSaleItemDto)
-  items: CreateDocumentSaleItemDto[];
+  @IsOptional()
+  items?: CreateDocumentSaleItemDto[];
 }

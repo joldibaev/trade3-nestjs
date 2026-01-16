@@ -36,13 +36,14 @@ export class DocumentSaleService {
     const { storeId, cashboxId, clientId, date, status, priceTypeId, items } =
       createDocumentSaleDto;
 
-    const targetStatus = status || 'COMPLETED';
+    const targetStatus = status || 'DRAFT';
+    const safeItems = items || [];
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
     // 2. Prepare Items (Fetch Products & Calculate Prices)
-    const productIds = items.map((i) => i.productId);
+    const productIds = safeItems.map((i) => i.productId);
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds } },
       include: { prices: true },
@@ -55,9 +56,9 @@ export class DocumentSaleService {
       price: Decimal;
       total: Decimal;
     }[] = [];
-    let totalAmount = new Decimal(0);
+    let total = new Decimal(0);
 
-    for (const item of items) {
+    for (const item of safeItems) {
       const product = productsMap.get(item.productId);
       if (!product) {
         throw new NotFoundException(`Товар ${item.productId} не найден`);
@@ -75,14 +76,14 @@ export class DocumentSaleService {
       }
 
       const quantity = new Decimal(item.quantity);
-      const total = finalPrice.mul(quantity);
-      totalAmount = totalAmount.add(total);
+      const itemTotal = finalPrice.mul(quantity);
+      total = total.add(itemTotal);
 
       preparedItems.push({
         productId: item.productId,
         quantity,
         price: finalPrice,
-        total,
+        total: itemTotal,
       });
     }
 
@@ -145,7 +146,7 @@ export class DocumentSaleService {
             date: date ? new Date(date) : new Date(),
             status: targetStatus,
             priceTypeId,
-            totalAmount,
+            total,
             items: {
               create: documentItemsData,
             },
@@ -154,7 +155,7 @@ export class DocumentSaleService {
         });
 
         // Update Stock if COMPLETED
-        if (sale.status === 'COMPLETED') {
+        if (sale.status === 'COMPLETED' && preparedItems.length > 0) {
           await this.applyInventoryMovements(tx, sale, preparedItems);
         }
 
@@ -320,9 +321,10 @@ export class DocumentSaleService {
         }
 
         const { storeId, cashboxId, clientId, date, priceTypeId, items } = updateDto;
+        const safeItems = items || [];
 
         // 1. Prepare new Items
-        const productIds = items.map((i) => i.productId);
+        const productIds = safeItems.map((i) => i.productId);
 
         const products = await tx.product.findMany({
           where: { id: { in: productIds } },
@@ -336,9 +338,9 @@ export class DocumentSaleService {
           price: Decimal;
           total: Decimal;
         }[] = [];
-        let totalAmount = new Decimal(0);
+        let total = new Decimal(0);
 
-        for (const item of items) {
+        for (const item of safeItems) {
           const product = productsMap.get(item.productId);
           if (!product) {
             throw new NotFoundException(`Товар ${item.productId} не найден`);
@@ -355,14 +357,14 @@ export class DocumentSaleService {
           }
 
           const quantity = new Decimal(item.quantity);
-          const total = finalPrice.mul(quantity);
-          totalAmount = totalAmount.add(total);
+          const itemTotal = finalPrice.mul(quantity);
+          total = total.add(itemTotal);
 
           preparedItems.push({
             productId: item.productId,
             quantity,
             price: finalPrice,
-            total,
+            total: itemTotal,
           });
         }
 
@@ -380,7 +382,7 @@ export class DocumentSaleService {
             clientId,
             date: date ? new Date(date) : new Date(),
             priceTypeId,
-            totalAmount,
+            total,
             items: {
               create: preparedItems.map((i) => ({
                 productId: i.productId,

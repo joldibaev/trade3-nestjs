@@ -41,15 +41,16 @@ export class CreateDocumentTransferDto {
   @ApiProperty({
     enum: DocumentStatus,
     required: false,
-    default: DocumentStatus.COMPLETED,
+    default: DocumentStatus.DRAFT,
   })
   @IsEnum(DocumentStatus)
   @IsOptional()
   status?: DocumentStatus;
 
-  @ApiProperty({ type: [CreateDocumentTransferItemDto] })
+  @ApiProperty({ type: [CreateDocumentTransferItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateDocumentTransferItemDto)
-  items: CreateDocumentTransferItemDto[];
+  @IsOptional()
+  items?: CreateDocumentTransferItemDto[];
 }

@@ -50,15 +50,16 @@ export class CreateDocumentReturnDto {
   @ApiProperty({
     enum: DocumentStatus,
     required: false,
-    default: DocumentStatus.COMPLETED,
+    default: DocumentStatus.DRAFT,
   })
   @IsEnum(DocumentStatus)
   @IsOptional()
   status?: DocumentStatus;
 
-  @ApiProperty({ type: [CreateDocumentReturnItemDto] })
+  @ApiProperty({ type: [CreateDocumentReturnItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateDocumentReturnItemDto)
-  items: CreateDocumentReturnItemDto[];
+  @IsOptional()
+  items?: CreateDocumentReturnItemDto[];
 }

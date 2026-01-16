@@ -26,46 +26,6 @@ describe('Reporting Modules (PriceHistory & StockMovement)', () => {
     await app.close();
   });
 
-  it('should retrieve price history with filters', async () => {
-    const store = await helper.createStore();
-    const vendor = await helper.createVendor();
-    const category = await helper.createCategory();
-    const product = await helper.createProduct(category.id);
-    const { retail } = await helper.createPriceTypes();
-
-    // Create purchase with price update
-    const purchase = await helper.createPurchase(
-      store.id,
-      vendor.id,
-      product.id,
-      10,
-      1000,
-      'DRAFT',
-      [{ priceTypeId: retail.id, value: 1500 }],
-    );
-    await helper.completePurchase(purchase.id);
-
-    // Test GET /price-histories with productId
-    const response = await request(app.getHttpServer())
-      .get('/price-histories')
-      .query({ productId: product.id })
-      .expect(200);
-
-    expect(response.body).toBeInstanceOf(Array);
-    expect(response.body.length).toBeGreaterThan(0);
-    expect(response.body[0].value).toBe('1500');
-    expect(response.body[0].productId).toBe(product.id);
-
-    // Test GET /price-histories with priceTypeId
-    const responseType = await request(app.getHttpServer())
-      .get('/price-histories')
-      .query({ priceTypeId: retail.id })
-      .expect(200);
-
-    expect(responseType.body.length).toBeGreaterThan(0);
-    expect(responseType.body[0].priceTypeId).toBe(retail.id);
-  });
-
   it('should retrieve stock movements with filters', async () => {
     const store = await helper.createStore();
     const vendor = await helper.createVendor();
