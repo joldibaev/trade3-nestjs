@@ -1,12 +1,8 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiTags, ApiQuery } from '@nestjs/swagger';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PriceHistoryService } from './price-history.service';
-import { PriceHistory } from '../generated/entities/price-history.entity';
 import { PriceHistoryRelations } from '../generated/relations/price-history-relations.enum';
-import {
-  ApiStandardResponseArray,
-  ApiIncludeQuery,
-} from '../common/decorators/swagger-response.decorator';
+import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 import { parseInclude } from '../common/utils/prisma-helpers';
 
 @ApiTags('price-histories')
@@ -16,7 +12,6 @@ export class PriceHistoryController {
 
   @Get()
   @ApiIncludeQuery(PriceHistoryRelations)
-  @ApiStandardResponseArray(PriceHistory)
   @ApiQuery({ name: 'productId', required: false })
   @ApiQuery({ name: 'priceTypeId', required: false })
   findAll(

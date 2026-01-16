@@ -1,12 +1,8 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { StockMovementService } from './stock-movement.service';
-import { ApiTags, ApiQuery } from '@nestjs/swagger';
-import {
-  ApiStandardResponseArray,
-  ApiIncludeQuery,
-} from '../common/decorators/swagger-response.decorator';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 import { parseInclude } from '../common/utils/prisma-helpers';
-import { StockMovement } from '../generated/entities/stock-movement.entity';
 import { StockMovementRelations } from '../generated/relations/stock-movement-relations.enum';
 import { StockMovementType } from '../generated/prisma/enums';
 
@@ -17,7 +13,6 @@ export class StockMovementController {
 
   @Get()
   @ApiIncludeQuery(StockMovementRelations)
-  @ApiStandardResponseArray(StockMovement)
   @ApiQuery({ name: 'productId', required: false })
   @ApiQuery({ name: 'storeId', required: false })
   @ApiQuery({ name: 'type', enum: StockMovementType, required: false })
