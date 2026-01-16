@@ -98,6 +98,13 @@ export class DocumentSaleService {
         });
         const stockMap = new Map(stocks.map((s) => [s.productId, s]));
 
+        // ACQUIRE LOCKS for all products involved in this sale
+        // Sort IDs to avoid deadlocks
+        const sortedProductIds = [...productIds].sort();
+        for (const pid of sortedProductIds) {
+          await this.inventoryService.lockProduct(tx, storeId, pid);
+        }
+
         const documentItemsData: {
           productId: string;
           quantity: Decimal;
@@ -166,6 +173,13 @@ export class DocumentSaleService {
           where: { id },
           include: { items: true },
         });
+
+        // ACQUIRE LOCKS for all products involved
+        const productIds = sale.items.map((i) => i.productId);
+        const sortedProductIds = [...new Set(productIds)].sort(); // Unique and Sorted
+        for (const pid of sortedProductIds) {
+          await this.inventoryService.lockProduct(tx, sale.storeId, pid);
+        }
 
         const oldStatus = sale.status;
 
