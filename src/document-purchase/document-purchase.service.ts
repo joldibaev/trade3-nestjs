@@ -33,7 +33,7 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) {}
+  ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date } = createDocumentPurchaseDto;
@@ -65,7 +65,9 @@ export class DocumentPurchaseService {
   }
 
   async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
-    return this.prisma.$transaction(
+    let itemsToReprocess: { productId: string; date: Date }[] = [];
+
+    const updatedPurchase = await this.prisma.$transaction(
       async (tx) => {
         const purchase = await tx.documentPurchase.findUniqueOrThrow({
           where: { id },
@@ -117,6 +119,15 @@ export class DocumentPurchaseService {
           }));
 
           await this.applyInventoryMovements(tx, purchase, revertItems);
+
+          // COLLECT ITEMS FOR REPROCESSING
+          // We must reprocess starting from the date of the purchase
+          // Note: InventoryService will pick up the new "Revert" movement (created above with purchase.date)
+          // and re-calculate everything chronologically.
+          itemsToReprocess = purchase.items.map(item => ({
+            productId: item.productId,
+            date: purchase.date
+          }));
         }
 
         // Update status
@@ -130,6 +141,20 @@ export class DocumentPurchaseService {
         isolationLevel: 'Serializable',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    // We do this outside the transaction to avoid locking and to use a fresh client
+    if (itemsToReprocess.length > 0) {
+      for (const item of itemsToReprocess) {
+        await this.inventoryService.reprocessProductHistory(
+          updatedPurchase.storeId,
+          item.productId,
+          item.date
+        );
+      }
+    }
+
+    return updatedPurchase;
   }
 
   private async validateStockForRevert(
