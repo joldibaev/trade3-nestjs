@@ -21,10 +21,18 @@ export class CategoryController {
   @Get()
   @ApiIncludeQuery(CategoryRelations)
   @ApiQuery({ name: 'parentId', required: false, type: String })
-  findAll(@Query('include') include?: string | string[], @Query('parentId') parentId?: string) {
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  findAll(
+    @Query('include') include?: string | string[],
+    @Query('parentId') parentId?: string,
+    @Query('isActive') isActive?: string,
+  ) {
     const where: Prisma.CategoryWhereInput = {};
     if (parentId) {
       where.parent = parentId === 'null' ? null : { id: parentId };
+    }
+    if (isActive !== undefined) {
+      where.isActive = isActive === 'true';
     }
 
     return this.categoriesService.findAll(where, parseInclude(include));

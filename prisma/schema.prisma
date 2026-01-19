@@ -58,6 +58,7 @@ model Cashbox {
   store     Store          @relation(fields: [storeId], references: [id])
   storeId   String
   sales     DocumentSale[]
+  isActive  Boolean        @default(true)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
@@ -72,6 +73,7 @@ model PriceType {
   prices                     Price[]
   sales                      DocumentSale[]
   documentPurchaseItemPrices DocumentPurchaseItemPrice[]
+  isActive                   Boolean                     @default(true)
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
 
@@ -118,6 +120,7 @@ model Category {
   parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   parentId  String?
   children  Category[] @relation("CategoryHierarchy")
+  isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -154,6 +157,7 @@ model Product {
   transferItems   DocumentTransferItem[]
   barcodes        Barcode[]
   movements       StockMovement[]
+  isActive        Boolean                  @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -190,6 +194,7 @@ model Vendor {
   email     String?
   address   String?
   purchases DocumentPurchase[]
+  isActive  Boolean            @default(true)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
@@ -204,6 +209,7 @@ model Client {
   address   String?
   sales     DocumentSale[]
   returns   DocumentReturn[]
+  isActive  Boolean          @default(true)
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 

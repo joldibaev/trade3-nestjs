@@ -71,6 +71,35 @@ describe('Master Data - Organization (e2e)', () => {
 
       await request(app.getHttpServer()).get(`/stores/${store.id}`).expect(404);
     });
+    it('should filter stores by isActive', async () => {
+      const activeStore = await helper.createStore();
+      const inactiveStore = await helper.createStore();
+
+      await request(app.getHttpServer())
+        .patch(`/stores/${inactiveStore.id}`)
+        .send({ isActive: false })
+        .expect(200);
+
+      // 1. Get all (default) shouldn't filter unless implemented default, 
+      // but our logic is "if isActive param is passed".
+      // Let's test explicit filtering.
+
+      const resActive = await request(app.getHttpServer())
+        .get('/stores?isActive=true')
+        .expect(200);
+
+      const activeIds = resActive.body.map((s: any) => s.id);
+      expect(activeIds).toContain(activeStore.id);
+      expect(activeIds).not.toContain(inactiveStore.id);
+
+      const resInactive = await request(app.getHttpServer())
+        .get('/stores?isActive=false')
+        .expect(200);
+
+      const inactiveIds = resInactive.body.map((s: any) => s.id);
+      expect(inactiveIds).toContain(inactiveStore.id);
+      expect(inactiveIds).not.toContain(activeStore.id);
+    });
   });
 
   describe('Cashbox', () => {
@@ -82,6 +111,32 @@ describe('Master Data - Organization (e2e)', () => {
       // helper.createCashbox sets name automatically.
 
       expect(cashbox.storeId).toBe(store.id);
+    });
+    it('should filter cashboxes by isActive', async () => {
+      const store = await helper.createStore();
+      const activeCashbox = await helper.createCashbox(store.id);
+      const inactiveCashbox = await helper.createCashbox(store.id);
+
+      await request(app.getHttpServer())
+        .patch(`/cashboxes/${inactiveCashbox.id}`)
+        .send({ isActive: false })
+        .expect(200);
+
+      const resActive = await request(app.getHttpServer())
+        .get(`/cashboxes?isActive=true&storeId=${store.id}`)
+        .expect(200);
+
+      const activeIds = resActive.body.map((c: any) => c.id);
+      expect(activeIds).toContain(activeCashbox.id);
+      expect(activeIds).not.toContain(inactiveCashbox.id);
+
+      const resInactive = await request(app.getHttpServer())
+        .get(`/cashboxes?isActive=false&storeId=${store.id}`)
+        .expect(200);
+
+      const inactiveIds = resInactive.body.map((c: any) => c.id);
+      expect(inactiveIds).toContain(inactiveCashbox.id);
+      expect(inactiveIds).not.toContain(activeCashbox.id);
     });
   });
 

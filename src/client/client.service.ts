@@ -13,8 +13,9 @@ export class ClientService {
     });
   }
 
-  findAll() {
+  findAll(isActive?: boolean) {
     return this.prisma.client.findMany({
+      where: { isActive },
       orderBy: { createdAt: 'desc' },
     });
   }

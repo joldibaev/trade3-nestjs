@@ -498,7 +498,9 @@ describe('Resource Generator', () => {
         export class UpdateDocumentPurchaseDto extends CreateDocumentPurchaseDto {}
       `;
       const output = stripDecorators(input);
-      expect(output).toContain('export type UpdateDocumentPurchaseDto = CreateDocumentPurchaseDto;');
+      expect(output).toContain(
+        'export type UpdateDocumentPurchaseDto = CreateDocumentPurchaseDto;',
+      );
       expect(output).not.toContain('interface');
     });
 

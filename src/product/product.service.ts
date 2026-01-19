@@ -13,11 +13,17 @@ export class ProductService {
     });
   }
 
-  findAll(categoryId?: string, query?: string, include?: Record<string, boolean>) {
+  findAll(
+    categoryId?: string,
+    query?: string,
+    isActive?: boolean,
+    include?: Record<string, boolean>,
+  ) {
     return this.prisma.product.findMany({
       where: {
         AND: [
           categoryId ? { categoryId } : {},
+          isActive !== undefined ? { isActive } : {},
           query
             ? {
                 OR: [

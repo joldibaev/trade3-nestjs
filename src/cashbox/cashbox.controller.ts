@@ -20,8 +20,14 @@ export class CashboxController {
   @Get()
   @ApiIncludeQuery(CashboxRelations)
   @ApiQuery({ name: 'storeId', required: false, type: String })
-  findAll(@Query('storeId') storeId?: string, @Query('include') include?: string | string[]) {
-    return this.cashboxesService.findAll(storeId, parseInclude(include));
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  findAll(
+    @Query('storeId') storeId?: string,
+    @Query('isActive') isActive?: string,
+    @Query('include') include?: string | string[],
+  ) {
+    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    return this.cashboxesService.findAll(storeId, active, parseInclude(include));
   }
 
   @Get(':id')

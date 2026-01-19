@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { StoreService } from './store.service';
 import { CreateStoreDto } from '../generated/dto/store/create-store.dto';
 import { UpdateStoreDto } from '../generated/dto/store/update-store.dto';
@@ -19,8 +19,10 @@ export class StoreController {
 
   @Get()
   @ApiIncludeQuery(StoreRelations)
-  findAll(@Query('include') include?: string | string[]) {
-    return this.storesService.findAll(parseInclude(include));
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  findAll(@Query('isActive') isActive?: string, @Query('include') include?: string | string[]) {
+    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    return this.storesService.findAll(active, parseInclude(include));
   }
 
   @Get(':id')

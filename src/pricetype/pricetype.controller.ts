@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PriceTypeService } from './pricetype.service';
 import { CreatePriceTypeDto } from '../generated/dto/price-type/create-price-type.dto';
 import { UpdatePriceTypeDto } from '../generated/dto/price-type/update-price-type.dto';
@@ -15,8 +15,10 @@ export class PriceTypeController {
   }
 
   @Get()
-  findAll() {
-    return this.priceTypeService.findAll();
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  findAll(@Query('isActive') isActive?: string) {
+    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    return this.priceTypeService.findAll(active);
   }
 
   @Get(':id')

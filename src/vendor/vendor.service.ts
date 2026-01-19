@@ -13,8 +13,9 @@ export class VendorService {
     });
   }
 
-  findAll() {
+  findAll(isActive?: boolean) {
     return this.prisma.vendor.findMany({
+      where: { isActive },
       orderBy: { createdAt: 'desc' },
     });
   }

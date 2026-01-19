@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { VendorService } from './vendor.service';
 import { CreateVendorDto } from '../generated/dto/vendor/create-vendor.dto';
 import { UpdateVendorDto } from '../generated/dto/vendor/update-vendor.dto';
@@ -15,8 +15,10 @@ export class VendorController {
   }
 
   @Get()
-  findAll() {
-    return this.vendorsService.findAll();
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  findAll(@Query('isActive') isActive?: string) {
+    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    return this.vendorsService.findAll(active);
   }
 
   @Get(':id')

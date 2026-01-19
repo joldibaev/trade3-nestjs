@@ -92,6 +92,31 @@ describe('Master Data - Catalog (e2e)', () => {
       // Verify deletion
       await request(app.getHttpServer()).get(`/categories/${cat.id}`).expect(404);
     });
+    it('should filter categories by isActive', async () => {
+      const activeCat = await helper.createCategory();
+      const inactiveCat = await helper.createCategory();
+
+      await request(app.getHttpServer())
+        .patch(`/categories/${inactiveCat.id}`)
+        .send({ isActive: false })
+        .expect(200);
+
+      const resActive = await request(app.getHttpServer())
+        .get('/categories?isActive=true')
+        .expect(200);
+
+      const activeIds = resActive.body.map((c: any) => c.id);
+      expect(activeIds).toContain(activeCat.id);
+      expect(activeIds).not.toContain(inactiveCat.id);
+
+      const resInactive = await request(app.getHttpServer())
+        .get('/categories?isActive=false')
+        .expect(200);
+
+      const inactiveIds = resInactive.body.map((c: any) => c.id);
+      expect(inactiveIds).toContain(inactiveCat.id);
+      expect(inactiveIds).not.toContain(activeCat.id);
+    });
   });
 
   describe('Product', () => {
@@ -125,6 +150,32 @@ describe('Master Data - Catalog (e2e)', () => {
         .expect(200);
 
       expect(res.body.name).toBe('Updated Product');
+    });
+    it('should filter products by isActive', async () => {
+      const category = await helper.createCategory();
+      const activeProduct = await helper.createProduct(category.id);
+      const inactiveProduct = await helper.createProduct(category.id);
+
+      await request(app.getHttpServer())
+        .patch(`/products/${inactiveProduct.id}`)
+        .send({ isActive: false })
+        .expect(200);
+
+      const resActive = await request(app.getHttpServer())
+        .get(`/products?isActive=true&categoryId=${category.id}`)
+        .expect(200);
+
+      const activeIds = resActive.body.map((p: any) => p.id);
+      expect(activeIds).toContain(activeProduct.id);
+      expect(activeIds).not.toContain(inactiveProduct.id);
+
+      const resInactive = await request(app.getHttpServer())
+        .get(`/products?isActive=false&categoryId=${category.id}`)
+        .expect(200);
+
+      const inactiveIds = resInactive.body.map((p: any) => p.id);
+      expect(inactiveIds).toContain(inactiveProduct.id);
+      expect(inactiveIds).not.toContain(activeProduct.id);
     });
   });
 
@@ -196,6 +247,33 @@ describe('Master Data - Catalog (e2e)', () => {
 
       // Prices are cleaned up via product cascade delete in cleanup()
       expect(Number(res.body.value)).toBe(100.5);
+    });
+    it('should filter price types by isActive', async () => {
+      const activePT = await request(app.getHttpServer()).post('/price-types').send({ name: helper.uniqueName('ActivePT') }).expect(201).then(r => r.body);
+      const inactivePT = await request(app.getHttpServer()).post('/price-types').send({ name: helper.uniqueName('InactivePT') }).expect(201).then(r => r.body);
+
+      helper.createdIds.priceTypes.push(activePT.id, inactivePT.id);
+
+      await request(app.getHttpServer())
+        .patch(`/price-types/${inactivePT.id}`)
+        .send({ isActive: false })
+        .expect(200);
+
+      const resActive = await request(app.getHttpServer())
+        .get('/price-types?isActive=true')
+        .expect(200);
+
+      const activeIds = resActive.body.map((pt: any) => pt.id);
+      expect(activeIds).toContain(activePT.id);
+      expect(activeIds).not.toContain(inactivePT.id);
+
+      const resInactive = await request(app.getHttpServer())
+        .get('/price-types?isActive=false')
+        .expect(200);
+
+      const inactiveIds = resInactive.body.map((pt: any) => pt.id);
+      expect(inactiveIds).toContain(inactivePT.id);
+      expect(inactiveIds).not.toContain(activePT.id);
     });
   });
 });

@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ClientService } from './client.service';
 import { CreateClientDto } from '../generated/dto/client/create-client.dto';
 import { UpdateClientDto } from '../generated/dto/client/update-client.dto';
@@ -15,8 +15,10 @@ export class ClientController {
   }
 
   @Get()
-  findAll() {
-    return this.clientsService.findAll();
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  findAll(@Query('isActive') isActive?: string) {
+    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    return this.clientsService.findAll(active);
   }
 
   @Get(':id')

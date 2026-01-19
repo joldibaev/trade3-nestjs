@@ -13,9 +13,9 @@ export class CashboxService {
     });
   }
 
-  findAll(storeId?: string, include?: Record<string, boolean>) {
+  findAll(storeId?: string, isActive?: boolean, include?: Record<string, boolean>) {
     return this.prisma.cashbox.findMany({
-      where: { storeId },
+      where: { storeId, isActive },
       orderBy: { createdAt: 'desc' },
       include,
     });

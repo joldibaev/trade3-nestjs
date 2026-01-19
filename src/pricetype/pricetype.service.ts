@@ -13,8 +13,9 @@ export class PriceTypeService {
     });
   }
 
-  findAll() {
+  findAll(isActive?: boolean) {
     return this.prisma.priceType.findMany({
+      where: { isActive },
       orderBy: { createdAt: 'desc' },
     });
   }

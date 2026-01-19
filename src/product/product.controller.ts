@@ -26,12 +26,15 @@ export class ProductController {
     type: String,
     description: 'Search by name, article or barcode',
   })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   findAll(
     @Query('categoryId') categoryId?: string,
     @Query('query') query?: string,
+    @Query('isActive') isActive?: string,
     @Query('include') include?: string | string[],
   ) {
-    return this.productsService.findAll(categoryId, query, parseInclude(include));
+    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    return this.productsService.findAll(categoryId, query, active, parseInclude(include));
   }
 
   @Get(':id')
