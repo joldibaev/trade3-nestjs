@@ -342,22 +342,32 @@ export function stripDecorators(
 
   // Replace any class (exported or not) with export interface for frontend purity
   // Supports inheritance: export class A extends B { -> export interface A extends B {
-  content = content.replace(
-    /(?:export\s+)?class (\w+)(?:\s+extends\s+([\w<>]+))?\s*{/g,
-    (_, name, parent) => {
-      return `export interface ${name}${parent ? ` extends ${parent}` : ''} {`;
-    },
-  );
-
-  // Replace PartialType(X) with Partial<X> and convert class to type alias
+  // Replace PartialType(X) with Partial<X> and convert to type alias IF EMPTY
   // Matches: export class UpdateUserDto extends PartialType(CreateUserDto) {}
   content = content.replace(
-    /export class (\w+) extends PartialType\((\w+)\)\s*{?\s*}?/g,
+    /export (?:class|interface) (\w+) extends PartialType\((\w+)\)\s*{\s*}/g,
     'export type $1 = Partial<$2>;',
   );
 
-  // Replace any remaining PartialType(X) within the file
+  // Replace empty extension with type alias (supertype)
+  // Matches: export class UpdateDocumentPurchaseDto extends CreateDocumentPurchaseDto {}
+  content = content.replace(
+    /export (?:class|interface) (\w+) extends ([\w<>]+)\s*{\s*}/g,
+    'export type $1 = $2;',
+  );
+
+  // Replace any remaining PartialType(X) within the file (for non-empty cases)
   content = content.replace(/PartialType\((\w+)\)/g, 'Partial<$1>');
+
+  // Replace any class (exported or not) with export interface for frontend purity
+  // Supports inheritance: export class A extends B { -> export interface A extends B {
+  content = content.replace(
+    /(?:export\s+)?class (\w+)(?:\s+extends\s+([\w<>, ]+))?\s*{/g,
+    (_, name, parent) => {
+      const parentTrimmed = parent ? parent.trim() : '';
+      return `export interface ${name}${parentTrimmed ? ` extends ${parentTrimmed}` : ''} {`;
+    },
+  );
 
   // Cleanup:
   // 1. Collapse multiple empty lines (including lines with whitespace) to a single newline

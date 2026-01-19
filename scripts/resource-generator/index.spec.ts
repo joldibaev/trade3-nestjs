@@ -493,6 +493,34 @@ describe('Resource Generator', () => {
         'export interface Test {\n          field: string;\n          another: number;\n        }',
       );
     });
+    it('should convert empty interface extensions to type aliases (supertype)', () => {
+      const input = `
+        export class UpdateDocumentPurchaseDto extends CreateDocumentPurchaseDto {}
+      `;
+      const output = stripDecorators(input);
+      expect(output).toContain('export type UpdateDocumentPurchaseDto = CreateDocumentPurchaseDto;');
+      expect(output).not.toContain('interface');
+    });
+
+    it('should convert empty PartialType extensions to type aliases', () => {
+      const input = `
+        export class UpdateUserDto extends PartialType(CreateUserDto) {}
+      `;
+      const output = stripDecorators(input);
+      expect(output).toContain('export type UpdateUserDto = Partial<CreateUserDto>;');
+    });
+
+    it('should convert non-empty PartialType extensions to interfaces', () => {
+      const input = `
+        export class UpdateUserDto extends PartialType(CreateUserDto) {
+          extra: string;
+        }
+      `;
+      const output = stripDecorators(input);
+      expect(output).toContain('export interface UpdateUserDto extends Partial<CreateUserDto> {');
+      expect(output).toContain('extra: string;');
+    });
+
     it('should support class inheritance', () => {
       const input = `
         import { CreateTestDto } from './create-test.dto';
