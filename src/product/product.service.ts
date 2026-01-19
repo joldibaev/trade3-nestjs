@@ -44,10 +44,16 @@ export class ProductService {
     return this.prisma.product.findUniqueOrThrow({
       where: { id },
       include: {
-        category: true,
-        prices: true,
-        stocks: true,
-        priceHistory: true,
+        category: { include: { parent: true } },
+        prices: {
+          include: { priceType: true },
+        },
+        stocks: {
+          include: { store: true },
+        },
+        priceHistory: {
+          include: { priceType: true },
+        },
         barcodes: true,
       },
     });

@@ -25,16 +25,39 @@ async function main() {
   // 2. Stores and Cashboxes (Магазины и Кассы)
   console.time('Stores');
   const storesData = [
-    { name: 'Канцтовары', cashbox: 'Основная Касса (Канцтовары)' },
-    { name: 'Игрушки', cashbox: 'Основная Касса (Игрушки)' },
+    {
+      name: 'Канцтовары',
+      address: 'ул. Пушкина, 10',
+      phone: '+7 (700) 123-45-67',
+      workingHours: '09:00 - 20:00',
+      isActive: true,
+      cashbox: 'Основная Касса (Канцтовары)',
+    },
+    {
+      name: 'Игрушки',
+      address: 'пр. Абая, 45',
+      phone: '+7 (700) 765-43-21',
+      workingHours: '10:00 - 21:00',
+      isActive: true,
+      cashbox: 'Основная Касса (Игрушки)',
+    },
   ];
 
   for (const storeData of storesData) {
     await prisma.store.upsert({
       where: { name: storeData.name },
-      update: {},
+      update: {
+        address: storeData.address,
+        phone: storeData.phone,
+        workingHours: storeData.workingHours,
+        isActive: storeData.isActive,
+      },
       create: {
         name: storeData.name,
+        address: storeData.address,
+        phone: storeData.phone,
+        workingHours: storeData.workingHours,
+        isActive: storeData.isActive,
         cashboxes: {
           create: { name: storeData.cashbox },
         },
