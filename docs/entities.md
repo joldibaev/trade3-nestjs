@@ -140,11 +140,25 @@
 
 ## Аудит движений
 
-### StockMovement (История движения товаров)
-Точный аудит каждого изменения остатка. Позволяет построить отчет на любую дату.
-- `type`: Тип движения (`PURCHASE`, `SALE`, `RETURN`, `ADJUSTMENT`, `TRANSFER_IN`, `TRANSFER_OUT`).
-- `type`: Тип движения (`PURCHASE`, `SALE`, `RETURN`, `ADJUSTMENT`, `TRANSFER_IN`, `TRANSFER_OUT`).
-- `quantity`: Изменение (положительное или отрицательное) (Decimal(12, 3)).
-- `quantityAfter`: Снимок (snapshot) остатка ПОСЛЕ операции (Decimal(12, 3)).
-- `averagePurchasePrice`: Снимок себестоимости в момент операции (Decimal(12, 2)).
-- **Связи**: Содержит прямые опциональные ссылки на все типы документов (`documentPurchaseId`, `documentSaleId` и т.д.).
+## StockMovement
+
+Лог движения товаров. Является неизменяемым (append-only) реестром всех изменений остатков.
+
+### Поля
+- `id`: UUID
+- `type`: Тип операции (PURCHASE, SALE, RETURN, ADJUSTMENT, TRANSFER_IN, TRANSFER_OUT)
+- `storeId`: Ссылка на магазин
+- `productId`: Ссылка на товар
+- `quantity`: Изменение количества (дельта). Положительное (приход) или отрицательное (расход).
+- `quantityBefore`: Остаток ДО операции (Snapshot).
+- `quantityAfter`: Остаток ПОСЛЕ операции (Snapshot).
+- `averagePurchasePrice`: Себестоимость единицы (WAP) на момент операции.
+- `transactionAmount`: Общая стоимость операции в денежном выражении (quantity * price/cost).
+- `batchId`: Группировка движений в рамках одной логической транзакции (например, один документ).
+- `userId`: Пользователь, совершивший операцию.
+- `date`: Дата операции (бизнес-время)
+- `createdAt`: Дата создания записи (системное время)
+
+### Связи
+- Связан с одним из документов-оснований (`DocumentPurchase`, `DocumentSale` и т.д.)
+.

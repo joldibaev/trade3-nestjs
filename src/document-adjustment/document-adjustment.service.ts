@@ -27,7 +27,7 @@ export class DocumentAdjustmentService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) {}
+  ) { }
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
     const { storeId, date, status, items } = createDocumentAdjustmentDto;
@@ -368,8 +368,14 @@ export class DocumentAdjustmentService {
         quantity: qDelta,
         date: doc.date ?? new Date(),
         documentId: doc.id ?? '',
+
+        quantityBefore: item.quantityBefore, // Passed from preparation logic
         quantityAfter: qAfter,
+
         averagePurchasePrice: currentWap,
+        transactionAmount: qDelta.mul(currentWap),
+
+        batchId: doc.id,
       });
     }
   }

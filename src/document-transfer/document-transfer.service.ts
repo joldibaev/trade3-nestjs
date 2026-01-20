@@ -26,7 +26,7 @@ export class DocumentTransferService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) {}
+  ) { }
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
     const { sourceStoreId, destinationStoreId, date, status, items } = createDocumentTransferDto;
@@ -387,8 +387,14 @@ export class DocumentTransferService {
         quantity: item.quantity.negated(),
         date: doc.date ?? new Date(),
         documentId: doc.id ?? '',
+
+        quantityBefore: updatedSourceStock.quantity.add(item.quantity),
         quantityAfter: updatedSourceStock.quantity,
+
         averagePurchasePrice: updatedSourceStock.averagePurchasePrice,
+        transactionAmount: item.quantity.mul(updatedSourceStock.averagePurchasePrice).negated(),
+
+        batchId: doc.id,
       });
 
       // Audit: Log TRANSFER_IN
@@ -399,8 +405,14 @@ export class DocumentTransferService {
         quantity: item.quantity,
         date: doc.date ?? new Date(),
         documentId: doc.id ?? '',
+
+        quantityBefore: destQty,
         quantityAfter: newDestQty,
+
         averagePurchasePrice: newDestWap,
+        transactionAmount: item.quantity.mul(sourceWap), // Value coming IN is derived from Source WAP
+
+        batchId: doc.id,
       });
     }
   }

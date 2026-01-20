@@ -11,13 +11,20 @@ export interface LogStockMovementDto {
   quantity: Decimal;
   date: Date | string;
   documentId: string; // The ID of the specific document
+
   quantityAfter: Decimal;
+  quantityBefore: Decimal;
+
   averagePurchasePrice: Decimal;
+  transactionAmount: Decimal;
+
+  batchId?: string;
+  userId?: string;
 }
 
 @Injectable()
 export class StockMovementService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   /**
    * Logs a standardized StockMovement record ensuring strong relations and snapshots.
@@ -31,7 +38,11 @@ export class StockMovementService {
       date,
       documentId,
       quantityAfter,
+      quantityBefore,
       averagePurchasePrice,
+      transactionAmount,
+      batchId,
+      userId,
     } = data;
 
     const dataInput: Prisma.StockMovementUncheckedCreateInput = {
@@ -40,8 +51,15 @@ export class StockMovementService {
       productId,
       quantity,
       date: new Date(date),
+
       quantityAfter,
+      quantityBefore,
+
       averagePurchasePrice,
+      transactionAmount,
+
+      batchId,
+      userId,
     };
 
     // Map the generic documentId to the specific relation field

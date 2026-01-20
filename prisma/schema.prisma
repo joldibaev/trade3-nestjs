@@ -26,6 +26,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  stockMovements StockMovement[]
+
   @@unique([username])
 }
 
@@ -396,9 +398,17 @@ model StockMovement {
   product   Product           @relation(fields: [productId], references: [id])
   productId String
 
+  quantityBefore       Decimal @default(0) @db.Decimal(12, 3) // Snapshot of stock balance before operation
   quantity             Decimal @db.Decimal(12, 3)
   quantityAfter        Decimal @default(0) @db.Decimal(12, 3) // Snapshot of stock balance after operation
-  averagePurchasePrice Decimal @default(0) @db.Decimal(12, 2) // Snapshot of cost price at moment of operation
+  
+  averagePurchasePrice Decimal @default(0) @db.Decimal(12, 2) // Snapshot of cost price (WAP)
+  transactionAmount    Decimal @default(0) @db.Decimal(12, 2) // Total value of the movement (qty * price/cost)
+  
+  batchId              String? // ID to group movements from a single logic transaction
+  
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
 
   date      DateTime @default(now())
   createdAt DateTime @default(now())
@@ -421,5 +431,6 @@ model StockMovement {
   documentTransferId String?
 
   @@index([storeId, productId])
+  @@index([batchId])
   @@index([date])
 }

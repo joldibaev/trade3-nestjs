@@ -34,7 +34,7 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) {}
+  ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items, status } = createDocumentPurchaseDto;
@@ -328,8 +328,15 @@ export class DocumentPurchaseService {
         quantity: item.quantity,
         date: purchase.date ?? new Date(),
         documentId: purchase.id ?? '',
+
+        quantityBefore: oldQty,
         quantityAfter: newQty,
+
         averagePurchasePrice: newWap,
+        transactionAmount: item.total, // Total for this item line in purchase is qty * price
+
+        batchId: purchase.id,
+        // userId: TODO: pass from context
       });
     }
   }

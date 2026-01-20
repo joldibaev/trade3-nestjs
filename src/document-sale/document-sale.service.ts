@@ -30,7 +30,7 @@ export class DocumentSaleService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) {}
+  ) { }
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
     const { storeId, cashboxId, clientId, date, status, priceTypeId, items } =
@@ -302,8 +302,14 @@ export class DocumentSaleService {
         quantity: item.quantity.negated(),
         date: sale.date ?? new Date(),
         documentId: sale.id ?? '',
+
+        quantityBefore: updatedStock.quantity.add(item.quantity), // Derived as we fetched AFTER update
         quantityAfter: updatedStock.quantity,
+
         averagePurchasePrice: updatedStock.averagePurchasePrice,
+        transactionAmount: item.quantity.mul(updatedStock.averagePurchasePrice).negated(), // COGS value
+
+        batchId: sale.id,
       });
     }
   }

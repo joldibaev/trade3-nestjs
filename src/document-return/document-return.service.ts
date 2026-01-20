@@ -26,7 +26,7 @@ export class DocumentReturnService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) {}
+  ) { }
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
     const { storeId, clientId, date, status, items } = createDocumentReturnDto;
@@ -224,8 +224,14 @@ export class DocumentReturnService {
         quantity: item.quantity,
         date: doc.date ?? new Date(),
         documentId: doc.id ?? '',
+
+        quantityBefore: updatedStock.quantity.sub(item.quantity), // Derived
         quantityAfter: updatedStock.quantity,
+
         averagePurchasePrice: updatedStock.averagePurchasePrice,
+        transactionAmount: item.quantity.mul(updatedStock.averagePurchasePrice), // Value at current WAP or created WAP
+
+        batchId: doc.id,
       });
     }
   }
