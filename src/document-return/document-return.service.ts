@@ -26,7 +26,7 @@ export class DocumentReturnService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
     const { storeId, clientId, date, status, items, notes } = createDocumentReturnDto;

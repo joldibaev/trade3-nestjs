@@ -26,10 +26,11 @@ export class DocumentTransferService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
-    const { sourceStoreId, destinationStoreId, date, status, items, notes } = createDocumentTransferDto;
+    const { sourceStoreId, destinationStoreId, date, status, items, notes } =
+      createDocumentTransferDto;
 
     const targetStatus = status || 'DRAFT';
     const safeItems = items || [];

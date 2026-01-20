@@ -249,8 +249,16 @@ describe('Master Data - Catalog (e2e)', () => {
       expect(Number(res.body.value)).toBe(100.5);
     });
     it('should filter price types by isActive', async () => {
-      const activePT = await request(app.getHttpServer()).post('/price-types').send({ name: helper.uniqueName('ActivePT') }).expect(201).then(r => r.body);
-      const inactivePT = await request(app.getHttpServer()).post('/price-types').send({ name: helper.uniqueName('InactivePT') }).expect(201).then(r => r.body);
+      const activePT = await request(app.getHttpServer())
+        .post('/price-types')
+        .send({ name: helper.uniqueName('ActivePT') })
+        .expect(201)
+        .then((r) => r.body);
+      const inactivePT = await request(app.getHttpServer())
+        .post('/price-types')
+        .send({ name: helper.uniqueName('InactivePT') })
+        .expect(201)
+        .then((r) => r.body);
 
       helper.createdIds.priceTypes.push(activePT.id, inactivePT.id);
 

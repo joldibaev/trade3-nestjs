@@ -27,7 +27,7 @@ export class DocumentAdjustmentService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
     const { storeId, date, status, items, notes } = createDocumentAdjustmentDto;

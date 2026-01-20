@@ -34,7 +34,7 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items, status, notes } = createDocumentPurchaseDto;

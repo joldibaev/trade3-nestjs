@@ -80,13 +80,11 @@ describe('Master Data - Organization (e2e)', () => {
         .send({ isActive: false })
         .expect(200);
 
-      // 1. Get all (default) shouldn't filter unless implemented default, 
+      // 1. Get all (default) shouldn't filter unless implemented default,
       // but our logic is "if isActive param is passed".
       // Let's test explicit filtering.
 
-      const resActive = await request(app.getHttpServer())
-        .get('/stores?isActive=true')
-        .expect(200);
+      const resActive = await request(app.getHttpServer()).get('/stores?isActive=true').expect(200);
 
       const activeIds = resActive.body.map((s: any) => s.id);
       expect(activeIds).toContain(activeStore.id);

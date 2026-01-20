@@ -24,7 +24,7 @@ export interface LogStockMovementDto {
 
 @Injectable()
 export class StockMovementService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Logs a standardized StockMovement record ensuring strong relations and snapshots.

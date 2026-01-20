@@ -30,7 +30,7 @@ export class DocumentSaleService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
     const { storeId, cashboxId, clientId, date, status, priceTypeId, items, notes } =
