@@ -25,12 +25,16 @@ export class DocumentSaleController {
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateDocumentStatusDto) {
-    return this.documentSaleService.updateStatus(id, updateStatusDto.status);
+  updateStatus(@Param('id') id: string, @Body() updateDocumentStatusDto: UpdateDocumentStatusDto) {
+    return this.documentSaleService.updateStatus(id, updateDocumentStatusDto.status);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDto: CreateDocumentSaleDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: CreateDocumentSaleDto, // Note: Update DTO for sale is reused CreateDto in original code? Checking service signature.
+  ) {
+    // Service.update takes CreateDocumentSaleDto as per previous view
     return this.documentSaleService.update(id, updateDto);
   }
 

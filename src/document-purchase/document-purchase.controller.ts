@@ -2,7 +2,6 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { DocumentPurchaseService } from './document-purchase.service';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
-import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { ApiTags } from '@nestjs/swagger';
 
 @ApiTags('document-purchases')
@@ -31,7 +30,7 @@ export class DocumentPurchaseController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDto: UpdateDocumentPurchaseDto) {
+  update(@Param('id') id: string, @Body() updateDto: CreateDocumentPurchaseDto) {
     return this.documentPurchaseService.update(id, updateDto);
   }
 

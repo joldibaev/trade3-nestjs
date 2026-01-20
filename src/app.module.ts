@@ -19,6 +19,7 @@ import { BarcodeModule } from './barcode/barcode.module';
 import { PriceModule } from './price/price.module';
 import { InventoryModule } from './core/inventory/inventory.module';
 import { StockMovementModule } from './stock-movement/stock-movement.module';
+import { DocumentHistoryModule } from './document-history/document-history.module';
 
 @Module({
   imports: [
@@ -41,7 +42,9 @@ import { StockMovementModule } from './stock-movement/stock-movement.module';
     BarcodeModule,
     PriceModule,
     InventoryModule,
+    InventoryModule,
     StockMovementModule,
+    DocumentHistoryModule,
   ],
 })
 export class AppModule {}

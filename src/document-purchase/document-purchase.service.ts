@@ -6,6 +6,7 @@ import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { StoreService } from '../store/store.service';
 import { StockMovementService } from '../stock-movement/stock-movement.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedPurchaseItem {
@@ -34,6 +35,7 @@ export class DocumentPurchaseService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
+    private readonly historyService: DocumentHistoryService,
   ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
@@ -105,6 +107,27 @@ export class DocumentPurchaseService {
           },
           include: { items: true },
         });
+
+        await this.historyService.logAction(tx, {
+          documentId: doc.id,
+          documentType: 'documentPurchase',
+          action: 'CREATED',
+          details: { status: targetStatus, total, notes },
+        });
+
+        for (const item of preparedItems) {
+          await this.historyService.logAction(tx, {
+            documentId: doc.id,
+            documentType: 'documentPurchase',
+            action: 'ITEM_ADDED',
+            details: {
+              productId: item.productId,
+              quantity: item.quantity,
+              price: item.price,
+              total: item.total,
+            },
+          });
+        }
 
         // 3. Apply Inventory Movements (Only if COMPLETED)
         if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
@@ -205,11 +228,20 @@ export class DocumentPurchaseService {
         }
 
         // Update status
-        return tx.documentPurchase.update({
+        const updatedDoc = await tx.documentPurchase.update({
           where: { id },
           data: { status: newStatus },
           include: { items: true },
         });
+
+        await this.historyService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentPurchase',
+          action: 'STATUS_CHANGED',
+          details: { from: oldStatus, to: newStatus },
+        });
+
+        return updatedDoc;
       },
       {
         isolationLevel: 'Serializable',
@@ -356,7 +388,6 @@ export class DocumentPurchaseService {
 
         const { storeId, vendorId, date, items, notes } = updateDto;
         const safeItems = items || [];
-
         // 1. Prepare new Items
         const productIds = safeItems.map((i) => i.productId);
 
@@ -391,7 +422,7 @@ export class DocumentPurchaseService {
         });
 
         // 3. Update Document
-        return tx.documentPurchase.update({
+        const updatedDoc = await tx.documentPurchase.update({
           where: { id },
           data: {
             storeId,
@@ -417,6 +448,48 @@ export class DocumentPurchaseService {
           },
           include: { items: true },
         });
+
+        // Log Update (notes etc)
+        const changes: Record<string, any> = {};
+        if (notes !== undefined && notes !== (doc.notes ?? '')) {
+          changes.notes = notes;
+        }
+        if (storeId !== doc.storeId) {
+          changes.storeId = storeId;
+        }
+        if (vendorId !== doc.vendorId) {
+          changes.vendorId = vendorId;
+        }
+        if (date && new Date(date).getTime() !== doc.date?.getTime()) {
+          changes.date = date;
+        }
+
+        if (Object.keys(changes).length > 0) {
+          await this.historyService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentPurchase',
+            action: 'UPDATED',
+            details: changes,
+          });
+        }
+
+        // Log Diffs
+        await this.historyService.logDiff(
+          tx,
+          {
+            documentId: id,
+            documentType: 'documentPurchase',
+          },
+          doc.items,
+          preparedItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          ['quantity', 'price'],
+        );
+
+        return updatedDoc;
       },
       {
         isolationLevel: 'ReadCommitted', // Sufficient for DRAFT updates
@@ -464,6 +537,9 @@ export class DocumentPurchaseService {
       include: {
         items: {
           include: { product: true, newPrices: true },
+        },
+        history: {
+          orderBy: { createdAt: 'asc' },
         },
         vendor: true,
         store: true,

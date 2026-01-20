@@ -5,6 +5,7 @@ import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { StoreService } from '../store/store.service';
 import { StockMovementService } from '../stock-movement/stock-movement.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedReturnItem {
@@ -26,6 +27,7 @@ export class DocumentReturnService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
+    private readonly historyService: DocumentHistoryService,
   ) {}
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
@@ -87,6 +89,28 @@ export class DocumentReturnService {
           include: { items: true },
         });
 
+        // Log CREATED
+        await this.historyService.logAction(tx, {
+          documentId: doc.id,
+          documentType: 'documentReturn',
+          action: 'CREATED',
+          details: { status: targetStatus, total, notes },
+        });
+
+        // Log Items
+        for (const item of returnItems) {
+          await this.historyService.logAction(tx, {
+            documentId: doc.id,
+            documentType: 'documentReturn',
+            action: 'ITEM_ADDED',
+            details: {
+              productId: item.productId,
+              quantity: item.quantity,
+              price: item.price,
+              total: item.total,
+            },
+          });
+        }
         if (doc.status === 'COMPLETED' && returnItems.length > 0) {
           await this.applyInventoryMovements(tx, doc, returnItems);
         }
@@ -147,6 +171,12 @@ export class DocumentReturnService {
           await this.applyInventoryMovements(tx, doc, revertItems);
         }
 
+        await this.historyService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentReturn',
+          action: 'STATUS_CHANGED',
+          details: { from: oldStatus, to: newStatus },
+        });
         return tx.documentReturn.update({
           where: { id },
           data: { status: newStatus },
@@ -252,6 +282,13 @@ export class DocumentReturnService {
         const { storeId, clientId, date, items, notes } = updateDto;
         const safeItems = items || [];
 
+        // Store old items for diff logging
+        const oldItems = doc.items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          price: i.price,
+        }));
+
         // 1. Prepare Items
         const productIds = safeItems.map((i) => i.productId);
         const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
@@ -279,7 +316,7 @@ export class DocumentReturnService {
         });
 
         // 3. Update Document
-        return tx.documentReturn.update({
+        const updatedDoc = await tx.documentReturn.update({
           where: { id },
           data: {
             storeId,
@@ -298,6 +335,43 @@ export class DocumentReturnService {
           },
           include: { items: true },
         });
+
+        // Log Update (notes etc)
+        const changes: Record<string, any> = {};
+        if (notes !== undefined && notes !== (doc.notes ?? '')) {
+          changes.notes = notes;
+        }
+        if (storeId !== doc.storeId) {
+          changes.storeId = storeId;
+        }
+        if (clientId !== doc.clientId) {
+          changes.clientId = clientId;
+        }
+        if (date && new Date(date).getTime() !== doc.date?.getTime()) {
+          changes.date = date;
+        }
+
+        if (Object.keys(changes).length > 0) {
+          await this.historyService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentReturn',
+            action: 'UPDATED',
+            details: changes,
+          });
+        }
+
+        // Log Diffs
+        await this.historyService.logDiff(
+          tx,
+          {
+            documentId: id,
+            documentType: 'documentReturn',
+          },
+          oldItems,
+          returnItems,
+          ['quantity', 'price'],
+        );
+        return updatedDoc;
       },
       {
         isolationLevel: 'ReadCommitted',
@@ -339,6 +413,9 @@ export class DocumentReturnService {
         items: true,
         client: true,
         store: true,
+        history: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }

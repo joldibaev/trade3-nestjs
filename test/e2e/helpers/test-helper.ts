@@ -73,6 +73,14 @@ export class TestHelper {
     return res.body;
   }
 
+  async updatePurchase(id: string, updateDto: any, expectedStatus = 200) {
+    const res = await request(this.app.getHttpServer())
+      .patch(`/document-purchases/${id}`)
+      .send(updateDto)
+      .expect(expectedStatus);
+    return res.body;
+  }
+
   public createdIds = {
     stores: [] as string[],
     cashboxes: [] as string[],

@@ -5,6 +5,7 @@ import { InventoryService } from '../core/inventory/inventory.service';
 import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
 import { StoreService } from '../store/store.service';
 import { StockMovementService } from '../stock-movement/stock-movement.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedAdjustmentItem {
@@ -27,6 +28,7 @@ export class DocumentAdjustmentService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
+    private readonly historyService: DocumentHistoryService,
   ) {}
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
@@ -95,6 +97,24 @@ export class DocumentAdjustmentService {
           include: { items: true },
         });
 
+        await this.historyService.logAction(tx, {
+          documentId: doc.id,
+          documentType: 'documentAdjustment',
+          action: 'CREATED',
+          details: { status: targetStatus, notes },
+        });
+
+        for (const item of preparedItems) {
+          await this.historyService.logAction(tx, {
+            documentId: doc.id,
+            documentType: 'documentAdjustment',
+            action: 'ITEM_ADDED',
+            details: {
+              productId: item.productId,
+              quantity: item.quantityRelative,
+            },
+          });
+        }
         // 5. Update Stocks (Only if COMPLETED)
         if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
           await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
@@ -116,7 +136,10 @@ export class DocumentAdjustmentService {
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
           where: { id },
+          include: { items: true },
         });
+
+        const oldItems = doc.items;
 
         if (doc.status !== 'DRAFT') {
           throw new BadRequestException('Только черновики могут быть изменены');
@@ -154,7 +177,7 @@ export class DocumentAdjustmentService {
           };
         });
 
-        return tx.documentAdjustment.update({
+        const updatedDoc = await tx.documentAdjustment.update({
           where: { id },
           data: {
             storeId,
@@ -171,6 +194,46 @@ export class DocumentAdjustmentService {
           },
           include: { items: true },
         });
+
+        const changes: Record<string, any> = {};
+        if (notes !== undefined && notes !== (doc.notes ?? '')) {
+          changes.notes = notes;
+        }
+        if (storeId !== doc.storeId) {
+          changes.storeId = storeId;
+        }
+        if (date && new Date(date).getTime() !== doc.date?.getTime()) {
+          changes.date = date;
+        }
+
+        if (Object.keys(changes).length > 0) {
+          await this.historyService.logAction(tx, {
+            documentId: updatedDoc.id,
+            documentType: 'documentAdjustment',
+            action: 'UPDATED',
+            details: changes,
+          });
+        }
+
+        // Log Diffs
+        await this.historyService.logDiff(
+          tx,
+          {
+            documentId: updatedDoc.id,
+            documentType: 'documentAdjustment',
+          },
+          oldItems.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+          })),
+          preparedItems.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantityRelative,
+          })),
+          ['quantity'],
+        );
+
+        return updatedDoc;
       },
       {
         isolationLevel: 'Serializable',
@@ -187,6 +250,13 @@ export class DocumentAdjustmentService {
       if (doc.status !== 'DRAFT') {
         throw new BadRequestException('Только черновики могут быть удалены');
       }
+
+      await this.historyService.logAction(tx, {
+        documentId: doc.id,
+        documentType: 'documentAdjustment',
+        action: 'DELETED',
+        details: { status: doc.status },
+      });
 
       return tx.documentAdjustment.delete({
         where: { id },
@@ -269,7 +339,7 @@ export class DocumentAdjustmentService {
           /*
              const qAfter = item.quantityAfter;
              const qDelta = item.quantityRelative;
-             
+
              ... update stock set quantity = qAfter ...
           */
 
@@ -395,6 +465,9 @@ export class DocumentAdjustmentService {
       include: {
         items: true,
         store: true,
+        history: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }

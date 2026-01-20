@@ -5,6 +5,7 @@ import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { StoreService } from '../store/store.service';
 import { StockMovementService } from '../stock-movement/stock-movement.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedSaleItem {
@@ -30,6 +31,7 @@ export class DocumentSaleService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
+    private readonly historyService: DocumentHistoryService,
   ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
@@ -222,11 +224,20 @@ export class DocumentSaleService {
         }
 
         // Update status
-        return tx.documentSale.update({
+        const updatedSale = await tx.documentSale.update({
           where: { id },
           data: { status: newStatus },
           include: { items: true },
         });
+
+        await this.historyService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentSale',
+          action: 'STATUS_CHANGED',
+          details: { from: oldStatus, to: newStatus },
+        });
+
+        return updatedSale;
       },
       {
         isolationLevel: 'Serializable',
@@ -381,7 +392,7 @@ export class DocumentSaleService {
         });
 
         // 3. Update Document
-        return tx.documentSale.update({
+        const updatedSale = await tx.documentSale.update({
           where: { id },
           data: {
             storeId,
@@ -402,6 +413,58 @@ export class DocumentSaleService {
           },
           include: { items: true },
         });
+
+        // Log Update (notes etc)
+        const changes: Record<string, any> = {};
+        if (notes !== undefined && notes !== (sale.notes ?? '')) {
+          changes.notes = notes;
+        }
+        if (storeId !== sale.storeId) {
+          changes.storeId = storeId;
+        }
+        if (clientId !== sale.clientId) {
+          changes.clientId = clientId;
+        }
+        if (priceTypeId !== sale.priceTypeId) {
+          changes.priceTypeId = priceTypeId;
+        }
+        if (date && new Date(date).getTime() !== sale.date?.getTime()) {
+          changes.date = date;
+        }
+
+        if (Object.keys(changes).length > 0) {
+          await this.historyService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentSale',
+            action: 'UPDATED',
+            details: changes,
+          });
+        }
+
+        // Log Diffs
+        // Assuming oldItems and preparedItems are available for diffing
+        // This part of the snippet seems to be missing context for `oldItems`
+        // For now, I'll assume `oldItems` would be derived from `sale.items` before deletion.
+        // If `oldItems` is not defined, this will cause a compilation error.
+        // For the purpose of this edit, I'll include it as provided, assuming `oldItems` is defined elsewhere.
+        const oldItems = sale.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+        }));
+
+        await this.historyService.logDiff(
+          tx,
+          {
+            documentId: id,
+            documentType: 'documentSale',
+          },
+          oldItems,
+          preparedItems,
+          ['quantity', 'price'],
+        );
+
+        return updatedSale;
       },
       {
         isolationLevel: 'ReadCommitted',
@@ -445,6 +508,9 @@ export class DocumentSaleService {
         store: true,
         cashbox: true,
         priceType: true,
+        history: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }

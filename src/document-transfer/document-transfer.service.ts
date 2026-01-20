@@ -5,6 +5,7 @@ import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
 import { StoreService } from '../store/store.service';
 import { StockMovementService } from '../stock-movement/stock-movement.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedTransferItem {
@@ -26,6 +27,7 @@ export class DocumentTransferService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockMovementService: StockMovementService,
+    private readonly historyService: DocumentHistoryService,
   ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
@@ -75,6 +77,26 @@ export class DocumentTransferService {
           },
           include: { items: true },
         });
+
+        // Log CREATED
+        await this.historyService.logAction(tx, {
+          documentId: doc.id,
+          documentType: 'documentTransfer',
+          action: 'CREATED',
+          details: { status: targetStatus, notes },
+        });
+
+        for (const item of preparedItems) {
+          await this.historyService.logAction(tx, {
+            documentId: doc.id,
+            documentType: 'documentTransfer',
+            action: 'ITEM_ADDED',
+            details: {
+              productId: item.productId,
+              quantity: item.quantity,
+            },
+          });
+        }
 
         if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
           await this.applyInventoryMovements(tx, doc, preparedItems);
@@ -205,6 +227,13 @@ export class DocumentTransferService {
           }
         }
 
+        await this.historyService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentTransfer',
+          action: 'STATUS_CHANGED',
+          details: { from: oldStatus, to: newStatus },
+        });
+
         return tx.documentTransfer.update({
           where: { id },
           data: { status: newStatus },
@@ -221,6 +250,7 @@ export class DocumentTransferService {
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.documentTransfer.findUniqueOrThrow({
         where: { id },
+        include: { items: true },
       });
 
       if (doc.status !== 'DRAFT') {
@@ -246,7 +276,7 @@ export class DocumentTransferService {
       }));
 
       // 3. Update Document
-      return tx.documentTransfer.update({
+      const updatedDoc = await tx.documentTransfer.update({
         where: { id },
         data: {
           sourceStoreId,
@@ -262,6 +292,45 @@ export class DocumentTransferService {
         },
         include: { items: true },
       });
+
+      const changes: Record<string, any> = {};
+      if (notes !== undefined && notes !== (doc.notes ?? '')) {
+        changes.notes = notes;
+      }
+      if (sourceStoreId !== doc.sourceStoreId) {
+        changes.sourceStoreId = sourceStoreId;
+      }
+      if (destinationStoreId !== doc.destinationStoreId) {
+        changes.destinationStoreId = destinationStoreId;
+      }
+      if (date && new Date(date).getTime() !== doc.date?.getTime()) {
+        changes.date = date;
+      }
+
+      if (Object.keys(changes).length > 0) {
+        await this.historyService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentTransfer',
+          action: 'UPDATED',
+          details: changes,
+        });
+      }
+
+      await this.historyService.logDiff(
+        tx,
+        {
+          documentId: id,
+          documentType: 'documentTransfer',
+        },
+        doc.items,
+        preparedItems.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity, // quantity is Decimal? No, in preparedItems it is Decimal
+        })),
+        ['quantity'],
+      );
+
+      return updatedDoc;
     });
   }
 
@@ -434,6 +503,9 @@ export class DocumentTransferService {
         items: true,
         sourceStore: true,
         destinationStore: true,
+        history: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }

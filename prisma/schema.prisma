@@ -237,6 +237,7 @@ model DocumentSale {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   movements   StockMovement[]
+  history     DocumentHistory[]
 }
 
 model DocumentSaleItem {
@@ -268,6 +269,7 @@ model DocumentPurchase {
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
   movements               StockMovement[]
+  history                 DocumentHistory[]
   generatedPriceHistories PriceHistory[]
 }
 
@@ -302,20 +304,21 @@ model DocumentPurchaseItemPrice {
 }
 
 model DocumentReturn {
-  id        String               @id @default(uuid(7))
-  code      Int                  @unique @default(autoincrement())
-  date      DateTime             @default(now())
-  store     Store                @relation(fields: [storeId], references: [id])
-  storeId   String
-  client    Client?              @relation(fields: [clientId], references: [id])
-  clientId  String?
-  total     Decimal              @default(0) @db.Decimal(12, 2)
-  items     DocumentReturnItem[]
-  status    DocumentStatus       @default(DRAFT)
-  notes     String?
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
-  movements StockMovement[]
+  id                String               @id @default(uuid(7))
+  code              Int                  @unique @default(autoincrement())
+  date              DateTime             @default(now())
+  store             Store                @relation(fields: [storeId], references: [id])
+  storeId           String
+  client            Client?              @relation(fields: [clientId], references: [id])
+  clientId          String?
+  total             Decimal              @default(0) @db.Decimal(12, 2)
+  items             DocumentReturnItem[]
+  status            DocumentStatus       @default(DRAFT)
+  notes             String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  movements         StockMovement[]
+  history           DocumentHistory[]
 }
 
 model DocumentReturnItem {
@@ -332,17 +335,18 @@ model DocumentReturnItem {
 }
 
 model DocumentAdjustment {
-  id        String                   @id @default(uuid(7))
-  code      Int                      @unique @default(autoincrement())
-  date      DateTime                 @default(now())
-  store     Store                    @relation(fields: [storeId], references: [id])
-  storeId   String
-  items     DocumentAdjustmentItem[]
-  status    DocumentStatus           @default(DRAFT)
-  notes     String?
-  createdAt DateTime                 @default(now())
-  updatedAt DateTime                 @updatedAt
-  movements StockMovement[]
+  id                String                   @id @default(uuid(7))
+  code              Int                      @unique @default(autoincrement())
+  date              DateTime                 @default(now())
+  store             Store                    @relation(fields: [storeId], references: [id])
+  storeId           String
+  items             DocumentAdjustmentItem[]
+  status            DocumentStatus           @default(DRAFT)
+  notes             String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  movements         StockMovement[]
+  history           DocumentHistory[]
 }
 
 model DocumentAdjustmentItem {
@@ -372,6 +376,7 @@ model DocumentTransfer {
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
   movements          StockMovement[]
+  history            DocumentHistory[]
 }
 
 model DocumentTransferItem {
@@ -438,4 +443,37 @@ model StockMovement {
   @@index([storeId, productId])
   @@index([batchId])
   @@index([date])
+}
+
+// History
+model DocumentHistory {
+  id      String @id @default(uuid(7))
+  action  String // e.g. "CREATED", "UPDATED", "STATUS_CHANGED", "ITEM_ADDED", "ITEM_REMOVED", "ITEM_CHANGED"
+  details Json? // Structured data about what changed (oldVal, newVal)
+
+  userId String?
+
+  // Polymorphic-like relations (one of these should be set)
+  documentPurchase   DocumentPurchase? @relation(fields: [documentPurchaseId], references: [id])
+  documentPurchaseId String?
+
+  documentSale   DocumentSale? @relation(fields: [documentSaleId], references: [id])
+  documentSaleId String?
+
+  documentReturn   DocumentReturn? @relation(fields: [documentReturnId], references: [id])
+  documentReturnId String?
+
+  documentAdjustment   DocumentAdjustment? @relation(fields: [documentAdjustmentId], references: [id])
+  documentAdjustmentId String?
+
+  documentTransfer   DocumentTransfer? @relation(fields: [documentTransferId], references: [id])
+  documentTransferId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([documentPurchaseId])
+  @@index([documentSaleId])
+  @@index([documentReturnId])
+  @@index([documentAdjustmentId])
+  @@index([documentTransferId])
 }

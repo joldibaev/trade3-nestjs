@@ -95,6 +95,8 @@ export function mapType(prismaType: string, target: 'backend' | 'frontend' = 'ba
       return 'number';
     case 'DateTime':
       return target === 'frontend' ? 'string' : 'Date';
+    case 'Json':
+      return target === 'frontend' ? 'Record<string, unknown>' : 'object';
     default:
       return prismaType;
   }
@@ -179,6 +181,8 @@ export function generateEntityContent(model: Model, allModels: Models): string {
       content += `  @ApiProperty({ type: 'string', format: 'date-time', required: ${!f.isOptional} })\n`;
     } else if (isDecimal) {
       content += `  @ApiProperty({ type: 'number', required: ${!f.isOptional} })\n`;
+    } else if (f.type === 'Json') {
+      content += `  @ApiProperty({ required: ${!f.isOptional} })\n`;
     } else {
       content += `  @ApiProperty({ type: '${tsType}', required: ${!f.isOptional}${f.name === 'id' ? ", format: 'uuid'" : ''} })\n`;
     }
@@ -221,6 +225,9 @@ export function generateCreateDtoContent(model: Model): string {
     } else if (f.type === 'Decimal') {
       fieldsContent += '  @IsNumber()\n';
       validatorImports.add('IsNumber');
+    } else if (f.type === 'Json') {
+      fieldsContent += '  @IsObject()\n';
+      validatorImports.add('IsObject');
     }
 
     if (f.isEnum) {
