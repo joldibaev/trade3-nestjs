@@ -56,6 +56,11 @@ export class CreateDocumentReturnDto {
   @IsOptional()
   status?: DocumentStatus;
 
+  @ApiProperty({ example: 'Some notes about the return', required: false })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
   @ApiProperty({ type: [CreateDocumentReturnItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })

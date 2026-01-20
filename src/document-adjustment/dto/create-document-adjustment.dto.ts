@@ -44,6 +44,11 @@ export class CreateDocumentAdjustmentDto {
   @IsOptional()
   status?: DocumentStatus;
 
+  @ApiProperty({ example: 'Some notes about the adjustment', required: false })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
   @ApiProperty({ type: [CreateDocumentAdjustmentItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })

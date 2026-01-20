@@ -233,6 +233,7 @@ model DocumentSale {
   status      DocumentStatus     @default(DRAFT)
   priceType   PriceType?         @relation(fields: [priceTypeId], references: [id])
   priceTypeId String?
+  notes       String?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   movements   StockMovement[]
@@ -263,6 +264,7 @@ model DocumentPurchase {
   total                   Decimal                @default(0) @db.Decimal(12, 2)
   items                   DocumentPurchaseItem[]
   status                  DocumentStatus         @default(DRAFT)
+  notes                   String?
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
   movements               StockMovement[]
@@ -310,6 +312,7 @@ model DocumentReturn {
   total     Decimal              @default(0) @db.Decimal(12, 2)
   items     DocumentReturnItem[]
   status    DocumentStatus       @default(DRAFT)
+  notes     String?
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
   movements StockMovement[]
@@ -336,6 +339,7 @@ model DocumentAdjustment {
   storeId   String
   items     DocumentAdjustmentItem[]
   status    DocumentStatus           @default(DRAFT)
+  notes     String?
   createdAt DateTime                 @default(now())
   updatedAt DateTime                 @updatedAt
   movements StockMovement[]
@@ -364,6 +368,7 @@ model DocumentTransfer {
   destinationStoreId String
   items              DocumentTransferItem[]
   status             DocumentStatus         @default(DRAFT)
+  notes              String?
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
   movements          StockMovement[]
@@ -398,17 +403,17 @@ model StockMovement {
   product   Product           @relation(fields: [productId], references: [id])
   productId String
 
-  quantityBefore       Decimal @default(0) @db.Decimal(12, 3) // Snapshot of stock balance before operation
-  quantity             Decimal @db.Decimal(12, 3)
-  quantityAfter        Decimal @default(0) @db.Decimal(12, 3) // Snapshot of stock balance after operation
-  
+  quantityBefore Decimal @default(0) @db.Decimal(12, 3) // Snapshot of stock balance before operation
+  quantity       Decimal @db.Decimal(12, 3)
+  quantityAfter  Decimal @default(0) @db.Decimal(12, 3) // Snapshot of stock balance after operation
+
   averagePurchasePrice Decimal @default(0) @db.Decimal(12, 2) // Snapshot of cost price (WAP)
   transactionAmount    Decimal @default(0) @db.Decimal(12, 2) // Total value of the movement (qty * price/cost)
-  
-  batchId              String? // ID to group movements from a single logic transaction
-  
-  user      User?    @relation(fields: [userId], references: [id])
-  userId    String?
+
+  batchId String? // ID to group movements from a single logic transaction
+
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
 
   date      DateTime @default(now())
   createdAt DateTime @default(now())

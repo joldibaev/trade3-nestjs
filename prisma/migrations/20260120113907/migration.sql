@@ -21,6 +21,10 @@ CREATE TABLE "User" (
 CREATE TABLE "Store" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "address" TEXT,
+    "phone" TEXT,
+    "workingHours" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -32,6 +36,7 @@ CREATE TABLE "Cashbox" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "storeId" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -42,6 +47,7 @@ CREATE TABLE "Cashbox" (
 CREATE TABLE "PriceType" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -78,6 +84,7 @@ CREATE TABLE "Category" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "parentId" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -103,6 +110,7 @@ CREATE TABLE "Product" (
     "name" TEXT NOT NULL,
     "article" TEXT,
     "categoryId" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -128,6 +136,7 @@ CREATE TABLE "Vendor" (
     "phone" TEXT,
     "email" TEXT,
     "address" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -141,6 +150,7 @@ CREATE TABLE "Client" (
     "phone" TEXT,
     "email" TEXT,
     "address" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -155,9 +165,10 @@ CREATE TABLE "DocumentSale" (
     "storeId" TEXT NOT NULL,
     "cashboxId" TEXT,
     "clientId" TEXT,
-    "totalAmount" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
     "priceTypeId" TEXT,
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -186,8 +197,9 @@ CREATE TABLE "DocumentPurchase" (
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "vendorId" TEXT,
     "storeId" TEXT NOT NULL,
-    "totalAmount" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -227,8 +239,9 @@ CREATE TABLE "DocumentReturn" (
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "clientId" TEXT,
-    "totalAmount" DECIMAL(12,2) NOT NULL,
+    "total" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -256,6 +269,7 @@ CREATE TABLE "DocumentAdjustment" (
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -284,6 +298,7 @@ CREATE TABLE "DocumentTransfer" (
     "sourceStoreId" TEXT NOT NULL,
     "destinationStoreId" TEXT NOT NULL,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -308,9 +323,13 @@ CREATE TABLE "StockMovement" (
     "type" "StockMovementType" NOT NULL,
     "storeId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
+    "quantityBefore" DECIMAL(12,3) NOT NULL DEFAULT 0,
     "quantity" DECIMAL(12,3) NOT NULL,
     "quantityAfter" DECIMAL(12,3) NOT NULL DEFAULT 0,
     "averagePurchasePrice" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "transactionAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "batchId" TEXT,
+    "userId" TEXT,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -376,6 +395,9 @@ CREATE UNIQUE INDEX "DocumentTransfer_code_key" ON "DocumentTransfer"("code");
 
 -- CreateIndex
 CREATE INDEX "StockMovement_storeId_productId_idx" ON "StockMovement"("storeId", "productId");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_batchId_idx" ON "StockMovement"("batchId");
 
 -- CreateIndex
 CREATE INDEX "StockMovement_date_idx" ON "StockMovement"("date");
@@ -487,6 +509,9 @@ ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_storeId_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;

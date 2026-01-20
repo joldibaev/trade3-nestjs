@@ -29,7 +29,7 @@ export class DocumentReturnService {
   ) { }
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
-    const { storeId, clientId, date, status, items } = createDocumentReturnDto;
+    const { storeId, clientId, date, status, items, notes } = createDocumentReturnDto;
 
     const targetStatus = status || 'DRAFT';
     const safeItems = items || [];
@@ -73,6 +73,7 @@ export class DocumentReturnService {
             clientId,
             date: date ? new Date(date) : new Date(),
             status: targetStatus,
+            notes,
             total,
             items: {
               create: returnItems.map((i) => ({
@@ -248,7 +249,7 @@ export class DocumentReturnService {
           throw new BadRequestException('Только черновики могут быть изменены');
         }
 
-        const { storeId, clientId, date, items } = updateDto;
+        const { storeId, clientId, date, items, notes } = updateDto;
         const safeItems = items || [];
 
         // 1. Prepare Items
@@ -285,6 +286,7 @@ export class DocumentReturnService {
             clientId,
             date: date ? new Date(date) : new Date(),
             total,
+            notes,
             items: {
               create: returnItems.map((i) => ({
                 productId: i.productId,

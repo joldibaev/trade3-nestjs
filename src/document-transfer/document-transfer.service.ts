@@ -29,7 +29,7 @@ export class DocumentTransferService {
   ) { }
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
-    const { sourceStoreId, destinationStoreId, date, status, items } = createDocumentTransferDto;
+    const { sourceStoreId, destinationStoreId, date, status, items, notes } = createDocumentTransferDto;
 
     const targetStatus = status || 'DRAFT';
     const safeItems = items || [];
@@ -64,6 +64,7 @@ export class DocumentTransferService {
             destinationStoreId,
             date: date ? new Date(date) : new Date(),
             status: targetStatus,
+            notes,
             items: {
               create: preparedItems.map((i) => ({
                 productId: i.productId,
@@ -225,7 +226,7 @@ export class DocumentTransferService {
         throw new BadRequestException('Только черновики могут быть изменены');
       }
 
-      const { sourceStoreId, destinationStoreId, date, items } = updateDto;
+      const { sourceStoreId, destinationStoreId, date, items, notes } = updateDto;
       const safeItems = items || [];
 
       if (sourceStoreId === destinationStoreId) {
@@ -250,6 +251,7 @@ export class DocumentTransferService {
           sourceStoreId,
           destinationStoreId,
           date: date ? new Date(date) : new Date(),
+          notes,
           items: {
             create: preparedItems.map((i) => ({
               productId: i.productId,

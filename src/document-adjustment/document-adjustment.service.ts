@@ -30,7 +30,7 @@ export class DocumentAdjustmentService {
   ) { }
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
-    const { storeId, date, status, items } = createDocumentAdjustmentDto;
+    const { storeId, date, status, items, notes } = createDocumentAdjustmentDto;
 
     const targetStatus = status || 'DRAFT';
 
@@ -82,6 +82,7 @@ export class DocumentAdjustmentService {
             storeId,
             date: date ? new Date(date) : new Date(),
             status: targetStatus,
+            notes,
             items: {
               create: preparedItems.map((i) => ({
                 productId: i.productId,
@@ -108,7 +109,7 @@ export class DocumentAdjustmentService {
   }
 
   async update(id: string, updateDto: CreateDocumentAdjustmentDto) {
-    const { storeId, date, items } = updateDto;
+    const { storeId, date, items, notes } = updateDto;
     const safeItems = items || [];
 
     return this.prisma.$transaction(
@@ -158,6 +159,7 @@ export class DocumentAdjustmentService {
           data: {
             storeId,
             date: date ? new Date(date) : new Date(),
+            notes,
             items: {
               create: preparedItems.map((i) => ({
                 productId: i.productId,

@@ -80,6 +80,11 @@ export class CreateDocumentPurchaseDto {
   @IsOptional()
   status?: DocumentStatus;
 
+  @ApiProperty({ example: 'Some notes about the purchase', required: false })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
   @ApiProperty({ type: [CreateDocumentPurchaseItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })

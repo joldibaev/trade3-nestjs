@@ -47,6 +47,11 @@ export class CreateDocumentTransferDto {
   @IsOptional()
   status?: DocumentStatus;
 
+  @ApiProperty({ example: 'Some notes about the transfer', required: false })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
   @ApiProperty({ type: [CreateDocumentTransferItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })

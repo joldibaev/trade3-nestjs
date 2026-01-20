@@ -37,7 +37,7 @@ export class DocumentPurchaseService {
   ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
-    const { storeId, vendorId, date, items, status } = createDocumentPurchaseDto;
+    const { storeId, vendorId, date, items, status, notes } = createDocumentPurchaseDto;
 
     const targetStatus = status || 'DRAFT';
     const safeItems = items || [];
@@ -85,6 +85,7 @@ export class DocumentPurchaseService {
             vendorId,
             date: new Date(date),
             status: targetStatus,
+            notes,
             total,
             items: {
               create: preparedItems.map((i) => ({
@@ -353,7 +354,7 @@ export class DocumentPurchaseService {
           throw new BadRequestException('Только черновики могут быть изменены');
         }
 
-        const { storeId, vendorId, date, items } = updateDto;
+        const { storeId, vendorId, date, items, notes } = updateDto;
         const safeItems = items || [];
 
         // 1. Prepare new Items
@@ -396,6 +397,7 @@ export class DocumentPurchaseService {
             storeId,
             vendorId,
             date: new Date(date),
+            notes,
             total,
             items: {
               create: preparedItems.map((i) => ({

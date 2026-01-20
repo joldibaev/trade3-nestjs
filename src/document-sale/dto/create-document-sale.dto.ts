@@ -64,6 +64,11 @@ export class CreateDocumentSaleDto {
   @IsOptional()
   status?: DocumentStatus;
 
+  @ApiProperty({ example: 'Some notes about the sale', required: false })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
   @ApiProperty({ type: [CreateDocumentSaleItemDto], required: false })
   @IsArray()
   @ValidateNested({ each: true })
