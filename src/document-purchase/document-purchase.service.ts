@@ -148,7 +148,7 @@ export class DocumentPurchaseService {
             where: { id: doc.id },
             include: { items: { include: { newPrices: true } } },
           });
-          await this.applyDelayedProductPriceUpdates(tx, doc.id, createdDoc.items);
+          await this.applyDelayedProductPriceUpdates(tx, doc.id, doc.date, createdDoc.items);
         }
 
         return doc;
@@ -199,7 +199,12 @@ export class DocumentPurchaseService {
           await this.applyInventoryMovements(tx, purchase, items);
 
           // 2. Apply Pending Price Updates
-          await this.applyDelayedProductPriceUpdates(tx, purchase.id, purchase.items);
+          await this.applyDelayedProductPriceUpdates(
+            tx,
+            purchase.id,
+            purchase.date,
+            purchase.items,
+          );
         }
 
         // COMPLETED -> DRAFT (or CANCELLED)
@@ -550,6 +555,7 @@ export class DocumentPurchaseService {
   async applyDelayedProductPriceUpdates(
     tx: Prisma.TransactionClient,
     documentId: string,
+    date: Date,
     items: Prisma.DocumentPurchaseItemGetPayload<{
       include: { newPrices: true };
     }>[],
@@ -564,28 +570,48 @@ export class DocumentPurchaseService {
               priceTypeId: priceUpdate.priceTypeId,
               value: priceUpdate.value,
               documentPurchaseId: documentId,
+              date: date,
             },
           });
 
-          // 2. Update Current Price (Showcase)
-          await tx.price.upsert({
-            where: {
-              productId_priceTypeId: {
-                productId: item.productId,
-                priceTypeId: priceUpdate.priceTypeId,
-              },
-            },
-            create: {
-              productId: item.productId,
-              priceTypeId: priceUpdate.priceTypeId,
-              value: priceUpdate.value,
-            },
-            update: {
-              value: priceUpdate.value,
-            },
-          });
+          // 2. Update Current Price (Rebalance/Slice Last)
+          await this.rebalanceProductPrice(tx, item.productId, priceUpdate.priceTypeId);
         }
       }
+    }
+  }
+
+  private async rebalanceProductPrice(
+    tx: Prisma.TransactionClient,
+    productId: string,
+    priceTypeId: string,
+  ) {
+    // Find the actual latest price based on effective date
+    const latestHistory = await tx.priceHistory.findFirst({
+      where: {
+        productId,
+        priceTypeId,
+      },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    if (latestHistory) {
+      await tx.price.upsert({
+        where: {
+          productId_priceTypeId: {
+            productId,
+            priceTypeId,
+          },
+        },
+        create: {
+          productId,
+          priceTypeId,
+          value: latestHistory.value,
+        },
+        update: {
+          value: latestHistory.value,
+        },
+      });
     }
   }
 }

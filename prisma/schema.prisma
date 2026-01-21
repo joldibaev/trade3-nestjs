@@ -94,10 +94,11 @@ model PriceHistory {
   documentPurchase   DocumentPurchase? @relation(fields: [documentPurchaseId], references: [id])
   documentPurchaseId String?
 
+  date      DateTime @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([productId, priceTypeId])
+  @@index([productId, priceTypeId, date(sort: Desc)])
 }
 
 model Price {
@@ -304,21 +305,21 @@ model DocumentPurchaseItemPrice {
 }
 
 model DocumentReturn {
-  id                String               @id @default(uuid(7))
-  code              Int                  @unique @default(autoincrement())
-  date              DateTime             @default(now())
-  store             Store                @relation(fields: [storeId], references: [id])
-  storeId           String
-  client            Client?              @relation(fields: [clientId], references: [id])
-  clientId          String?
-  total             Decimal              @default(0) @db.Decimal(12, 2)
-  items             DocumentReturnItem[]
-  status            DocumentStatus       @default(DRAFT)
-  notes             String?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  movements         StockMovement[]
-  history           DocumentHistory[]
+  id        String               @id @default(uuid(7))
+  code      Int                  @unique @default(autoincrement())
+  date      DateTime             @default(now())
+  store     Store                @relation(fields: [storeId], references: [id])
+  storeId   String
+  client    Client?              @relation(fields: [clientId], references: [id])
+  clientId  String?
+  total     Decimal              @default(0) @db.Decimal(12, 2)
+  items     DocumentReturnItem[]
+  status    DocumentStatus       @default(DRAFT)
+  notes     String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  movements StockMovement[]
+  history   DocumentHistory[]
 }
 
 model DocumentReturnItem {
@@ -335,18 +336,18 @@ model DocumentReturnItem {
 }
 
 model DocumentAdjustment {
-  id                String                   @id @default(uuid(7))
-  code              Int                      @unique @default(autoincrement())
-  date              DateTime                 @default(now())
-  store             Store                    @relation(fields: [storeId], references: [id])
-  storeId           String
-  items             DocumentAdjustmentItem[]
-  status            DocumentStatus           @default(DRAFT)
-  notes             String?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-  movements         StockMovement[]
-  history           DocumentHistory[]
+  id        String                   @id @default(uuid(7))
+  code      Int                      @unique @default(autoincrement())
+  date      DateTime                 @default(now())
+  store     Store                    @relation(fields: [storeId], references: [id])
+  storeId   String
+  items     DocumentAdjustmentItem[]
+  status    DocumentStatus           @default(DRAFT)
+  notes     String?
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+  movements StockMovement[]
+  history   DocumentHistory[]
 }
 
 model DocumentAdjustmentItem {
