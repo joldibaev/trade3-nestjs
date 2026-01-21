@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
@@ -389,26 +389,27 @@ export class DocumentReturnService {
         throw new BadRequestException('Только черновики могут быть удалены');
       }
 
-      await tx.documentReturnItem.deleteMany({
-        where: { returnId: id },
-      });
-
-      return tx.documentReturn.delete({
+      return tx.documentReturn.update({
         where: { id },
+        data: { deletedAt: new Date() },
       });
     });
   }
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.documentReturn.findMany({
+      where: { deletedAt: null },
       include,
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  findOne(id: string) {
-    return this.prisma.documentReturn.findUniqueOrThrow({
-      where: { id },
+  async findOne(id: string) {
+    const doc = await this.prisma.documentReturn.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
       include: {
         items: true,
         client: true,
@@ -418,5 +419,7 @@ export class DocumentReturnService {
         },
       },
     });
+    if (!doc) throw new NotFoundException('Документ возврата не найден');
+    return doc;
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateVendorDto } from '../generated/dto/vendor/create-vendor.dto';
 import { UpdateVendorDto } from '../generated/dto/vendor/update-vendor.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
@@ -15,15 +15,23 @@ export class VendorService {
 
   findAll(isActive?: boolean) {
     return this.prisma.vendor.findMany({
-      where: { isActive },
+      where: {
+        isActive,
+        deletedAt: null,
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  findOne(id: string) {
-    return this.prisma.vendor.findUniqueOrThrow({
-      where: { id },
+  async findOne(id: string) {
+    const vendor = await this.prisma.vendor.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
     });
+    if (!vendor) throw new NotFoundException('Поставщик не найден');
+    return vendor;
   }
 
   update(id: string, updateVendorDto: UpdateVendorDto) {
@@ -34,8 +42,9 @@ export class VendorService {
   }
 
   remove(id: string) {
-    return this.prisma.vendor.delete({
+    return this.prisma.vendor.update({
       where: { id },
+      data: { deletedAt: new Date() },
     });
   }
 }

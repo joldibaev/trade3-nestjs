@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
@@ -512,22 +512,18 @@ export class DocumentPurchaseService {
         throw new BadRequestException('Только черновики могут быть удалены');
       }
 
-      // Cascade delete is usually handled by DB, but explicit delete is safer if relations are complex
-      // Prisma schema should ideally have onDelete: Cascade for items.
-      // Let's assume schema handles it, or we delete items explicitly.
-      // Based on typical Prisma setup without explicit relation mode, we delete items first.
-      await tx.documentPurchaseItem.deleteMany({
-        where: { purchaseId: id },
-      });
-
-      return tx.documentPurchase.delete({
+      // Soft delete: Do not delete items physically.
+      // Just mark the document as deleted.
+      return tx.documentPurchase.update({
         where: { id },
+        data: { deletedAt: new Date() },
       });
     });
   }
 
   findAll() {
     return this.prisma.documentPurchase.findMany({
+      where: { deletedAt: null },
       include: {
         store: true,
         vendor: true,
@@ -536,9 +532,12 @@ export class DocumentPurchaseService {
     });
   }
 
-  findOne(id: string) {
-    return this.prisma.documentPurchase.findUniqueOrThrow({
-      where: { id },
+  async findOne(id: string) {
+    const doc = await this.prisma.documentPurchase.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
       include: {
         items: {
           include: { product: true, newPrices: true },
@@ -550,6 +549,8 @@ export class DocumentPurchaseService {
         store: true,
       },
     });
+    if (!doc) throw new NotFoundException('Документ закупки не найден');
+    return doc;
   }
 
   async applyDelayedProductPriceUpdates(

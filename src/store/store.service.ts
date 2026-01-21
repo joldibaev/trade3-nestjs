@@ -15,17 +15,25 @@ export class StoreService {
 
   findAll(isActive?: boolean, include?: Record<string, boolean>) {
     return this.prisma.store.findMany({
-      where: { isActive },
+      where: {
+        isActive,
+        deletedAt: null,
+      },
       orderBy: { createdAt: 'desc' },
       include,
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
-    return this.prisma.store.findUniqueOrThrow({
-      where: { id },
+  async findOne(id: string, include?: Record<string, boolean>) {
+    const store = await this.prisma.store.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
       include,
     });
+    if (!store) throw new NotFoundException('Магазин не найден');
+    return store;
   }
 
   update(id: string, updateStoreDto: UpdateStoreDto) {
@@ -36,14 +44,18 @@ export class StoreService {
   }
 
   remove(id: string) {
-    return this.prisma.store.delete({
+    return this.prisma.store.update({
       where: { id },
+      data: { deletedAt: new Date() },
     });
   }
 
   async validateStore(storeId: string): Promise<void> {
-    const store = await this.prisma.store.findUnique({
-      where: { id: storeId },
+    const store = await this.prisma.store.findFirst({
+      where: {
+        id: storeId,
+        deletedAt: null,
+      },
     });
     if (!store) throw new NotFoundException('Магазин не найден');
   }
