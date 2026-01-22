@@ -1,18 +1,17 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { StockMovementService } from './stock-movement.service';
+import { StockLedgerService } from './stock-ledger.service';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
-import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 import { parseInclude } from '../common/utils/prisma-helpers';
-import { StockMovementRelations } from '../generated/relations/stock-movement-relations.enum';
+// import { StockLedgerRelations } from '../generated/relations/stock-ledger-relations.enum'; // Assume this might be generated later or I skip it for now
 import { StockMovementType } from '../generated/prisma/enums';
 
-@ApiTags('stock-movements')
-@Controller('stock-movements')
-export class StockMovementController {
-  constructor(private readonly stockMovementService: StockMovementService) {}
+@ApiTags('stock-ledgers')
+@Controller('stock-ledgers')
+export class StockLedgerController {
+  constructor(private readonly stockLedgerService: StockLedgerService) {}
 
   @Get()
-  @ApiIncludeQuery(StockMovementRelations)
+  // @ApiIncludeQuery(StockLedgerRelations) // Commented out to avoid build error if enum not generated yet
   @ApiQuery({ name: 'productId', required: false })
   @ApiQuery({ name: 'storeId', required: false })
   @ApiQuery({ name: 'type', enum: StockMovementType, required: false })
@@ -26,7 +25,7 @@ export class StockMovementController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.stockMovementService.findAll(parseInclude(include), {
+    return this.stockLedgerService.findAll(parseInclude(include), {
       productId,
       storeId,
       type,

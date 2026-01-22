@@ -4,41 +4,32 @@ import {
   IsEnum,
   IsNumber,
   IsOptional,
-  IsPositive,
   IsString,
-  Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
 import { DocumentStatus } from '../../generated/prisma/enums';
+import { ApiProperty } from '@nestjs/swagger';
 
-export class UpdateDocumentPurchaseItemDto {
+export class CreateDocumentPriceChangeItemDto {
   @ApiProperty({ example: 'uuid-product-id' })
   @IsString()
   productId: string;
 
+  @ApiProperty({ example: 'uuid-price-type-id' })
+  @IsString()
+  priceTypeId: string;
+
   @ApiProperty({ example: 100 })
   @IsNumber()
-  @IsPositive()
   @Type(() => Number)
-  quantity: number;
-
-  @ApiProperty({ example: 12000, description: 'Cost price per unit' })
-  @IsNumber()
-  @Min(0)
-  @Type(() => Number)
-  price: number;
+  newValue: number;
 }
 
-export class UpdateDocumentPurchaseDto {
+export class CreateDocumentPriceChangeDto {
   @ApiProperty({ example: 'uuid-store-id' })
   @IsString()
   storeId: string;
-
-  @ApiProperty({ example: 'uuid-vendor-id' })
-  @IsString()
-  vendorId: string;
 
   @ApiProperty({ example: '2023-10-25T12:00:00Z' })
   @IsDateString()
@@ -53,15 +44,14 @@ export class UpdateDocumentPurchaseDto {
   @IsOptional()
   status?: DocumentStatus;
 
-  @ApiProperty({ example: 'Some notes about the purchase', required: false })
+  @ApiProperty({ example: 'Seasonal price update', required: false })
   @IsString()
   @IsOptional()
   notes?: string;
 
-  @ApiProperty({ type: [UpdateDocumentPurchaseItemDto], required: false })
+  @ApiProperty({ type: [CreateDocumentPriceChangeItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => UpdateDocumentPurchaseItemDto)
-  @IsOptional()
-  items?: UpdateDocumentPurchaseItemDto[];
+  @Type(() => CreateDocumentPriceChangeItemDto)
+  items: CreateDocumentPriceChangeItemDto[];
 }

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 
-export type HistoryActionType =
+export type LedgerActionType =
   | 'CREATED'
   | 'UPDATED'
   | 'STATUS_CHANGED'
@@ -18,35 +18,37 @@ interface LogActionParams {
     | 'documentSale'
     | 'documentReturn'
     | 'documentAdjustment'
-    | 'documentTransfer';
-  action: HistoryActionType;
+    | 'documentTransfer'
+    | 'documentPriceChange';
+  action: LedgerActionType;
   details?: Record<string, any>;
   userId?: string;
 }
 
 @Injectable()
-export class DocumentHistoryService {
+export class DocumentLedgerService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Log a generic action for a document.
    */
   async logAction(tx: Prisma.TransactionClient, params: LogActionParams) {
-    const { documentId, documentType, action, details, userId } = params;
+    const { documentId, documentType, action, details } = params;
 
-    const data: Prisma.DocumentHistoryUncheckedCreateInput = {
+    const data: Prisma.DocumentLedgerUncheckedCreateInput = {
       action,
       details: details || Prisma.JsonNull,
-      userId,
+      // userId, // REMOVED as User model is gone, logic also removed from earlier iterations but good to confirm
       documentPurchaseId: documentType === 'documentPurchase' ? documentId : null,
       documentSaleId: documentType === 'documentSale' ? documentId : null,
       documentReturnId: documentType === 'documentReturn' ? documentId : null,
       documentAdjustmentId: documentType === 'documentAdjustment' ? documentId : null,
       documentTransferId: documentType === 'documentTransfer' ? documentId : null,
+      documentPriceChangeId: documentType === 'documentPriceChange' ? documentId : null,
     };
 
     /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-    await (tx as any).documentHistory.create({
+    await (tx as any).documentLedger.create({
       data,
     });
     /* eslint-enable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */

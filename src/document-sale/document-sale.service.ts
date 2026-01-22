@@ -4,8 +4,8 @@ import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { StoreService } from '../store/store.service';
-import { StockMovementService } from '../stock-movement/stock-movement.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
+import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
+import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedSaleItem {
@@ -30,8 +30,8 @@ export class DocumentSaleService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockMovementService: StockMovementService,
-    private readonly historyService: DocumentHistoryService,
+    private readonly stockLedgerService: StockLedgerService,
+    private readonly ledgerService: DocumentLedgerService,
   ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
@@ -230,7 +230,7 @@ export class DocumentSaleService {
           include: { items: true },
         });
 
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: id,
           documentType: 'documentSale',
           action: 'STATUS_CHANGED',
@@ -307,7 +307,7 @@ export class DocumentSaleService {
       });
 
       // Audit: Log Stock Movement
-      await this.stockMovementService.create(tx, {
+      await this.stockLedgerService.create(tx, {
         type: 'SALE',
         storeId,
         productId: item.productId,
@@ -433,7 +433,7 @@ export class DocumentSaleService {
         }
 
         if (Object.keys(changes).length > 0) {
-          await this.historyService.logAction(tx, {
+          await this.ledgerService.logAction(tx, {
             documentId: id,
             documentType: 'documentSale',
             action: 'UPDATED',
@@ -453,7 +453,7 @@ export class DocumentSaleService {
           price: item.price,
         }));
 
-        await this.historyService.logDiff(
+        await this.ledgerService.logDiff(
           tx,
           {
             documentId: id,
@@ -508,7 +508,7 @@ export class DocumentSaleService {
         store: true,
         cashbox: true,
         priceType: true,
-        history: {
+        documentLedger: {
           orderBy: { createdAt: 'asc' },
         },
       },

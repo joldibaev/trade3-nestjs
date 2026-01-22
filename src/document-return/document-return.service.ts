@@ -4,8 +4,8 @@ import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { StoreService } from '../store/store.service';
-import { StockMovementService } from '../stock-movement/stock-movement.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
+import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
+import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedReturnItem {
@@ -26,8 +26,8 @@ export class DocumentReturnService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockMovementService: StockMovementService,
-    private readonly historyService: DocumentHistoryService,
+    private readonly stockLedgerService: StockLedgerService,
+    private readonly ledgerService: DocumentLedgerService,
   ) {}
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
@@ -90,7 +90,7 @@ export class DocumentReturnService {
         });
 
         // Log CREATED
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: doc.id,
           documentType: 'documentReturn',
           action: 'CREATED',
@@ -99,7 +99,7 @@ export class DocumentReturnService {
 
         // Log Items
         for (const item of returnItems) {
-          await this.historyService.logAction(tx, {
+          await this.ledgerService.logAction(tx, {
             documentId: doc.id,
             documentType: 'documentReturn',
             action: 'ITEM_ADDED',
@@ -171,7 +171,7 @@ export class DocumentReturnService {
           await this.applyInventoryMovements(tx, doc, revertItems);
         }
 
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: id,
           documentType: 'documentReturn',
           action: 'STATUS_CHANGED',
@@ -248,7 +248,7 @@ export class DocumentReturnService {
       });
 
       // Audit: Log Stock Movement
-      await this.stockMovementService.create(tx, {
+      await this.stockLedgerService.create(tx, {
         type: 'RETURN',
         storeId,
         productId: item.productId,
@@ -352,7 +352,7 @@ export class DocumentReturnService {
         }
 
         if (Object.keys(changes).length > 0) {
-          await this.historyService.logAction(tx, {
+          await this.ledgerService.logAction(tx, {
             documentId: id,
             documentType: 'documentReturn',
             action: 'UPDATED',
@@ -361,7 +361,7 @@ export class DocumentReturnService {
         }
 
         // Log Diffs
-        await this.historyService.logDiff(
+        await this.ledgerService.logDiff(
           tx,
           {
             documentId: id,
@@ -413,7 +413,7 @@ export class DocumentReturnService {
         items: true,
         client: true,
         store: true,
-        history: {
+        documentLedger: {
           orderBy: { createdAt: 'asc' },
         },
       },

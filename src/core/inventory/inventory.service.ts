@@ -79,7 +79,7 @@ export class InventoryService {
 
         // 1. Get snapshot BEFORE fromDate (to establish initial state)
         // We look for the Last movement before fromDate
-        const lastMovement = await tx.stockMovement.findFirst({
+        const lastMovement = await tx.stockLedger.findFirst({
           where: {
             storeId,
             productId,
@@ -93,7 +93,7 @@ export class InventoryService {
 
         // 2. Fetch all movements AFTER (or equal) fromDate, ordered by Date
         // Note: We need to include related documents to know prices
-        const movements = await tx.stockMovement.findMany({
+        const movements = await tx.stockLedger.findMany({
           where: {
             storeId,
             productId,
@@ -182,7 +182,7 @@ export class InventoryService {
           }
 
           // 3. Update the Audit Log Snapshot
-          await tx.stockMovement.update({
+          await tx.stockLedger.update({
             where: { id: move.id },
             data: {
               quantityAfter: currentQty,

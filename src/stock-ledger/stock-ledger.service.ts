@@ -4,7 +4,7 @@ import { Prisma } from '../generated/prisma/client';
 import { StockMovementType } from '../generated/prisma/enums';
 import Decimal = Prisma.Decimal;
 
-export interface LogStockMovementDto {
+export interface LogStockLedgerDto {
   type: 'PURCHASE' | 'SALE' | 'RETURN' | 'ADJUSTMENT' | 'TRANSFER_IN' | 'TRANSFER_OUT';
   storeId: string;
   productId: string;
@@ -19,17 +19,16 @@ export interface LogStockMovementDto {
   transactionAmount: Decimal;
 
   batchId?: string;
-  userId?: string;
 }
 
 @Injectable()
-export class StockMovementService {
+export class StockLedgerService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Logs a standardized StockMovement record ensuring strong relations and snapshots.
+   * Logs a standardized StockLedger record ensuring strong relations and snapshots.
    */
-  async create(tx: Prisma.TransactionClient, data: LogStockMovementDto) {
+  async create(tx: Prisma.TransactionClient, data: LogStockLedgerDto) {
     const {
       type,
       storeId,
@@ -42,10 +41,9 @@ export class StockMovementService {
       averagePurchasePrice,
       transactionAmount,
       batchId,
-      userId,
     } = data;
 
-    const dataInput: Prisma.StockMovementUncheckedCreateInput = {
+    const dataInput: Prisma.StockLedgerUncheckedCreateInput = {
       type: type as StockMovementType,
       storeId,
       productId,
@@ -59,7 +57,6 @@ export class StockMovementService {
       transactionAmount,
 
       batchId,
-      userId,
     };
 
     // Map the generic documentId to the specific relation field
@@ -70,7 +67,7 @@ export class StockMovementService {
     if (type === 'TRANSFER_IN' || type === 'TRANSFER_OUT')
       dataInput.documentTransferId = documentId;
 
-    await tx.stockMovement.create({
+    await tx.stockLedger.create({
       data: dataInput,
     });
   }
@@ -85,7 +82,7 @@ export class StockMovementService {
       endDate?: Date;
     },
   ) {
-    const where: Prisma.StockMovementWhereInput = {};
+    const where: Prisma.StockLedgerWhereInput = {};
 
     if (filters?.productId) where.productId = filters.productId;
     if (filters?.storeId) where.storeId = filters.storeId;
@@ -96,7 +93,7 @@ export class StockMovementService {
       if (filters.endDate) where.date.lte = filters.endDate;
     }
 
-    return this.prisma.stockMovement.findMany({
+    return this.prisma.stockLedger.findMany({
       where,
       include,
       orderBy: { date: 'desc' },

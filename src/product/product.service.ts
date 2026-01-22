@@ -57,7 +57,7 @@ export class ProductService {
         stocks: {
           include: { store: true },
         },
-        priceHistory: {
+        priceLedger: {
           include: { priceType: true },
         },
         barcodes: true,

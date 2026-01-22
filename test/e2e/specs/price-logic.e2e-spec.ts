@@ -29,7 +29,6 @@ describe('Price Logic (Slice Last)', () => {
 
   it('should maintain current price from the latest document even if older document is edited', async () => {
     const store = await helper.createStore();
-    const vendor = await helper.createVendor();
     const category = await helper.createCategory();
     const product = await helper.createProduct(category.id);
     const { retail } = await helper.createPriceTypes();
@@ -37,26 +36,22 @@ describe('Price Logic (Slice Last)', () => {
     const dateOld = new Date('2024-01-01T10:00:00Z');
     const dateNew = new Date('2024-02-01T10:00:00Z');
 
-    // 1. Create OLD Purchase (Jan 1st) - Price 100
-    // We do this by DRAFT then COMPLETED to simulate normal flow,
-    // but we need to ensure DATE is respected.
+    // 1. Create OLD Price Change (Jan 1st) - Price 100
     const createPayloadOld = {
       storeId: store.id,
-      vendorId: vendor.id,
       date: dateOld.toISOString(),
       status: 'DRAFT',
       items: [
         {
           productId: product.id,
-          quantity: 10,
-          price: 50,
-          newPrices: [{ priceTypeId: retail.id, value: 100 }],
+          priceTypeId: retail.id,
+          newValue: 100,
         },
       ],
     };
 
     const resOld = await request(app.getHttpServer())
-      .post('/document-purchases')
+      .post('/document-price-changes')
       .send(createPayloadOld)
       .expect(201);
 
@@ -64,7 +59,7 @@ describe('Price Logic (Slice Last)', () => {
 
     // Complete Old
     await request(app.getHttpServer())
-      .patch(`/document-purchases/${idOld}/status`)
+      .patch(`/document-price-changes/${idOld}/status`)
       .send({ status: 'COMPLETED' })
       .expect(200);
 
@@ -74,24 +69,22 @@ describe('Price Logic (Slice Last)', () => {
     });
     expect(priceCheck1?.value.toNumber()).toBe(100);
 
-    // 2. Create NEW Purchase (Feb 1st) - Price 120
+    // 2. Create NEW Price Change (Feb 1st) - Price 120
     const createPayloadNew = {
       storeId: store.id,
-      vendorId: vendor.id,
       date: dateNew.toISOString(),
       status: 'DRAFT',
       items: [
         {
           productId: product.id,
-          quantity: 10,
-          price: 60,
-          newPrices: [{ priceTypeId: retail.id, value: 120 }],
+          priceTypeId: retail.id,
+          newValue: 120,
         },
       ],
     };
 
     const resNew = await request(app.getHttpServer())
-      .post('/document-purchases')
+      .post('/document-price-changes')
       .send(createPayloadNew)
       .expect(201);
 
@@ -99,7 +92,7 @@ describe('Price Logic (Slice Last)', () => {
 
     // Complete New
     await request(app.getHttpServer())
-      .patch(`/document-purchases/${idNew}/status`)
+      .patch(`/document-price-changes/${idNew}/status`)
       .send({ status: 'COMPLETED' })
       .expect(200);
 
@@ -109,40 +102,34 @@ describe('Price Logic (Slice Last)', () => {
     });
     expect(priceCheck2?.value.toNumber()).toBe(120);
 
-    // 3. EDIT OLD Purchase (Jan 1st) - Change Price to 150
-    // Logic:
-    // - User realizes Jan price was actually 150.
-    // - But current price (Feb) is 120.
-    // - Updating Jan price to 150 should NOT overwrite Feb price (120).
+    // 3. EDIT OLD Price Change (Jan 1st) - Change Price to 150
     const updatePayload = {
       storeId: store.id,
-      vendorId: vendor.id,
       date: dateOld.toISOString(), // Keep old date
       items: [
         {
           productId: product.id,
-          quantity: 10,
-          price: 50,
-          newPrices: [{ priceTypeId: retail.id, value: 150 }], // New value in old doc
+          priceTypeId: retail.id,
+          newValue: 150, // New value in old doc
         },
       ],
     };
 
-    // Need to revert status to DRAFT first (as per constraints)
+    // Revert status to DRAFT
     await request(app.getHttpServer())
-      .patch(`/document-purchases/${idOld}/status`)
+      .patch(`/document-price-changes/${idOld}/status`)
       .send({ status: 'DRAFT' })
       .expect(200);
 
     // Update content
     await request(app.getHttpServer())
-      .patch(`/document-purchases/${idOld}`)
+      .patch(`/document-price-changes/${idOld}`)
       .send(updatePayload)
       .expect(200);
 
     // Complete again
     await request(app.getHttpServer())
-      .patch(`/document-purchases/${idOld}/status`)
+      .patch(`/document-price-changes/${idOld}/status`)
       .send({ status: 'COMPLETED' })
       .expect(200);
 
@@ -153,19 +140,19 @@ describe('Price Logic (Slice Last)', () => {
     });
     expect(priceCheckFinal?.value.toNumber()).toBe(120);
 
-    // 5. Check History
-    // History should contain the 150 entry
-    const history = await prisma.priceHistory.findMany({
+    // 5. Check Ledger
+    const history = await prisma.priceLedger.findMany({
       where: { productId: product.id, priceTypeId: retail.id },
       orderBy: { date: 'asc' },
     });
-    // Expected:
-    // 1. Jan 1st: 100 (First attempt)
-    // 2. Feb 1st: 120
-    // 3. Jan 1st: 150 (Correction)
-    // Actually, create creates new history.
 
-    // Check if we have an entry with value 150
+    // Check if we have an entry with value 150 (from Jan 1st)
+    // Note: Re-completing logic might duplicate ledger entries or replace them?
+    // My implementation deletes linked ledger entries on Revert (to DRAFT) and recreates on Complete.
+    // So there should be ONE entry for Jan 1st with value 150.
+
+    // And one entry for Feb 1st with 120.
+
     const entry150 = history.find((h) => h.value.toNumber() === 150);
     expect(entry150).toBeDefined();
     expect(entry150?.date.toISOString()).toBe(dateOld.toISOString());

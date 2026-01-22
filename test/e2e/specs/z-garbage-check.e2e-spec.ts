@@ -56,20 +56,7 @@ describe('Global Cleanup Verification (e2e)', () => {
       }
     }
 
-    // Check username for User
-    const users = await prisma.user.findMany({
-      where: {
-        username: { contains: 'User_' },
-      },
-    });
-    if (users.length > 0) {
-      console.error(
-        `GARBAGE FOUND in User (username):`,
-        users.map((u) => u.username),
-      );
-      garbageFound = true;
-      details.push(`User (username): ${users.length} records`);
-    }
+
 
     if (garbageFound) {
       throw new Error(`Garbage data detected in: ${details.join(', ')}`);

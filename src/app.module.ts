@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from './core/prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
-import { UserModule } from './user/user.module';
+
 import { StoreModule } from './store/store.module';
 import { CashboxModule } from './cashbox/cashbox.module';
 import { CategoryModule } from './category/category.module';
@@ -18,15 +18,16 @@ import { DocumentTransferModule } from './document-transfer/document-transfer.mo
 import { BarcodeModule } from './barcode/barcode.module';
 import { PriceModule } from './price/price.module';
 import { InventoryModule } from './core/inventory/inventory.module';
-import { StockMovementModule } from './stock-movement/stock-movement.module';
-import { DocumentHistoryModule } from './document-history/document-history.module';
+import { StockLedgerModule } from './stock-ledger/stock-ledger.module';
+import { DocumentLedgerModule } from './document-ledger/document-ledger.module';
+import { DocumentPriceChangeModule } from './document-price-change/document-price-change.module';
 
 @Module({
   imports: [
     PrismaModule,
     PrometheusModule.register(),
     ConfigModule.forRoot({ isGlobal: true }),
-    UserModule,
+
     StoreModule,
     CashboxModule,
     CategoryModule,
@@ -43,8 +44,9 @@ import { DocumentHistoryModule } from './document-history/document-history.modul
     PriceModule,
     InventoryModule,
     InventoryModule,
-    StockMovementModule,
-    DocumentHistoryModule,
+    StockLedgerModule,
+    DocumentPriceChangeModule,
+    DocumentLedgerModule,
   ],
 })
 export class AppModule {}

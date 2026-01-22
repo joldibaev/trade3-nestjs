@@ -15,10 +15,11 @@
 - [**Возвраты (Return)**](./services/document-return.md) — Прием товара от клиентов.
 - [**Корректировки (Adjustment)**](./services/document-adjustment.md) — Инвентаризация.
 - [**Перемещения (Transfer)**](./services/document-transfer.md) — Движение между складами.
+- [**Изменение цен (PriceChange)**](./services/document-price-change.md) — Установка и история цен.
 
 ### 3. Общие механизмы
 - **InventoryService** (описан внутри сервисов документов) — Централизованный помощник для валидации складов, расчета себестоимости и логирования аудита.
-- [**StockMovement & PriceHistory (Отчетность)**](./reporting.md) — API для получения аудита движений и истории цен с фильтрацией.
+- [**StockLedger & PriceLedger (Отчетность)**](./reporting.md) — API для получения аудита движений и истории цен с фильтрацией.
 
 ### 4. Тестирование
 - [**E2E Тесты (Testing)**](./testing.md) — Стратегия тестирования, описание `TestHelper` и сценариев проверки API.

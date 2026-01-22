@@ -42,7 +42,7 @@ describe('Reporting Modules (PriceHistory & StockMovement)', () => {
 
     // Test GET /stock-movements with productId and storeId
     const response = await request(app.getHttpServer())
-      .get('/stock-movements')
+      .get('/stock-ledgers')
       .query({ productId: product.id, storeId: store.id })
       .expect(200);
 
@@ -53,7 +53,7 @@ describe('Reporting Modules (PriceHistory & StockMovement)', () => {
 
     // Test GET /stock-movements with type
     const responseType = await request(app.getHttpServer())
-      .get('/stock-movements')
+      .get('/stock-ledgers')
       .query({ type: 'PURCHASE' })
       .expect(200);
 

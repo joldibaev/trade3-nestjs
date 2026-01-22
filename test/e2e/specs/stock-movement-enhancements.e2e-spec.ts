@@ -36,7 +36,7 @@ describe('Stock Movement Enhancements (e2e)', () => {
     const purchase = await helper.createPurchase(store.id, vendor.id, product.id, 10, 100);
     // Total = 1000
 
-    const movement = await prisma.stockMovement.findFirst({
+    const movement = await prisma.stockLedger.findFirst({
       where: { documentPurchaseId: purchase.id },
     });
 
@@ -67,7 +67,7 @@ describe('Stock Movement Enhancements (e2e)', () => {
     // Signature: createSale(storeId, cashboxId, priceTypeId, productId, quantity, price)
     const sale = await helper.createSale(store.id, cashbox.id, retail.id, product.id, 5, 200);
 
-    const movement = await prisma.stockMovement.findFirst({
+    const movement = await prisma.stockLedger.findFirst({
       where: { documentSaleId: sale.id },
     });
 

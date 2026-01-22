@@ -4,7 +4,7 @@ import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 
-describe('Stock Movement Audit Flow (E2E)', () => {
+describe('Stock Ledger Audit Flow (E2E)', () => {
   let app: INestApplication;
   let prismaService: PrismaService;
   let helper: TestHelper;
@@ -30,7 +30,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     await app.close();
   });
 
-  it('should log StockMovement on PURCHASE with correct snapshots', async () => {
+  it('should log StockLedger on PURCHASE with correct snapshots', async () => {
     const store = await helper.createStore();
     const vendor = await helper.createVendor();
     const category = await helper.createCategory();
@@ -41,7 +41,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
 
     const purchase = await helper.createPurchase(store.id, vendor.id, product.id, qty, price);
 
-    const movements = await prismaService.stockMovement.findMany({
+    const movements = await prismaService.stockLedger.findMany({
       where: { documentPurchaseId: purchase.id },
     });
 
@@ -56,7 +56,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     expect(mov.productId).toBe(product.id);
   });
 
-  it('should log StockMovement on SALE with correct snapshots', async () => {
+  it('should log StockLedger on SALE with correct snapshots', async () => {
     const store = await helper.createStore();
     const vendor = await helper.createVendor();
     const category = await helper.createCategory();
@@ -70,7 +70,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     // 2. Sale (Qty 3, Price 200)
     const sale = await helper.createSale(store.id, cashbox.id, retail.id, product.id, 3, 200);
 
-    const movements = await prismaService.stockMovement.findMany({
+    const movements = await prismaService.stockLedger.findMany({
       where: { documentSaleId: sale.id },
     });
 
@@ -83,7 +83,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     expect(mov.storeId).toBe(store.id);
   });
 
-  it('should log StockMovement on RETURN with correct snapshots', async () => {
+  it('should log StockLedger on RETURN with correct snapshots', async () => {
     const store = await helper.createStore();
     const client = await helper.createClient();
     const category = await helper.createCategory();
@@ -109,7 +109,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     );
     helper.createdIds.returns.push(returnDoc.id);
 
-    const movements = await prismaService.stockMovement.findMany({
+    const movements = await prismaService.stockLedger.findMany({
       where: { documentReturnId: returnDoc.id },
     });
 
@@ -122,7 +122,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     expect(mov.averagePurchasePrice.toString()).toBe('100');
   });
 
-  it('should log StockMovement on ADJUSTMENT with correct snapshots', async () => {
+  it('should log StockLedger on ADJUSTMENT with correct snapshots', async () => {
     const store = await helper.createStore();
     const category = await helper.createCategory();
     const product = await helper.createProduct(category.id);
@@ -141,7 +141,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     const adj = await helper.createAdjustment(store.id, product.id, -3, 'COMPLETED');
     helper.createdIds.adjustments.push(adj.id);
 
-    const movements = await prismaService.stockMovement.findMany({
+    const movements = await prismaService.stockLedger.findMany({
       where: { documentAdjustmentId: adj.id },
     });
 
@@ -153,7 +153,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     expect(mov.averagePurchasePrice.toString()).toBe('50');
   });
 
-  it('should log StockMovements on TRANSFER (OUT and IN)', async () => {
+  it('should log StockLedger on TRANSFER (OUT and IN)', async () => {
     const sourceStore = await helper.createStore(); // "Store A"
     const destStore = await helper.createStore(); // "Store B"
     const category = await helper.createCategory();
@@ -180,7 +180,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     helper.createdIds.transfers.push(transfer.id);
 
     // Check OUT movement
-    const outMoves = await prismaService.stockMovement.findMany({
+    const outMoves = await prismaService.stockLedger.findMany({
       where: { documentTransferId: transfer.id, type: 'TRANSFER_OUT' },
     });
     expect(outMoves).toHaveLength(1);
@@ -191,7 +191,7 @@ describe('Stock Movement Audit Flow (E2E)', () => {
     expect(outMov.averagePurchasePrice.toString()).toBe('10');
 
     // Check IN movement
-    const inMoves = await prismaService.stockMovement.findMany({
+    const inMoves = await prismaService.stockLedger.findMany({
       where: { documentTransferId: transfer.id, type: 'TRANSFER_IN' },
     });
     expect(inMoves).toHaveLength(1);

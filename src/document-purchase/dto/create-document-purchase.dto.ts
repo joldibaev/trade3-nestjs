@@ -13,17 +13,6 @@ import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class UpdateProductPriceDto {
-  @ApiProperty({ example: 'uuid-pricetype-id' })
-  @IsString()
-  priceTypeId: string;
-
-  @ApiProperty({ example: 15000 })
-  @IsNumber()
-  @Type(() => Number)
-  value: number;
-}
-
 export class CreateDocumentPurchaseItemDto {
   @ApiProperty({ example: 'uuid-product-id' })
   @IsString()
@@ -41,21 +30,12 @@ export class CreateDocumentPurchaseItemDto {
   @Type(() => Number)
   price: number; // Cost price is mandatory for Purchase
 
-  @ApiProperty({
-    description: 'Optional: Update sales prices for this product',
-    type: 'array',
-    items: {
-      type: 'object',
-      properties: {
-        priceTypeId: { type: 'string' },
-        value: { type: 'number' },
-      },
-    },
-  })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => UpdateProductPriceDto)
-  newPrices: UpdateProductPriceDto[];
+  @ApiProperty({ example: 15000, description: 'New retail price (optional)', required: false })
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  @IsOptional()
+  newPrice?: number;
 }
 
 export class CreateDocumentPurchaseDto {

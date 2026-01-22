@@ -95,7 +95,6 @@ export class TestHelper {
     adjustments: [] as string[],
     transfers: [] as string[],
     stocks: [] as string[],
-    users: [] as string[],
   };
 
   uniqueName(prefix: string) {
@@ -103,8 +102,11 @@ export class TestHelper {
   }
 
   async cleanup() {
-    // 1. Delete StockMovements first as they reference both products and all document types
-    await this.prismaService.stockMovement.deleteMany({
+    // 0. Cleanup DocumentLedger
+    await this.prismaService.documentLedger.deleteMany({});
+
+    // 1. Delete StockLedger first as they reference both products and all document types
+    await this.prismaService.stockLedger.deleteMany({
       where: {
         OR: [
           { productId: { in: this.createdIds.products } },
@@ -133,6 +135,9 @@ export class TestHelper {
         where: { productId: { in: this.createdIds.products } },
       });
       await this.prismaService.documentTransferItem.deleteMany({
+        where: { productId: { in: this.createdIds.products } },
+      });
+      await this.prismaService.documentPriceChangeItem.deleteMany({
         where: { productId: { in: this.createdIds.products } },
       });
     }
@@ -189,6 +194,14 @@ export class TestHelper {
             { destinationStoreId: { in: this.createdIds.stores } },
           ],
         },
+      });
+
+      // Price Changes (linked to store)
+      await this.prismaService.documentPriceChangeItem.deleteMany({
+        where: { document: { storeId: { in: this.createdIds.stores } } },
+      });
+      await this.prismaService.documentPriceChange.deleteMany({
+        where: { storeId: { in: this.createdIds.stores } },
       });
     }
 
@@ -248,7 +261,7 @@ export class TestHelper {
       await this.prismaService.price.deleteMany({
         where: { productId: { in: this.createdIds.products } },
       });
-      await this.prismaService.priceHistory.deleteMany({
+      await this.prismaService.priceLedger.deleteMany({
         where: { productId: { in: this.createdIds.products } },
       });
       await this.prismaService.barcode.deleteMany({
@@ -292,12 +305,6 @@ export class TestHelper {
     if (this.createdIds.priceTypes.length > 0) {
       await this.prismaService.priceType.deleteMany({
         where: { id: { in: this.createdIds.priceTypes } },
-      });
-    }
-
-    if (this.createdIds.users.length > 0) {
-      await this.prismaService.user.deleteMany({
-        where: { id: { in: this.createdIds.users } },
       });
     }
   }

@@ -4,8 +4,8 @@ import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
 import { StoreService } from '../store/store.service';
-import { StockMovementService } from '../stock-movement/stock-movement.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
+import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
+import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedTransferItem {
@@ -26,8 +26,8 @@ export class DocumentTransferService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockMovementService: StockMovementService,
-    private readonly historyService: DocumentHistoryService,
+    private readonly stockLedgerService: StockLedgerService,
+    private readonly ledgerService: DocumentLedgerService,
   ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
@@ -79,7 +79,7 @@ export class DocumentTransferService {
         });
 
         // Log CREATED
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: doc.id,
           documentType: 'documentTransfer',
           action: 'CREATED',
@@ -87,7 +87,7 @@ export class DocumentTransferService {
         });
 
         for (const item of preparedItems) {
-          await this.historyService.logAction(tx, {
+          await this.ledgerService.logAction(tx, {
             documentId: doc.id,
             documentType: 'documentTransfer',
             action: 'ITEM_ADDED',
@@ -227,7 +227,7 @@ export class DocumentTransferService {
           }
         }
 
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: id,
           documentType: 'documentTransfer',
           action: 'STATUS_CHANGED',
@@ -308,7 +308,7 @@ export class DocumentTransferService {
       }
 
       if (Object.keys(changes).length > 0) {
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: id,
           documentType: 'documentTransfer',
           action: 'UPDATED',
@@ -316,7 +316,7 @@ export class DocumentTransferService {
         });
       }
 
-      await this.historyService.logDiff(
+      await this.ledgerService.logDiff(
         tx,
         {
           documentId: id,
@@ -452,7 +452,7 @@ export class DocumentTransferService {
       });
 
       // Audit: Log TRANSFER_OUT
-      await this.stockMovementService.create(tx, {
+      await this.stockLedgerService.create(tx, {
         type: 'TRANSFER_OUT',
         storeId: sourceStoreId,
         productId: item.productId,
@@ -470,7 +470,7 @@ export class DocumentTransferService {
       });
 
       // Audit: Log TRANSFER_IN
-      await this.stockMovementService.create(tx, {
+      await this.stockLedgerService.create(tx, {
         type: 'TRANSFER_IN',
         storeId: destinationStoreId,
         productId: item.productId,
@@ -503,7 +503,7 @@ export class DocumentTransferService {
         items: true,
         sourceStore: true,
         destinationStore: true,
-        history: {
+        documentLedger: {
           orderBy: { createdAt: 'asc' },
         },
       },

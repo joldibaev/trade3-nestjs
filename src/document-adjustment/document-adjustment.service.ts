@@ -4,8 +4,8 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
 import { StoreService } from '../store/store.service';
-import { StockMovementService } from '../stock-movement/stock-movement.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
+import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
+import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedAdjustmentItem {
@@ -27,8 +27,8 @@ export class DocumentAdjustmentService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockMovementService: StockMovementService,
-    private readonly historyService: DocumentHistoryService,
+    private readonly stockLedgerService: StockLedgerService,
+    private readonly ledgerService: DocumentLedgerService,
   ) {}
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
@@ -97,7 +97,7 @@ export class DocumentAdjustmentService {
           include: { items: true },
         });
 
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: doc.id,
           documentType: 'documentAdjustment',
           action: 'CREATED',
@@ -105,7 +105,7 @@ export class DocumentAdjustmentService {
         });
 
         for (const item of preparedItems) {
-          await this.historyService.logAction(tx, {
+          await this.ledgerService.logAction(tx, {
             documentId: doc.id,
             documentType: 'documentAdjustment',
             action: 'ITEM_ADDED',
@@ -207,7 +207,7 @@ export class DocumentAdjustmentService {
         }
 
         if (Object.keys(changes).length > 0) {
-          await this.historyService.logAction(tx, {
+          await this.ledgerService.logAction(tx, {
             documentId: updatedDoc.id,
             documentType: 'documentAdjustment',
             action: 'UPDATED',
@@ -216,7 +216,7 @@ export class DocumentAdjustmentService {
         }
 
         // Log Diffs
-        await this.historyService.logDiff(
+        await this.ledgerService.logDiff(
           tx,
           {
             documentId: updatedDoc.id,
@@ -251,7 +251,7 @@ export class DocumentAdjustmentService {
         throw new BadRequestException('Только черновики могут быть удалены');
       }
 
-      await this.historyService.logAction(tx, {
+      await this.ledgerService.logAction(tx, {
         documentId: doc.id,
         documentType: 'documentAdjustment',
         action: 'DELETED',
@@ -433,7 +433,7 @@ export class DocumentAdjustmentService {
       });
 
       // Audit: Log Stock Movement
-      await this.stockMovementService.create(tx, {
+      await this.stockLedgerService.create(tx, {
         type: 'ADJUSTMENT',
         storeId,
         productId: item.productId,
@@ -465,7 +465,7 @@ export class DocumentAdjustmentService {
       include: {
         items: true,
         store: true,
-        history: {
+        documentLedger: {
           orderBy: { createdAt: 'asc' },
         },
       },

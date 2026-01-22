@@ -5,8 +5,8 @@ import { Prisma } from '../generated/prisma/client';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { StoreService } from '../store/store.service';
-import { StockMovementService } from '../stock-movement/stock-movement.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
+import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
+import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedPurchaseItem {
@@ -14,12 +14,6 @@ interface PreparedPurchaseItem {
   quantity: Decimal;
   price: Decimal;
   total: Decimal;
-  newPrices?: PriceUpdate[];
-}
-
-interface PriceUpdate {
-  priceTypeId: string;
-  value: number;
 }
 
 interface PurchaseContext {
@@ -34,9 +28,9 @@ export class DocumentPurchaseService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockMovementService: StockMovementService,
-    private readonly historyService: DocumentHistoryService,
-  ) {}
+    private readonly stockLedgerService: StockLedgerService,
+    private readonly ledgerService: DocumentLedgerService,
+  ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items, status, notes } = createDocumentPurchaseDto;
@@ -50,7 +44,7 @@ export class DocumentPurchaseService {
     // 2. Execute Transaction
     return this.prisma.$transaction(
       async (tx) => {
-        let preparedItems: PreparedPurchaseItem[] = [];
+        let preparedItems: (PreparedPurchaseItem & { newPrice?: number })[] = [];
         let total = new Decimal(0);
 
         if (safeItems.length > 0) {
@@ -74,12 +68,11 @@ export class DocumentPurchaseService {
               quantity,
               price,
               total: lineTotal,
-              newPrices: item.newPrices,
+              newPrice: item.newPrice,
             };
           });
         }
 
-        // Create DocumentPurchase
         // Create DocumentPurchase
         const doc = await tx.documentPurchase.create({
           data: {
@@ -95,20 +88,13 @@ export class DocumentPurchaseService {
                 quantity: i.quantity,
                 price: i.price,
                 total: i.total,
-                newPrices: {
-                  create:
-                    i.newPrices?.map((np) => ({
-                      priceTypeId: np.priceTypeId,
-                      value: new Decimal(np.value),
-                    })) || [],
-                },
               })),
             },
           },
           include: { items: true },
         });
 
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: doc.id,
           documentType: 'documentPurchase',
           action: 'CREATED',
@@ -116,7 +102,7 @@ export class DocumentPurchaseService {
         });
 
         for (const item of preparedItems) {
-          await this.historyService.logAction(tx, {
+          await this.ledgerService.logAction(tx, {
             documentId: doc.id,
             documentType: 'documentPurchase',
             action: 'ITEM_ADDED',
@@ -129,26 +115,54 @@ export class DocumentPurchaseService {
           });
         }
 
+        // --- Handle Automatic DocumentPriceChange ---
+        const itemsWithNewPrice = preparedItems.filter(
+          (i) => i.newPrice !== undefined && i.newPrice > 0,
+        );
+
+        if (itemsWithNewPrice.length > 0) {
+          // Get "Retail" price type ID - assuming a default logic or standard name exists.
+          // Ideally this should be configurable or passed in DTO.
+          // For now, let's look for a PriceType named "Розничная" or similar, or just the first one.
+          const retailPriceType = await tx.priceType.findFirst({
+            where: { name: 'Розничная' }, // Fallback to 'Retail' or first?
+          });
+
+          const priceTypeId = retailPriceType?.id || (await tx.priceType.findFirstOrThrow()).id;
+
+          // Create the linked Price Change Document
+          await tx.documentPriceChange.create({
+            data: {
+              storeId,
+              date: new Date(date),
+              status: 'DRAFT', // Always DRAFT initially
+              notes: `Автоматически создан на основе закупки ${doc.code}`,
+              documentPurchaseId: doc.id, // Link to purchase
+              items: {
+                create: await Promise.all(
+                  itemsWithNewPrice.map(async (i) => {
+                    // Fetch current price for old value (optional but good for history)
+                    const currentPrice = await tx.price.findUnique({
+                      where: { productId_priceTypeId: { productId: i.productId, priceTypeId } },
+                    });
+
+                    return {
+                      productId: i.productId,
+                      priceTypeId,
+                      newValue: new Decimal(i.newPrice!),
+                      oldValue: currentPrice?.value || 0,
+                    };
+                  }),
+                ),
+              },
+            },
+          });
+        }
+        // ---------------------------------------------
+
         // 3. Apply Inventory Movements (Only if COMPLETED)
         if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
-          // Re-map items to simple format expected by private method if needed
-          // Actually applyInventoryMovements expects PreparedPurchaseItem[] which we have
           await this.applyInventoryMovements(tx, doc, preparedItems);
-
-          // 4. Apply Pending Price Updates
-          // We need items with newPrices here. `doc.items` doesn't include newPrices unless we include it in create return
-          // But `preparedItems` has `newPrices`.
-          // `applyDelayedProductPriceUpdates` expects Prisma payload.
-          // Let's refactor applyDelayedProductPriceUpdates or manually construct payload.
-          // Or just fetch the doc again? No, unused overhead.
-          // The method takes `Prisma.DocumentPurchaseItemGetPayload...`
-          // We can construct it or just refactor helper.
-          // Let's fetch the doc with newPrices to be safe and type-compliant.
-          const createdDoc = await tx.documentPurchase.findUniqueOrThrow({
-            where: { id: doc.id },
-            include: { items: { include: { newPrices: true } } },
-          });
-          await this.applyDelayedProductPriceUpdates(tx, doc.id, doc.date, createdDoc.items);
         }
 
         return doc;
@@ -167,9 +181,7 @@ export class DocumentPurchaseService {
         const purchase = await tx.documentPurchase.findUniqueOrThrow({
           where: { id },
           include: {
-            items: {
-              include: { newPrices: true },
-            },
+            items: true,
           },
         });
 
@@ -198,13 +210,7 @@ export class DocumentPurchaseService {
           // 1. Apply Inventory Movements
           await this.applyInventoryMovements(tx, purchase, items);
 
-          // 2. Apply Pending Price Updates
-          await this.applyDelayedProductPriceUpdates(
-            tx,
-            purchase.id,
-            purchase.date,
-            purchase.items,
-          );
+          // Price updates removed
         }
 
         // COMPLETED -> DRAFT (or CANCELLED)
@@ -239,7 +245,7 @@ export class DocumentPurchaseService {
           include: { items: true },
         });
 
-        await this.historyService.logAction(tx, {
+        await this.ledgerService.logAction(tx, {
           documentId: id,
           documentType: 'documentPurchase',
           action: 'STATUS_CHANGED',
@@ -358,8 +364,8 @@ export class DocumentPurchaseService {
         },
       });
 
-      // Audit: Log Stock Movement
-      await this.stockMovementService.create(tx, {
+      // Audit: Log Stock Ledger
+      await this.stockLedgerService.create(tx, {
         type: 'PURCHASE',
         storeId,
         productId: item.productId,
@@ -412,14 +418,10 @@ export class DocumentPurchaseService {
             quantity,
             price,
             total: quantity.mul(price),
-            newPrices: item.newPrices,
           };
         });
 
         const total = preparedItems.reduce((sum, item) => sum.add(item.total), new Decimal(0));
-
-        // Apply Price Updates Immediately - REVERTED per user request
-        // await this.applyProductPriceUpdates(tx, preparedItems);
 
         // 2. Delete existing items
         await tx.documentPurchaseItem.deleteMany({
@@ -441,60 +443,47 @@ export class DocumentPurchaseService {
                 quantity: i.quantity,
                 price: i.price,
                 total: i.total,
-                newPrices: {
-                  create:
-                    i.newPrices?.map((np) => ({
-                      priceTypeId: np.priceTypeId,
-                      value: new Decimal(np.value),
-                    })) || [],
-                },
               })),
             },
           },
           include: { items: true },
         });
 
-        // Log Update (notes etc)
-        const changes: Record<string, any> = {};
-        if (notes !== undefined && notes !== (doc.notes ?? '')) {
-          changes.notes = notes;
-        }
-        if (storeId !== doc.storeId) {
-          changes.storeId = storeId;
-        }
-        if (vendorId !== doc.vendorId) {
-          changes.vendorId = vendorId;
-        }
-        if (date && new Date(date).getTime() !== doc.date?.getTime()) {
-          changes.date = date;
-        }
+        // 4. Log Changes
+        const headerChanges: Record<string, any> = {};
+        if (notes !== undefined && notes !== (doc.notes ?? '')) headerChanges.notes = notes;
+        if (storeId !== undefined && storeId !== doc.storeId) headerChanges.storeId = storeId;
+        if (vendorId !== undefined && vendorId !== doc.vendorId) headerChanges.vendorId = vendorId;
+        if (date && new Date(date).getTime() !== new Date(doc.date).getTime()) headerChanges.date = date;
 
-        if (Object.keys(changes).length > 0) {
-          await this.historyService.logAction(tx, {
+        if (Object.keys(headerChanges).length > 0) {
+          await this.ledgerService.logAction(tx, {
             documentId: id,
             documentType: 'documentPurchase',
             action: 'UPDATED',
-            details: changes,
+            details: headerChanges,
           });
         }
 
-        // Log Diffs
-        await this.historyService.logDiff(
+        // Use logDiff to track item changes (Added/Removed/Changed)
+        await this.ledgerService.logDiff(
           tx,
-          {
-            documentId: id,
-            documentType: 'documentPurchase',
-          },
-          doc.items,
-          preparedItems.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            price: item.price,
+          { documentId: id, documentType: 'documentPurchase' },
+          doc.items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            price: i.price,
+          })),
+          preparedItems.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            price: i.price,
           })),
           ['quantity', 'price'],
         );
 
         return updatedDoc;
+
       },
       {
         isolationLevel: 'ReadCommitted', // Sufficient for DRAFT updates
@@ -541,77 +530,14 @@ export class DocumentPurchaseService {
       where: { id },
       include: {
         items: {
-          include: { product: true, newPrices: true },
+          include: { product: true },
         },
-        history: {
+        documentLedger: {
           orderBy: { createdAt: 'asc' },
         },
         vendor: true,
         store: true,
       },
     });
-  }
-
-  async applyDelayedProductPriceUpdates(
-    tx: Prisma.TransactionClient,
-    documentId: string,
-    date: Date,
-    items: Prisma.DocumentPurchaseItemGetPayload<{
-      include: { newPrices: true };
-    }>[],
-  ) {
-    for (const item of items) {
-      if (item.newPrices && item.newPrices.length > 0) {
-        for (const priceUpdate of item.newPrices) {
-          // 1. Create History Record (Audit)
-          await tx.priceHistory.create({
-            data: {
-              productId: item.productId,
-              priceTypeId: priceUpdate.priceTypeId,
-              value: priceUpdate.value,
-              documentPurchaseId: documentId,
-              date: date,
-            },
-          });
-
-          // 2. Update Current Price (Rebalance/Slice Last)
-          await this.rebalanceProductPrice(tx, item.productId, priceUpdate.priceTypeId);
-        }
-      }
-    }
-  }
-
-  private async rebalanceProductPrice(
-    tx: Prisma.TransactionClient,
-    productId: string,
-    priceTypeId: string,
-  ) {
-    // Find the actual latest price based on effective date
-    const latestHistory = await tx.priceHistory.findFirst({
-      where: {
-        productId,
-        priceTypeId,
-      },
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-    });
-
-    if (latestHistory) {
-      await tx.price.upsert({
-        where: {
-          productId_priceTypeId: {
-            productId,
-            priceTypeId,
-          },
-        },
-        create: {
-          productId,
-          priceTypeId,
-          value: latestHistory.value,
-        },
-        update: {
-          value: latestHistory.value,
-        },
-      });
-    }
   }
 }
