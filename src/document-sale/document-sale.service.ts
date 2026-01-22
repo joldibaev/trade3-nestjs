@@ -6,6 +6,7 @@ import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { BaseDocumentService } from '../common/base-document.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedSaleItem {
@@ -32,6 +33,7 @@ export class DocumentSaleService {
     private readonly storeService: StoreService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
+    private readonly baseService: BaseDocumentService,
   ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
@@ -40,6 +42,7 @@ export class DocumentSaleService {
 
     const targetStatus = status || 'DRAFT';
     const safeItems = items || [];
+    const docDate = date ? this.baseService.validateDate(date) : new Date();
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -90,7 +93,7 @@ export class DocumentSaleService {
     }
 
     // 3. Execute Transaction
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         // Fetch all relevant stocks in one go
         const stocks = await tx.stock.findMany({
@@ -145,7 +148,7 @@ export class DocumentSaleService {
             storeId,
             cashboxId,
             clientId,
-            date: date ? new Date(date) : new Date(),
+            date: docDate,
             status: targetStatus,
             priceTypeId,
             notes,
@@ -158,20 +161,47 @@ export class DocumentSaleService {
         });
 
         // Update Stock if COMPLETED
+        let reprocessingId: string | null = null;
         if (sale.status === 'COMPLETED' && preparedItems.length > 0) {
           await this.applyInventoryMovements(tx, sale, preparedItems);
+
+          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
+            storeId,
+            productId: productIds,
+            date: docDate,
+            documentId: sale.id,
+            documentType: 'documentSale',
+          });
         }
 
-        return sale;
+        return { sale, reprocessingId };
       },
       {
         isolationLevel: 'ReadCommitted',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (result.reprocessingId) {
+      for (const item of result.sale.items) {
+        await this.inventoryService.reprocessProductHistory(
+          result.sale.storeId,
+          item.productId,
+          result.sale.date,
+          result.reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(result.reprocessingId);
+    }
+
+    return result.sale;
   }
 
   async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
-    return this.prisma.$transaction(
+    let reprocessingId: string | null = null;
+    let productsToReprocess: string[] = [];
+
+    const updatedSale = await this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
           where: { id },
@@ -208,23 +238,44 @@ export class DocumentSaleService {
 
           // 2. Apply stock movements (Decrease Stock)
           await this.applyInventoryMovements(tx, sale, items);
+
+          // 3. Check for backdated reprocessing
+          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
+            storeId: sale.storeId,
+            productId: productIds,
+            date: sale.date,
+            documentId: sale.id,
+            documentType: 'documentSale',
+          });
+          if (reprocessingId) {
+            productsToReprocess = productIds;
+          }
         }
 
         // COMPLETED -> DRAFT (or CANCELLED)
         if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
           // Revert stock (Increase Stock)
-          // We pass negative quantity to applyInventoryMovements.
-          // Since it does `decrement: qty`, decrementing a negative number = increment.
           const revertItems = items.map((i) => ({
             ...i,
             quantity: i.quantity.negated(),
           }));
 
           await this.applyInventoryMovements(tx, sale, revertItems);
+
+          // ALWAYS trigger reprocessing for REVERT
+          const reprocessing = await tx.inventoryReprocessing.create({
+            data: {
+              status: 'PENDING',
+              documentSaleId: sale.id,
+              date: sale.date,
+            },
+          });
+          reprocessingId = reprocessing.id;
+          productsToReprocess = productIds;
         }
 
         // Update status
-        const updatedSale = await tx.documentSale.update({
+        const updatedDoc = await tx.documentSale.update({
           where: { id },
           data: { status: newStatus },
           include: { items: true },
@@ -237,12 +288,27 @@ export class DocumentSaleService {
           details: { from: oldStatus, to: newStatus },
         });
 
-        return updatedSale;
+        return updatedDoc;
       },
       {
         isolationLevel: 'Serializable',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (reprocessingId && productsToReprocess.length > 0) {
+      for (const pid of productsToReprocess) {
+        await this.inventoryService.reprocessProductHistory(
+          updatedSale.storeId,
+          pid,
+          updatedSale.date,
+          reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(reprocessingId);
+    }
+
+    return updatedSale;
   }
 
   private async updateItemCostPrices(tx: Prisma.TransactionClient, sale: SaleWithItems) {
@@ -334,11 +400,10 @@ export class DocumentSaleService {
           include: { items: true },
         });
 
-        if (sale.status !== 'DRAFT') {
-          throw new BadRequestException('Только черновики могут быть изменены');
-        }
+        this.baseService.ensureDraft(sale.status);
 
         const { storeId, cashboxId, clientId, date, priceTypeId, items, notes } = updateDto;
+        const docDate = date ? this.baseService.validateDate(date) : new Date();
         const safeItems = items || [];
 
         // 1. Prepare new Items
@@ -398,7 +463,7 @@ export class DocumentSaleService {
             storeId,
             cashboxId,
             clientId,
-            date: date ? new Date(date) : new Date(),
+            date: docDate,
             priceTypeId,
             notes,
             total,
@@ -470,26 +535,6 @@ export class DocumentSaleService {
         isolationLevel: 'ReadCommitted',
       },
     );
-  }
-
-  async remove(id: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const sale = await tx.documentSale.findUniqueOrThrow({
-        where: { id },
-      });
-
-      if (sale.status !== 'DRAFT') {
-        throw new BadRequestException('Только черновики могут быть удалены');
-      }
-
-      await tx.documentSaleItem.deleteMany({
-        where: { saleId: id },
-      });
-
-      return tx.documentSale.delete({
-        where: { id },
-      });
-    });
   }
 
   findAll() {

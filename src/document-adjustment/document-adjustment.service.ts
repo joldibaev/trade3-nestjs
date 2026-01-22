@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
@@ -6,6 +6,7 @@ import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dt
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { BaseDocumentService } from '../common/base-document.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedAdjustmentItem {
@@ -29,12 +30,14 @@ export class DocumentAdjustmentService {
     private readonly storeService: StoreService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
+    private readonly baseService: BaseDocumentService,
   ) {}
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
     const { storeId, date, status, items, notes } = createDocumentAdjustmentDto;
 
     const targetStatus = status || 'DRAFT';
+    const docDate = date ? this.baseService.validateDate(date) : new Date();
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -47,7 +50,7 @@ export class DocumentAdjustmentService {
     // 1a. Pre-fetch Fallback WAPs (checking other stores)
     const fallbackWapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         let preparedItems: PreparedAdjustmentItem[] = [];
 
@@ -82,7 +85,7 @@ export class DocumentAdjustmentService {
         const doc = await tx.documentAdjustment.create({
           data: {
             storeId,
-            date: date ? new Date(date) : new Date(),
+            date: docDate,
             status: targetStatus,
             notes,
             items: {
@@ -115,23 +118,45 @@ export class DocumentAdjustmentService {
             },
           });
         }
+
+        let reprocessingId: string | null = null;
         // 5. Update Stocks (Only if COMPLETED)
         if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
           await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
+
+          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
+            storeId,
+            productId: preparedItems.map((i) => i.productId),
+            date: docDate,
+            documentId: doc.id,
+            documentType: 'documentAdjustment',
+          });
         }
 
-        return doc;
+        return { doc, reprocessingId };
       },
       {
         isolationLevel: 'Serializable',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (result.reprocessingId) {
+      for (const item of result.doc.items) {
+        await this.inventoryService.reprocessProductHistory(
+          result.doc.storeId,
+          item.productId,
+          result.doc.date,
+          result.reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(result.reprocessingId);
+    }
+
+    return result.doc;
   }
 
   async update(id: string, updateDto: CreateDocumentAdjustmentDto) {
-    const { storeId, date, items, notes } = updateDto;
-    const safeItems = items || [];
-
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
@@ -141,9 +166,7 @@ export class DocumentAdjustmentService {
 
         const oldItems = doc.items;
 
-        if (doc.status !== 'DRAFT') {
-          throw new BadRequestException('Только черновики могут быть изменены');
-        }
+        this.baseService.ensureDraft(doc.status);
 
         // 1. Delete existing items
         await tx.documentAdjustmentItem.deleteMany({
@@ -151,6 +174,9 @@ export class DocumentAdjustmentService {
         });
 
         // 2. Prepare new items
+        const { storeId, date, items, notes } = updateDto;
+        const docDate = date ? this.baseService.validateDate(date) : new Date();
+        const safeItems = items || [];
         const productIds = safeItems.map((i) => i.productId);
         // 2. Batch Fetch Existing Stocks (Current Store) - MUST be inside TX
         const existingStocks = await tx.stock.findMany({
@@ -181,7 +207,7 @@ export class DocumentAdjustmentService {
           where: { id },
           data: {
             storeId,
-            date: date ? new Date(date) : new Date(),
+            date: docDate,
             notes,
             items: {
               create: preparedItems.map((i) => ({
@@ -241,31 +267,11 @@ export class DocumentAdjustmentService {
     );
   }
 
-  async remove(id: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentAdjustment.findUniqueOrThrow({
-        where: { id },
-      });
-
-      if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Только черновики могут быть удалены');
-      }
-
-      await this.ledgerService.logAction(tx, {
-        documentId: doc.id,
-        documentType: 'documentAdjustment',
-        action: 'DELETED',
-        details: { status: doc.status },
-      });
-
-      return tx.documentAdjustment.delete({
-        where: { id },
-      });
-    });
-  }
-
   async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
-    return this.prisma.$transaction(
+    let reprocessingId: string | null = null;
+    let productsToReprocess: string[] = [];
+
+    const updatedDoc = await this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
           where: { id },
@@ -292,11 +298,10 @@ export class DocumentAdjustmentService {
           const preparedItems: PreparedAdjustmentItem[] = [];
           for (const item of doc.items) {
             const stock = stockMap.get(item.productId);
-            const quantity = item.quantity; // Delta
+            const quantity = item.quantity;
             const oldQty = stock ? stock.quantity : new Decimal(0);
             const newQty = oldQty.add(quantity);
 
-            // Update snapshots in the item with ACTUAL values at moment of completion
             await tx.documentAdjustmentItem.update({
               where: { id: item.id },
               data: {
@@ -314,6 +319,18 @@ export class DocumentAdjustmentService {
           }
 
           await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
+
+          // Check for backdated reprocessing
+          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
+            storeId: doc.storeId,
+            productId: productIds,
+            date: doc.date,
+            documentId: doc.id,
+            documentType: 'documentAdjustment',
+          });
+          if (reprocessingId) {
+            productsToReprocess = productIds;
+          }
         }
 
         // COMPLETED -> DRAFT/CANCELLED
@@ -321,31 +338,6 @@ export class DocumentAdjustmentService {
           doc.status === 'COMPLETED' &&
           (newStatus === 'DRAFT' || newStatus === 'CANCELLED')
         ) {
-          // Revert movements
-          // We applied `add(quantity)`. To revert, we must `subtract(quantity)` => `add(-quantity)`.
-          // applyInventoryMovements does UPSERT using the passed quantity as the NEW value or something?
-          // Wait, let's look at applyInventoryMovements.
-
-          // validation of applyInventoryMovements:
-          // It calculates qAfter and qDelta.
-          // It updates stock with qAfter.
-          // It creates stockMovement with qDelta.
-
-          // So to revert, we need to calculate what the stock WAS before.
-          // Actually, we just need to apply the INVERSE delta to the CURRENT stock.
-          // But applyInventoryMovements expects "quantityAfter".
-
-          // Let's re-read applyInventoryMovements carefully.
-          /*
-             const qAfter = item.quantityAfter;
-             const qDelta = item.quantityRelative;
-
-             ... update stock set quantity = qAfter ...
-          */
-
-          // Make sure we calculate the CORRECT qAfter for reversion.
-          // Revert: newStockQty = currentStockQty - originalDelta
-
           const existingStocks = await tx.stock.findMany({
             where: {
               storeId: doc.storeId,
@@ -355,30 +347,40 @@ export class DocumentAdjustmentService {
           const stockMap = new Map(existingStocks.map((s) => [s.productId, s]));
 
           const revertItems: PreparedAdjustmentItem[] = [];
-
           for (const item of doc.items) {
             const stock = stockMap.get(item.productId);
             const currentQty = stock ? stock.quantity : new Decimal(0);
-            const delta = item.quantity; // This was added.
-
-            // We want to remove it.
+            const delta = item.quantity;
             const revertedQty = currentQty.sub(delta);
 
             revertItems.push({
               productId: item.productId,
-              quantityRelative: delta.negated(), // Metadata for movement (opposite direction)
+              quantityRelative: delta.negated(),
               quantityBefore: currentQty,
-              quantityAfter: revertedQty, // Target stock quantity
+              quantityAfter: revertedQty,
             });
           }
 
-          // We pass revertItems to applyInventoryMovements
-          // Note: fallbackWapMap is needed but for revert it might just use current WAP if stock exists.
           await this.applyInventoryMovements(tx, doc, revertItems, fallbackWapMap);
+
+          // ALWAYS trigger reprocessing for REVERT
+          const reprocessing = await tx.inventoryReprocessing.create({
+            data: {
+              status: 'PENDING',
+              documentAdjustmentId: doc.id,
+              date: doc.date,
+            },
+          });
+          reprocessingId = reprocessing.id;
+          productsToReprocess = productIds;
         }
 
-        // DRAFT -> CANCELLED: Allowed, no stock changes.
-        // CANCELLED -> DRAFT: Allowed, no stock changes.
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentAdjustment',
+          action: 'STATUS_CHANGED',
+          details: { from: doc.status, to: newStatus },
+        });
 
         return tx.documentAdjustment.update({
           where: { id },
@@ -390,6 +392,21 @@ export class DocumentAdjustmentService {
         isolationLevel: 'Serializable',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (reprocessingId && productsToReprocess.length > 0) {
+      for (const pid of productsToReprocess) {
+        await this.inventoryService.reprocessProductHistory(
+          updatedDoc.storeId,
+          pid,
+          updatedDoc.date,
+          reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(reprocessingId);
+    }
+
+    return updatedDoc;
   }
 
   private async applyInventoryMovements(

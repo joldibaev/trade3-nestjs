@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateDocumentPriceChangeDto } from './dto/create-document-price-change.dto';
 import { UpdateDocumentPriceChangeDto } from './dto/update-document-price-change.dto';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { BaseDocumentService } from '../common/base-document.service';
 import { Prisma } from '../generated/prisma/client';
 import Decimal = Prisma.Decimal;
 
@@ -11,11 +12,13 @@ export class DocumentPriceChangeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledgerService: DocumentLedgerService,
+    private readonly baseService: BaseDocumentService,
   ) {}
 
   async create(createDto: CreateDocumentPriceChangeDto) {
     const { date, status, notes, items } = createDto;
     const targetStatus = status || 'DRAFT';
+    const docDate = this.baseService.validateDate(date);
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Prepare Items & Fetch Old Values
@@ -48,7 +51,7 @@ export class DocumentPriceChangeService {
       // 2. Create Document
       const doc = await tx.documentPriceChange.create({
         data: {
-          date: new Date(date),
+          date: docDate,
           status: targetStatus,
           notes,
           items: {
@@ -91,11 +94,10 @@ export class DocumentPriceChangeService {
         include: { items: true },
       });
 
-      if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Только черновики могут быть изменены');
-      }
+      this.baseService.ensureDraft(doc.status);
 
       const { date, notes, items } = updateDto;
+      const docDate = date ? this.baseService.validateDate(date) : undefined;
 
       // Delete old items
       await tx.documentPriceChangeItem.deleteMany({ where: { documentId: id } });
@@ -130,7 +132,7 @@ export class DocumentPriceChangeService {
       const updatedDoc = await tx.documentPriceChange.update({
         where: { id },
         data: {
-          date: date ? new Date(date) : undefined,
+          date: docDate,
           notes,
           items: {
             create: preparedItems.map((i) => ({
@@ -171,17 +173,6 @@ export class DocumentPriceChangeService {
         where: { id },
         data: { status: newStatus },
       });
-    });
-  }
-
-  async remove(id: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentPriceChange.findUniqueOrThrow({ where: { id } });
-      if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Только черновики могут быть удалены');
-      }
-      await tx.documentPriceChangeItem.deleteMany({ where: { documentId: id } });
-      return tx.documentPriceChange.delete({ where: { id } });
     });
   }
 

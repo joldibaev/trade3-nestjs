@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param } from '@nestjs/common';
 import { DocumentPriceChangeService } from './document-price-change.service';
 import { CreateDocumentPriceChangeDto } from './dto/create-document-price-change.dto';
 import { UpdateDocumentPriceChangeDto } from './dto/update-document-price-change.dto';
@@ -35,10 +35,5 @@ export class DocumentPriceChangeController {
     @Body('status') status: 'DRAFT' | 'COMPLETED' | 'CANCELLED',
   ) {
     return this.documentPriceChangeService.updateStatus(id, status);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.documentPriceChangeService.remove(id);
   }
 }

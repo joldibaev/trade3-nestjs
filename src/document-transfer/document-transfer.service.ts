@@ -6,6 +6,7 @@ import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { BaseDocumentService } from '../common/base-document.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedTransferItem {
@@ -28,6 +29,7 @@ export class DocumentTransferService {
     private readonly storeService: StoreService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
+    private readonly baseService: BaseDocumentService,
   ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
@@ -35,6 +37,7 @@ export class DocumentTransferService {
       createDocumentTransferDto;
 
     const targetStatus = status || 'DRAFT';
+    const docDate = date ? this.baseService.validateDate(date) : new Date();
     const safeItems = items || [];
 
     if (sourceStoreId === destinationStoreId) {
@@ -53,19 +56,20 @@ export class DocumentTransferService {
     ]);
 
     // Prepare Items
+    const productIds = safeItems.map((i) => i.productId);
     const preparedItems = safeItems.map((item) => ({
       productId: item.productId,
       quantity: new Decimal(item.quantity),
     }));
 
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         // 4. Create Document
         const doc = await tx.documentTransfer.create({
           data: {
             sourceStoreId,
             destinationStoreId,
-            date: date ? new Date(date) : new Date(),
+            date: docDate,
             status: targetStatus,
             notes,
             items: {
@@ -98,20 +102,78 @@ export class DocumentTransferService {
           });
         }
 
+        let reprocessingId: string | null = null;
         if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
           await this.applyInventoryMovements(tx, doc, preparedItems);
+
+          // Check if we need reprocessing in EITHER store
+          const hasSourceHistory = await tx.stockLedger
+            .count({
+              where: {
+                storeId: sourceStoreId,
+                productId: { in: productIds },
+                date: { gt: docDate },
+              },
+            })
+            .then((c) => c > 0);
+
+          const hasDestHistory = await tx.stockLedger
+            .count({
+              where: {
+                storeId: destinationStoreId,
+                productId: { in: productIds },
+                date: { gt: docDate },
+              },
+            })
+            .then((c) => c > 0);
+
+          if (hasSourceHistory || hasDestHistory) {
+            const reprocessing = await tx.inventoryReprocessing.create({
+              data: {
+                status: 'PENDING',
+                documentTransferId: doc.id,
+                date: docDate,
+              },
+            });
+            reprocessingId = reprocessing.id;
+          }
         }
 
-        return doc;
+        return { doc, reprocessingId };
       },
       {
         isolationLevel: 'Serializable',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (result.reprocessingId) {
+      for (const productId of productIds) {
+        // Reprocess both stores
+        await this.inventoryService.reprocessProductHistory(
+          sourceStoreId,
+          productId,
+          result.doc.date,
+          result.reprocessingId,
+        );
+        await this.inventoryService.reprocessProductHistory(
+          destinationStoreId,
+          productId,
+          result.doc.date,
+          result.reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(result.reprocessingId);
+    }
+
+    return result.doc;
   }
 
   async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
-    return this.prisma.$transaction(
+    let reprocessingId: string | null = null;
+    let productsToReprocess: string[] = [];
+
+    const updatedDoc = await this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentTransfer.findUniqueOrThrow({
           where: { id },
@@ -128,6 +190,7 @@ export class DocumentTransferService {
           throw new BadRequestException('Нельзя изменить статус отмененного документа');
         }
 
+        const productIds = doc.items.map((i) => i.productId);
         const items = doc.items.map((i) => ({
           productId: i.productId,
           quantity: i.quantity,
@@ -136,6 +199,39 @@ export class DocumentTransferService {
         // DRAFT -> COMPLETED
         if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
           await this.applyInventoryMovements(tx, doc, items);
+
+          // Check if we need reprocessing (Backdated)
+          const hasSourceHistory = await tx.stockLedger
+            .count({
+              where: {
+                storeId: doc.sourceStoreId,
+                productId: { in: productIds },
+                date: { gt: doc.date },
+              },
+            })
+            .then((c) => c > 0);
+
+          const hasDestHistory = await tx.stockLedger
+            .count({
+              where: {
+                storeId: doc.destinationStoreId,
+                productId: { in: productIds },
+                date: { gt: doc.date },
+              },
+            })
+            .then((c) => c > 0);
+
+          if (hasSourceHistory || hasDestHistory) {
+            const reprocessing = await tx.inventoryReprocessing.create({
+              data: {
+                status: 'PENDING',
+                documentTransferId: doc.id,
+                date: doc.date,
+              },
+            });
+            reprocessingId = reprocessing.id;
+            productsToReprocess = productIds;
+          }
         }
 
         // COMPLETED -> DRAFT (or CANCELLED)
@@ -161,7 +257,6 @@ export class DocumentTransferService {
           // Just doing the opposite of applyInventoryMovements.
 
           const { sourceStoreId, destinationStoreId } = doc;
-          const productIds = items.map((i) => i.productId);
 
           // 3. Batch Fetch Destination Stocks
           const destStocks = await tx.stock.findMany({
@@ -216,7 +311,6 @@ export class DocumentTransferService {
             });
             const sourceStock = sourceStocks[0];
             const sourceQtyBefore = sourceStock ? sourceStock.quantity : new Decimal(0);
-            const sourceWap = sourceStock ? sourceStock.averagePurchasePrice : new Decimal(0);
 
             await tx.stock.upsert({
               where: {
@@ -246,12 +340,30 @@ export class DocumentTransferService {
               documentId: doc.id ?? '',
               quantityBefore: sourceQtyBefore,
               quantityAfter: sourceQtyBefore.add(item.quantity),
-              averagePurchasePrice: sourceWap,
-              transactionAmount: item.quantity.mul(sourceWap),
+              averagePurchasePrice: sourceStock?.averagePurchasePrice ?? new Decimal(0),
+              transactionAmount: item.quantity.mul(sourceStock?.averagePurchasePrice ?? 0),
               batchId: doc.id,
             });
           }
+
+          // ALWAYS trigger reprocessing for REVERT
+          const reprocessing = await tx.inventoryReprocessing.create({
+            data: {
+              status: 'PENDING',
+              documentTransferId: doc.id,
+              date: doc.date,
+            },
+          });
+          reprocessingId = reprocessing.id;
+          productsToReprocess = productIds;
         }
+
+        // Update status
+        const updatedDoc = await tx.documentTransfer.update({
+          where: { id },
+          data: { status: newStatus },
+          include: { items: true },
+        });
 
         await this.ledgerService.logAction(tx, {
           documentId: id,
@@ -259,17 +371,33 @@ export class DocumentTransferService {
           action: 'STATUS_CHANGED',
           details: { from: oldStatus, to: newStatus },
         });
-
-        return tx.documentTransfer.update({
-          where: { id },
-          data: { status: newStatus },
-          include: { items: true },
-        });
+        return updatedDoc;
       },
       {
         isolationLevel: 'Serializable',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (reprocessingId && productsToReprocess.length > 0) {
+      for (const productId of productsToReprocess) {
+        await this.inventoryService.reprocessProductHistory(
+          updatedDoc.sourceStoreId,
+          productId,
+          updatedDoc.date,
+          reprocessingId,
+        );
+        await this.inventoryService.reprocessProductHistory(
+          updatedDoc.destinationStoreId,
+          productId,
+          updatedDoc.date,
+          reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(reprocessingId);
+    }
+
+    return updatedDoc;
   }
 
   async update(id: string, updateDto: CreateDocumentTransferDto) {
@@ -279,11 +407,10 @@ export class DocumentTransferService {
         include: { items: true },
       });
 
-      if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Только черновики могут быть изменены');
-      }
+      this.baseService.ensureDraft(doc.status);
 
       const { sourceStoreId, destinationStoreId, date, items, notes } = updateDto;
+      const docDate = date ? this.baseService.validateDate(date) : new Date();
       const safeItems = items || [];
 
       if (sourceStoreId === destinationStoreId) {
@@ -307,7 +434,7 @@ export class DocumentTransferService {
         data: {
           sourceStoreId,
           destinationStoreId,
-          date: date ? new Date(date) : new Date(),
+          date: docDate,
           notes,
           items: {
             create: preparedItems.map((i) => ({
@@ -357,26 +484,6 @@ export class DocumentTransferService {
       );
 
       return updatedDoc;
-    });
-  }
-
-  async remove(id: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentTransfer.findUniqueOrThrow({
-        where: { id },
-      });
-
-      if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Только черновики могут быть удалены');
-      }
-
-      await tx.documentTransferItem.deleteMany({
-        where: { transferId: id },
-      });
-
-      return tx.documentTransfer.delete({
-        where: { id },
-      });
     });
   }
 

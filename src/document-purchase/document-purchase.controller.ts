@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { DocumentPurchaseService } from './document-purchase.service';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
@@ -32,10 +32,5 @@ export class DocumentPurchaseController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateDto: CreateDocumentPurchaseDto) {
     return this.documentPurchaseService.update(id, updateDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.documentPurchaseService.remove(id);
   }
 }

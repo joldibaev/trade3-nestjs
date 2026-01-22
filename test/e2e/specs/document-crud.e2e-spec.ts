@@ -118,8 +118,8 @@ describe('Document CRUD (e2e)', () => {
         .expect(400);
     });
 
-    it('should NOT delete COMPLETED purchase', async () => {
-      await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(400);
+    it('should NOT delete COMPLETED purchase (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(404);
     });
 
     it('should revert purchase to DRAFT', async () => {
@@ -129,11 +129,22 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should delete DRAFT purchase', async () => {
-      await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(200);
+    it('should NOT delete DRAFT purchase (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(404);
+    });
 
-      const doc = await prisma.documentPurchase.findUnique({ where: { id: purchaseId } });
-      expect(doc).toBeNull();
+    it('should NOT allow future date in purchase', async () => {
+      const futureDate = new Date();
+      futureDate.setFullYear(futureDate.getFullYear() + 1);
+
+      await request(app.getHttpServer())
+        .post('/document-purchases')
+        .send({
+          storeId,
+          vendorId,
+          date: futureDate,
+        })
+        .expect(400);
     });
   });
 
@@ -216,11 +227,24 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should delete DRAFT sale', async () => {
-      await request(app.getHttpServer()).delete(`/document-sales/${saleId}`).expect(200);
+    it('should NOT delete DRAFT sale (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-sales/${saleId}`).expect(404);
+    });
 
-      const doc = await prisma.documentSale.findUnique({ where: { id: saleId } });
-      expect(doc).toBeNull();
+    it('should NOT allow future date in sale', async () => {
+      const futureDate = new Date();
+      futureDate.setFullYear(futureDate.getFullYear() + 1);
+
+      await request(app.getHttpServer())
+        .post('/document-sales')
+        .send({
+          storeId,
+          clientId,
+          cashboxId,
+          date: futureDate,
+          items: [{ productId, quantity: 1, price: 100 }],
+        })
+        .expect(400);
     });
   });
 
@@ -280,8 +304,8 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should NOT delete COMPLETED return', async () => {
-      await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(400);
+    it('should NOT delete COMPLETED return (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(404);
     });
 
     it('should revert return to DRAFT', async () => {
@@ -291,11 +315,23 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should delete DRAFT return', async () => {
-      await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(200);
+    it('should NOT delete DRAFT return (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(404);
+    });
 
-      const doc = await prisma.documentReturn.findUnique({ where: { id: returnId } });
-      expect(doc).toBeNull();
+    it('should NOT allow future date in return', async () => {
+      const futureDate = new Date();
+      futureDate.setFullYear(futureDate.getFullYear() + 1);
+
+      await request(app.getHttpServer())
+        .post('/document-returns')
+        .send({
+          storeId,
+          clientId,
+          date: futureDate,
+          items: [{ productId, quantity: 1, price: 50 }],
+        })
+        .expect(400);
     });
   });
 });

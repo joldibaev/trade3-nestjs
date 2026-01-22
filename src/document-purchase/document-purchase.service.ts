@@ -7,6 +7,7 @@ import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { BaseDocumentService } from '../common/base-document.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedPurchaseItem {
@@ -30,6 +31,7 @@ export class DocumentPurchaseService {
     private readonly storeService: StoreService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
+    private readonly baseService: BaseDocumentService,
   ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
@@ -38,11 +40,14 @@ export class DocumentPurchaseService {
     const targetStatus = status || 'DRAFT';
     const safeItems = items || [];
 
+    // 0. Validate Date
+    const docDate = this.baseService.validateDate(date);
+
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
     // 2. Execute Transaction
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         let preparedItems: (PreparedPurchaseItem & { newPrice?: number })[] = [];
         let total = new Decimal(0);
@@ -78,7 +83,7 @@ export class DocumentPurchaseService {
           data: {
             storeId,
             vendorId,
-            date: new Date(date),
+            date: docDate,
             status: targetStatus,
             notes,
             total,
@@ -133,7 +138,7 @@ export class DocumentPurchaseService {
           // Create the linked Price Change Document
           await tx.documentPriceChange.create({
             data: {
-              date: new Date(date),
+              date: docDate,
               status: 'DRAFT', // Always DRAFT initially
               notes: `Автоматически создан на основе закупки ${doc.code}`,
               documentPurchaseId: doc.id, // Link to purchase
@@ -160,20 +165,45 @@ export class DocumentPurchaseService {
         // ---------------------------------------------
 
         // 3. Apply Inventory Movements (Only if COMPLETED)
+        let reprocessingId: string | null = null;
         if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
           await this.applyInventoryMovements(tx, doc, preparedItems);
+
+          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
+            storeId,
+            productId: preparedItems.map((i) => i.productId),
+            date: docDate,
+            documentId: doc.id,
+            documentType: 'documentPurchase',
+          });
         }
 
-        return doc;
+        return { doc, reprocessingId };
       },
       {
         isolationLevel: 'Serializable',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (result.reprocessingId) {
+      for (const item of result.doc.items) {
+        await this.inventoryService.reprocessProductHistory(
+          result.doc.storeId,
+          item.productId,
+          result.doc.date,
+          result.reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(result.reprocessingId);
+    }
+
+    return result.doc;
   }
 
   async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
-    let itemsToReprocess: { productId: string; date: Date }[] = [];
+    let reprocessingId: string | null = null;
+    let productsToReprocess: string[] = [];
 
     const updatedPurchase = await this.prisma.$transaction(
       async (tx) => {
@@ -201,7 +231,6 @@ export class DocumentPurchaseService {
           quantity: i.quantity,
           price: i.price,
           total: i.total,
-          newPrices: [],
         }));
 
         // DRAFT -> COMPLETED
@@ -209,7 +238,18 @@ export class DocumentPurchaseService {
           // 1. Apply Inventory Movements
           await this.applyInventoryMovements(tx, purchase, items);
 
-          // Price updates removed
+          // 2. Check if we need reprocessing (Backdated)
+          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
+            storeId: purchase.storeId,
+            productId: items.map((i) => i.productId),
+            date: purchase.date,
+            documentId: purchase.id,
+            documentType: 'documentPurchase',
+          });
+
+          if (reprocessingId) {
+            productsToReprocess = items.map((i) => i.productId);
+          }
         }
 
         // COMPLETED -> DRAFT (or CANCELLED)
@@ -227,14 +267,16 @@ export class DocumentPurchaseService {
 
           await this.applyInventoryMovements(tx, purchase, revertItems);
 
-          // COLLECT ITEMS FOR REPROCESSING
-          // We must reprocess starting from the date of the purchase
-          // Note: InventoryService will pick up the new "Revert" movement (created above with purchase.date)
-          // and re-calculate everything chronologically.
-          itemsToReprocess = purchase.items.map((item) => ({
-            productId: item.productId,
-            date: purchase.date,
-          }));
+          // ALWAYS trigger reprocessing for REVERT because it changes historical state
+          const reprocessing = await tx.inventoryReprocessing.create({
+            data: {
+              status: 'PENDING',
+              documentPurchaseId: purchase.id,
+              date: purchase.date,
+            },
+          });
+          reprocessingId = reprocessing.id;
+          productsToReprocess = items.map((i) => i.productId);
         }
 
         // Update status
@@ -259,15 +301,16 @@ export class DocumentPurchaseService {
     );
 
     // POST-TRANSACTION: Reprocess History
-    // We do this outside the transaction to avoid locking and to use a fresh client
-    if (itemsToReprocess.length > 0) {
-      for (const item of itemsToReprocess) {
+    if (reprocessingId && productsToReprocess.length > 0) {
+      for (const productId of productsToReprocess) {
         await this.inventoryService.reprocessProductHistory(
           updatedPurchase.storeId,
-          item.productId,
-          item.date,
+          productId,
+          updatedPurchase.date,
+          reprocessingId,
         );
       }
+      await this.inventoryService.completeReprocessing(reprocessingId);
     }
 
     return updatedPurchase;
@@ -392,11 +435,10 @@ export class DocumentPurchaseService {
           include: { items: true },
         });
 
-        if (doc.status !== 'DRAFT') {
-          throw new BadRequestException('Только черновики могут быть изменены');
-        }
+        this.baseService.ensureDraft(doc.status);
 
         const { storeId, vendorId, date, items, notes } = updateDto;
+        const docDate = date ? this.baseService.validateDate(date) : undefined;
         const safeItems = items || [];
         // 1. Prepare new Items
         const productIds = safeItems.map((i) => i.productId);
@@ -433,7 +475,7 @@ export class DocumentPurchaseService {
           data: {
             storeId,
             vendorId,
-            date: new Date(date),
+            date: docDate,
             notes,
             total,
             items: {
@@ -488,30 +530,6 @@ export class DocumentPurchaseService {
         isolationLevel: 'ReadCommitted', // Sufficient for DRAFT updates
       },
     );
-  }
-
-  async remove(id: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentPurchase.findUniqueOrThrow({
-        where: { id },
-      });
-
-      if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Только черновики могут быть удалены');
-      }
-
-      // Cascade delete is usually handled by DB, but explicit delete is safer if relations are complex
-      // Prisma schema should ideally have onDelete: Cascade for items.
-      // Let's assume schema handles it, or we delete items explicitly.
-      // Based on typical Prisma setup without explicit relation mode, we delete items first.
-      await tx.documentPurchaseItem.deleteMany({
-        where: { purchaseId: id },
-      });
-
-      return tx.documentPurchase.delete({
-        where: { id },
-      });
-    });
   }
 
   findAll() {

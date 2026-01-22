@@ -106,11 +106,23 @@ export class TestHelper {
     // 0. Cleanup DocumentLedger
     await this.prismaService.documentLedger.deleteMany({});
 
-    // 1. Delete StockLedger first as they reference both products and all document types
+    // 1. Delete StockLedger and InventoryReprocessing first as they reference both products and all document types
     await this.prismaService.stockLedger.deleteMany({
       where: {
         OR: [
           { productId: { in: this.createdIds.products } },
+          { documentSaleId: { in: this.createdIds.sales } },
+          { documentPurchaseId: { in: this.createdIds.purchases } },
+          { documentReturnId: { in: this.createdIds.returns } },
+          { documentAdjustmentId: { in: this.createdIds.adjustments } },
+          { documentTransferId: { in: this.createdIds.transfers } },
+        ],
+      },
+    });
+
+    await this.prismaService.inventoryReprocessing.deleteMany({
+      where: {
+        OR: [
           { documentSaleId: { in: this.createdIds.sales } },
           { documentPurchaseId: { in: this.createdIds.purchases } },
           { documentReturnId: { in: this.createdIds.returns } },

@@ -22,7 +22,6 @@ interface LogActionParams {
     | 'documentPriceChange';
   action: LedgerActionType;
   details?: Record<string, any>;
-  userId?: string;
 }
 
 type PrismaTransaction = Omit<
@@ -60,6 +59,8 @@ export class DocumentLedgerService {
    * Helper to diff two arrays of items and log changes.
    * Compares items by their "id" or "productId".
    *
+   * @param tx
+   * @param baseParams
    * @param oldItems Existing items
    * @param newItems New items state
    * @param compareFields Fields to compare for 'ITEM_CHANGED'
@@ -71,7 +72,7 @@ export class DocumentLedgerService {
     newItems: T[],
     compareFields: (keyof T)[],
   ) {
-    const { documentId, documentType, userId } = baseParams;
+    const { documentId, documentType } = baseParams;
 
     const oldMap = new Map(oldItems.map((i) => [i.productId, i]));
     const newMap = new Map(newItems.map((i) => [i.productId, i]));
@@ -83,7 +84,6 @@ export class DocumentLedgerService {
           documentId,
           documentType,
           action: 'ITEM_ADDED',
-          userId,
           details: newItem,
         });
       }
@@ -96,7 +96,6 @@ export class DocumentLedgerService {
           documentId,
           documentType,
           action: 'ITEM_REMOVED',
-          userId,
           details: oldItem,
         });
       }
@@ -127,7 +126,6 @@ export class DocumentLedgerService {
             documentId,
             documentType,
             action: 'ITEM_CHANGED',
-            userId,
             details: {
               productId: newItem.productId,
               changes,

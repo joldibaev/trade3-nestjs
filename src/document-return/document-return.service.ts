@@ -6,6 +6,7 @@ import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { BaseDocumentService } from '../common/base-document.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedReturnItem {
@@ -28,6 +29,7 @@ export class DocumentReturnService {
     private readonly storeService: StoreService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
+    private readonly baseService: BaseDocumentService,
   ) {}
 
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
@@ -35,6 +37,7 @@ export class DocumentReturnService {
 
     const targetStatus = status || 'DRAFT';
     const safeItems = items || [];
+    const docDate = date ? this.baseService.validateDate(date) : new Date();
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -67,13 +70,13 @@ export class DocumentReturnService {
       };
     });
 
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.create({
           data: {
             storeId,
             clientId,
-            date: date ? new Date(date) : new Date(),
+            date: docDate,
             status: targetStatus,
             notes,
             total,
@@ -111,20 +114,48 @@ export class DocumentReturnService {
             },
           });
         }
+
+        let reprocessingId: string | null = null;
         if (doc.status === 'COMPLETED' && returnItems.length > 0) {
           await this.applyInventoryMovements(tx, doc, returnItems);
+
+          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
+            storeId,
+            productId: productIds,
+            date: docDate,
+            documentId: doc.id,
+            documentType: 'documentReturn',
+          });
         }
 
-        return doc;
+        return { doc, reprocessingId };
       },
       {
         isolationLevel: 'ReadCommitted',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (result.reprocessingId) {
+      for (const item of result.doc.items) {
+        await this.inventoryService.reprocessProductHistory(
+          result.doc.storeId,
+          item.productId,
+          result.doc.date,
+          result.reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(result.reprocessingId);
+    }
+
+    return result.doc;
   }
 
   async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
-    return this.prisma.$transaction(
+    let reprocessingId: string | null = null;
+    let productsToReprocess: string[] = [];
+
+    const updatedDoc = await this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
           where: { id },
@@ -153,6 +184,18 @@ export class DocumentReturnService {
         // DRAFT -> COMPLETED
         if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
           await this.applyInventoryMovements(tx, doc, items);
+
+          // Check for backdated reprocessing
+          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
+            storeId: doc.storeId,
+            productId: productIds,
+            date: doc.date,
+            documentId: doc.id,
+            documentType: 'documentReturn',
+          });
+          if (reprocessingId) {
+            productsToReprocess = productIds;
+          }
         }
 
         // COMPLETED -> DRAFT (or CANCELLED)
@@ -169,6 +212,17 @@ export class DocumentReturnService {
           }));
 
           await this.applyInventoryMovements(tx, doc, revertItems);
+
+          // ALWAYS trigger reprocessing for REVERT
+          const reprocessing = await tx.inventoryReprocessing.create({
+            data: {
+              status: 'PENDING',
+              documentReturnId: doc.id,
+              date: doc.date,
+            },
+          });
+          reprocessingId = reprocessing.id;
+          productsToReprocess = productIds;
         }
 
         await this.ledgerService.logAction(tx, {
@@ -177,6 +231,7 @@ export class DocumentReturnService {
           action: 'STATUS_CHANGED',
           details: { from: oldStatus, to: newStatus },
         });
+
         return tx.documentReturn.update({
           where: { id },
           data: { status: newStatus },
@@ -187,6 +242,21 @@ export class DocumentReturnService {
         isolationLevel: 'Serializable',
       },
     );
+
+    // POST-TRANSACTION: Reprocess History
+    if (reprocessingId && productsToReprocess.length > 0) {
+      for (const pid of productsToReprocess) {
+        await this.inventoryService.reprocessProductHistory(
+          updatedDoc.storeId,
+          pid,
+          updatedDoc.date,
+          reprocessingId,
+        );
+      }
+      await this.inventoryService.completeReprocessing(reprocessingId);
+    }
+
+    return updatedDoc;
   }
 
   private async validateStockForRevert(
@@ -275,11 +345,10 @@ export class DocumentReturnService {
           include: { items: true },
         });
 
-        if (doc.status !== 'DRAFT') {
-          throw new BadRequestException('Только черновики могут быть изменены');
-        }
+        this.baseService.ensureDraft(doc.status);
 
         const { storeId, clientId, date, items, notes } = updateDto;
+        const docDate = date ? this.baseService.validateDate(date) : new Date();
         const safeItems = items || [];
 
         // Store old items for diff logging
@@ -321,7 +390,7 @@ export class DocumentReturnService {
           data: {
             storeId,
             clientId,
-            date: date ? new Date(date) : new Date(),
+            date: docDate,
             total,
             notes,
             items: {
@@ -377,26 +446,6 @@ export class DocumentReturnService {
         isolationLevel: 'ReadCommitted',
       },
     );
-  }
-
-  async remove(id: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentReturn.findUniqueOrThrow({
-        where: { id },
-      });
-
-      if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Только черновики могут быть удалены');
-      }
-
-      await tx.documentReturnItem.deleteMany({
-        where: { returnId: id },
-      });
-
-      return tx.documentReturn.delete({
-        where: { id },
-      });
-    });
   }
 
   findAll(include?: Record<string, boolean>) {

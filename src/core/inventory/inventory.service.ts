@@ -71,11 +71,23 @@ export class InventoryService {
    * Re-calculates WAP and Stock Balance sequentially from a given date.
    * Used when past Purchase/Adjustment documents are cancelled or modified.
    */
-  async reprocessProductHistory(storeId: string, productId: string, fromDate: Date): Promise<void> {
+  async reprocessProductHistory(
+    storeId: string,
+    productId: string,
+    fromDate: Date,
+    reprocessingId?: string,
+  ): Promise<void> {
     return this.prisma.$transaction(
       async (tx) => {
         // 0. ACQUIRE LOCK (Critical for Concurrency Safety)
         await this.lockProduct(tx, storeId, productId);
+
+        // Capture state BEFORE recalculation (but AFTER initial conduct)
+        const stockBefore = await tx.stock.findUnique({
+          where: { productId_storeId: { productId, storeId } },
+        });
+        const oldQty = stockBefore?.quantity || new Decimal(0);
+        const oldWap = stockBefore?.averagePurchasePrice || new Decimal(0);
 
         // 1. Get snapshot BEFORE fromDate (to establish initial state)
         // We look for the Last movement before fromDate
@@ -109,6 +121,7 @@ export class InventoryService {
           },
         });
 
+        let affectedCount = 0;
         for (const move of movements) {
           // Logic mirrors the "Create" logic of each service
           const qtyChange = move.quantity; // + or -
@@ -189,6 +202,7 @@ export class InventoryService {
               averagePurchasePrice: currentWap,
             },
           });
+          affectedCount++;
         }
 
         // 4. Finally, update the actual Stock table to match the end state
@@ -199,11 +213,82 @@ export class InventoryService {
             averagePurchasePrice: currentWap,
           },
         });
+
+        // 5. Audit Logging
+        if (reprocessingId) {
+          await tx.inventoryReprocessingItem.create({
+            data: {
+              reprocessingId,
+              productId,
+              storeId,
+              oldQuantity: oldQty,
+              newQuantity: currentQty,
+              oldAveragePurchasePrice: oldWap,
+              newAveragePurchasePrice: currentWap,
+              affectedLedgerCount: affectedCount,
+            },
+          });
+        }
       },
       {
         isolationLevel: 'ReadCommitted', // Advisory locks handle strict concurrency
         timeout: 20000, // Allow more time for reprocessing
       },
     );
+  }
+
+  /**
+   * Checks if a document is backdated and triggers reprocessing if needed.
+   * Returns the ID of the created InventoryReprocessing document, or null.
+   */
+  async triggerReprocessingIfNeeded(
+    tx: Prisma.TransactionClient,
+    params: {
+      storeId: string;
+      productId: string | string[];
+      date: Date;
+      documentId: string;
+      documentType:
+        | 'documentPurchase'
+        | 'documentSale'
+        | 'documentReturn'
+        | 'documentAdjustment'
+        | 'documentTransfer';
+    },
+  ): Promise<string | null> {
+    const productIds = Array.isArray(params.productId) ? params.productId : [params.productId];
+
+    // Check if there are ANY movements after this date for these products in this store
+    const laterMovementsCount = await tx.stockLedger.count({
+      where: {
+        storeId: params.storeId,
+        productId: { in: productIds },
+        date: { gt: params.date },
+      },
+    });
+
+    if (laterMovementsCount === 0) {
+      return null;
+    }
+
+    const reprocessing = await tx.inventoryReprocessing.create({
+      data: {
+        status: 'PENDING',
+        date: params.date,
+        [`${params.documentType}Id`]: params.documentId,
+      } as unknown as Prisma.InventoryReprocessingCreateInput,
+    });
+
+    return reprocessing.id;
+  }
+
+  /**
+   * Completes a reprocessing document if all its items are done.
+   */
+  async completeReprocessing(id: string) {
+    await this.prisma.inventoryReprocessing.update({
+      where: { id },
+      data: { status: 'COMPLETED' },
+    });
   }
 }
