@@ -96,7 +96,7 @@ describe('Document CRUD (e2e)', () => {
         where: { id: purchaseId },
         include: { items: true },
       });
-      expect(doc?.items[0].quantity).toEqual(expect.objectContaining({ d: [20] })); // Decimal check simplistic
+      expect(doc?.items![0].quantity.toString()).toBe('20');
     });
 
     it('should complete purchase', async () => {
@@ -131,20 +131,6 @@ describe('Document CRUD (e2e)', () => {
 
     it('should NOT delete DRAFT purchase (endpoint removed)', async () => {
       await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(404);
-    });
-
-    it('should NOT allow future date in purchase', async () => {
-      const futureDate = new Date();
-      futureDate.setFullYear(futureDate.getFullYear() + 1);
-
-      await request(app.getHttpServer())
-        .post('/document-purchases')
-        .send({
-          storeId,
-          vendorId,
-          date: futureDate,
-        })
-        .expect(400);
     });
   });
 
@@ -230,22 +216,6 @@ describe('Document CRUD (e2e)', () => {
     it('should NOT delete DRAFT sale (endpoint removed)', async () => {
       await request(app.getHttpServer()).delete(`/document-sales/${saleId}`).expect(404);
     });
-
-    it('should NOT allow future date in sale', async () => {
-      const futureDate = new Date();
-      futureDate.setFullYear(futureDate.getFullYear() + 1);
-
-      await request(app.getHttpServer())
-        .post('/document-sales')
-        .send({
-          storeId,
-          clientId,
-          cashboxId,
-          date: futureDate,
-          items: [{ productId, quantity: 1, price: 100 }],
-        })
-        .expect(400);
-    });
   });
 
   describe('Document Return CRUD', () => {
@@ -317,21 +287,6 @@ describe('Document CRUD (e2e)', () => {
 
     it('should NOT delete DRAFT return (endpoint removed)', async () => {
       await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(404);
-    });
-
-    it('should NOT allow future date in return', async () => {
-      const futureDate = new Date();
-      futureDate.setFullYear(futureDate.getFullYear() + 1);
-
-      await request(app.getHttpServer())
-        .post('/document-returns')
-        .send({
-          storeId,
-          clientId,
-          date: futureDate,
-          items: [{ productId, quantity: 1, price: 50 }],
-        })
-        .expect(400);
     });
   });
 });

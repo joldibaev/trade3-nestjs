@@ -18,6 +18,7 @@ enum DocumentStatus {
   DRAFT
   COMPLETED
   CANCELLED
+  SCHEDULED
 }
 
 // Store

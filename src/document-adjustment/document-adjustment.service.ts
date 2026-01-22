@@ -36,8 +36,12 @@ export class DocumentAdjustmentService {
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
     const { storeId, date, status, items, notes } = createDocumentAdjustmentDto;
 
-    const targetStatus = status || 'DRAFT';
-    const docDate = date ? this.baseService.validateDate(date) : new Date();
+    let targetStatus = status || 'DRAFT';
+    const docDate = date ? new Date(date) : new Date();
+
+    if (targetStatus === 'COMPLETED' && docDate > new Date()) {
+      (targetStatus as any) = 'SCHEDULED';
+    }
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -175,7 +179,7 @@ export class DocumentAdjustmentService {
 
         // 2. Prepare new items
         const { storeId, date, items, notes } = updateDto;
-        const docDate = date ? this.baseService.validateDate(date) : new Date();
+        const docDate = date ? new Date(date) : new Date();
         const safeItems = items || [];
         const productIds = safeItems.map((i) => i.productId);
         // 2. Batch Fetch Existing Stocks (Current Store) - MUST be inside TX
@@ -278,15 +282,24 @@ export class DocumentAdjustmentService {
           include: { items: true },
         });
 
-        if (doc.status === newStatus) {
+        let actualNewStatus = newStatus;
+
+        if (newStatus === 'COMPLETED' && doc.date > new Date()) {
+          (actualNewStatus as any) = 'SCHEDULED';
+        }
+
+        if (doc.status === actualNewStatus) {
           return doc;
         }
 
         const productIds = doc.items.map((i) => i.productId);
         const fallbackWapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
-        // DRAFT -> COMPLETED
-        if (doc.status === 'DRAFT' && newStatus === 'COMPLETED') {
+        // DRAFT/SCHEDULED -> COMPLETED
+        if (
+          (doc.status === 'DRAFT' || doc.status === 'SCHEDULED') &&
+          actualNewStatus === 'COMPLETED'
+        ) {
           const existingStocks = await tx.stock.findMany({
             where: {
               storeId: doc.storeId,
@@ -333,10 +346,12 @@ export class DocumentAdjustmentService {
           }
         }
 
-        // COMPLETED -> DRAFT/CANCELLED
+        // COMPLETED -> DRAFT/CANCELLED/SCHEDULED
         else if (
           doc.status === 'COMPLETED' &&
-          (newStatus === 'DRAFT' || newStatus === 'CANCELLED')
+          (actualNewStatus === 'DRAFT' ||
+            actualNewStatus === 'CANCELLED' ||
+            actualNewStatus === 'SCHEDULED')
         ) {
           const existingStocks = await tx.stock.findMany({
             where: {
@@ -384,7 +399,8 @@ export class DocumentAdjustmentService {
 
         return tx.documentAdjustment.update({
           where: { id },
-          data: { status: newStatus },
+          where: { id },
+          data: { status: actualNewStatus },
           include: { items: true },
         });
       },

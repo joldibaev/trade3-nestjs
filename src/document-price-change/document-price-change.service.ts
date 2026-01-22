@@ -18,7 +18,7 @@ export class DocumentPriceChangeService {
   async create(createDto: CreateDocumentPriceChangeDto) {
     const { date, status, notes, items } = createDto;
     const targetStatus = status || 'DRAFT';
-    const docDate = this.baseService.validateDate(date);
+    const docDate = new Date(date);
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Prepare Items & Fetch Old Values
@@ -97,7 +97,7 @@ export class DocumentPriceChangeService {
       this.baseService.ensureDraft(doc.status);
 
       const { date, notes, items } = updateDto;
-      const docDate = date ? this.baseService.validateDate(date) : undefined;
+      const docDate = date ? new Date(date) : undefined;
 
       // Delete old items
       await tx.documentPriceChangeItem.deleteMany({ where: { documentId: id } });

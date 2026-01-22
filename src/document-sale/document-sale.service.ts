@@ -40,9 +40,14 @@ export class DocumentSaleService {
     const { storeId, cashboxId, clientId, date, status, priceTypeId, items, notes } =
       createDocumentSaleDto;
 
-    const targetStatus = status || 'DRAFT';
+    let targetStatus = status || 'DRAFT';
     const safeItems = items || [];
-    const docDate = date ? this.baseService.validateDate(date) : new Date();
+    const docDate = date ? new Date(date) : new Date();
+
+    // Auto-schedule if date is in the future
+    if (targetStatus === 'COMPLETED' && docDate > new Date()) {
+      (targetStatus as any) = 'SCHEDULED';
+    }
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -216,8 +221,13 @@ export class DocumentSaleService {
         }
 
         const oldStatus = sale.status;
+        let actualNewStatus = newStatus;
 
-        if (oldStatus === newStatus) {
+        if (newStatus === 'COMPLETED' && sale.date > new Date()) {
+          (actualNewStatus as any) = 'SCHEDULED';
+        }
+
+        if (oldStatus === actualNewStatus) {
           return sale;
         }
 
@@ -231,8 +241,11 @@ export class DocumentSaleService {
           price: i.price,
         }));
 
-        // DRAFT -> COMPLETED
-        if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+        // DRAFT/SCHEDULED -> COMPLETED
+        if (
+          (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
+          actualNewStatus === 'COMPLETED'
+        ) {
           // 1. Update items with CURRENT cost price before completing
           await this.updateItemCostPrices(tx, sale);
 
@@ -252,8 +265,13 @@ export class DocumentSaleService {
           }
         }
 
-        // COMPLETED -> DRAFT (or CANCELLED)
-        if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
+        // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
+        if (
+          oldStatus === 'COMPLETED' &&
+          (actualNewStatus === 'DRAFT' ||
+            actualNewStatus === 'CANCELLED' ||
+            actualNewStatus === 'SCHEDULED')
+        ) {
           // Revert stock (Increase Stock)
           const revertItems = items.map((i) => ({
             ...i,
@@ -277,7 +295,7 @@ export class DocumentSaleService {
         // Update status
         const updatedDoc = await tx.documentSale.update({
           where: { id },
-          data: { status: newStatus },
+          data: { status: actualNewStatus },
           include: { items: true },
         });
 
@@ -403,7 +421,7 @@ export class DocumentSaleService {
         this.baseService.ensureDraft(sale.status);
 
         const { storeId, cashboxId, clientId, date, priceTypeId, items, notes } = updateDto;
-        const docDate = date ? this.baseService.validateDate(date) : new Date();
+        const docDate = date ? new Date(date) : new Date();
         const safeItems = items || [];
 
         // 1. Prepare new Items

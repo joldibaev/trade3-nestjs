@@ -19,9 +19,12 @@ export class TestHelper {
     status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
     newPrices?: any[],
     expectedStatus = 201,
+    customDate?: Date,
   ) {
-    const date = new Date();
-    date.setHours(10, 0, 0, 0);
+    const date = customDate || new Date();
+    if (!customDate) {
+      date.setHours(10, 0, 0, 0);
+    }
 
     // 1. Create Header (POST)
     const createPayload: any = {
@@ -410,9 +413,12 @@ export class TestHelper {
     clientId?: string,
     status: 'DRAFT' | 'COMPLETED' = 'COMPLETED',
     expectedStatus = 201,
+    customDate?: Date,
   ) {
-    const date = new Date();
-    date.setHours(14, 0, 0, 0);
+    const date = customDate || new Date();
+    if (!customDate) {
+      date.setHours(14, 0, 0, 0);
+    }
 
     const payload = {
       storeId,

@@ -11,5 +11,6 @@ import { DocumentLedgerModule } from '../document-ledger/document-ledger.module'
   imports: [PrismaModule, StoreModule, DocumentLedgerModule],
   controllers: [DocumentTransferController],
   providers: [DocumentTransferService],
+  exports: [DocumentTransferService],
 })
 export class DocumentTransferModule {}

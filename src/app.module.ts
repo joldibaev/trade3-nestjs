@@ -22,6 +22,7 @@ import { StockLedgerModule } from './stock-ledger/stock-ledger.module';
 import { DocumentLedgerModule } from './document-ledger/document-ledger.module';
 import { DocumentPriceChangeModule } from './document-price-change/document-price-change.module';
 import { CommonModule } from './common/common.module';
+import { SchedulerCoreModule } from './core/scheduler/scheduler.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { CommonModule } from './common/common.module';
     DocumentPriceChangeModule,
     DocumentLedgerModule,
     CommonModule,
+    SchedulerCoreModule,
   ],
 })
 export class AppModule {}

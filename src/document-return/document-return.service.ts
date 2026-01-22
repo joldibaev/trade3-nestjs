@@ -35,9 +35,13 @@ export class DocumentReturnService {
   async create(createDocumentReturnDto: CreateDocumentReturnDto) {
     const { storeId, clientId, date, status, items, notes } = createDocumentReturnDto;
 
-    const targetStatus = status || 'DRAFT';
+    let targetStatus = status || 'DRAFT';
     const safeItems = items || [];
-    const docDate = date ? this.baseService.validateDate(date) : new Date();
+    const docDate = date ? new Date(date) : new Date();
+
+    if (targetStatus === 'COMPLETED' && docDate > new Date()) {
+      (targetStatus as any) = 'SCHEDULED';
+    }
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -163,8 +167,13 @@ export class DocumentReturnService {
         });
 
         const oldStatus = doc.status;
+        let actualNewStatus = newStatus;
 
-        if (oldStatus === newStatus) {
+        if (newStatus === 'COMPLETED' && doc.date > new Date()) {
+          (actualNewStatus as any) = 'SCHEDULED';
+        }
+
+        if (oldStatus === actualNewStatus) {
           return doc;
         }
 
@@ -181,8 +190,11 @@ export class DocumentReturnService {
           fallbackWap: wapMap.get(i.productId) || new Decimal(0),
         }));
 
-        // DRAFT -> COMPLETED
-        if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+        // DRAFT/SCHEDULED -> COMPLETED
+        if (
+          (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
+          actualNewStatus === 'COMPLETED'
+        ) {
           await this.applyInventoryMovements(tx, doc, items);
 
           // Check for backdated reprocessing
@@ -198,8 +210,13 @@ export class DocumentReturnService {
           }
         }
 
-        // COMPLETED -> DRAFT (or CANCELLED)
-        if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
+        // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
+        if (
+          oldStatus === 'COMPLETED' &&
+          (actualNewStatus === 'DRAFT' ||
+            actualNewStatus === 'CANCELLED' ||
+            actualNewStatus === 'SCHEDULED')
+        ) {
           // Revert stock (Decrease Stock)
 
           // 1. Validate Stock Availability (Must have enough to remove)
@@ -234,7 +251,8 @@ export class DocumentReturnService {
 
         return tx.documentReturn.update({
           where: { id },
-          data: { status: newStatus },
+          where: { id },
+          data: { status: actualNewStatus },
           include: { items: true },
         });
       },
@@ -348,7 +366,7 @@ export class DocumentReturnService {
         this.baseService.ensureDraft(doc.status);
 
         const { storeId, clientId, date, items, notes } = updateDto;
-        const docDate = date ? this.baseService.validateDate(date) : new Date();
+        const docDate = date ? new Date(date) : new Date();
         const safeItems = items || [];
 
         // Store old items for diff logging

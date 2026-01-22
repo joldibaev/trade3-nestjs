@@ -36,8 +36,12 @@ export class DocumentTransferService {
     const { sourceStoreId, destinationStoreId, date, status, items, notes } =
       createDocumentTransferDto;
 
-    const targetStatus = status || 'DRAFT';
-    const docDate = date ? this.baseService.validateDate(date) : new Date();
+    let targetStatus = status || 'DRAFT';
+    const docDate = date ? new Date(date) : new Date();
+
+    if (targetStatus === 'COMPLETED' && docDate > new Date()) {
+      (targetStatus as any) = 'SCHEDULED';
+    }
     const safeItems = items || [];
 
     if (sourceStoreId === destinationStoreId) {
@@ -181,8 +185,13 @@ export class DocumentTransferService {
         });
 
         const oldStatus = doc.status;
+        let actualNewStatus = newStatus;
 
-        if (oldStatus === newStatus) {
+        if (newStatus === 'COMPLETED' && doc.date > new Date()) {
+          (actualNewStatus as any) = 'SCHEDULED';
+        }
+
+        if (oldStatus === actualNewStatus) {
           return doc;
         }
 
@@ -196,8 +205,11 @@ export class DocumentTransferService {
           quantity: i.quantity,
         }));
 
-        // DRAFT -> COMPLETED
-        if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+        // DRAFT/SCHEDULED -> COMPLETED
+        if (
+          (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
+          actualNewStatus === 'COMPLETED'
+        ) {
           await this.applyInventoryMovements(tx, doc, items);
 
           // Check if we need reprocessing (Backdated)
@@ -234,8 +246,13 @@ export class DocumentTransferService {
           }
         }
 
-        // COMPLETED -> DRAFT (or CANCELLED)
-        if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
+        // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
+        if (
+          oldStatus === 'COMPLETED' &&
+          (actualNewStatus === 'DRAFT' ||
+            actualNewStatus === 'CANCELLED' ||
+            actualNewStatus === 'SCHEDULED')
+        ) {
           // Revert movements (INVERSE)
           // Transfer Out (Source) -> Revert: Increase Source Stock
           // Transfer In (Dest) -> Revert: Decrease Dest Stock
@@ -361,7 +378,8 @@ export class DocumentTransferService {
         // Update status
         const updatedDoc = await tx.documentTransfer.update({
           where: { id },
-          data: { status: newStatus },
+          where: { id },
+          data: { status: actualNewStatus },
           include: { items: true },
         });
 
@@ -410,7 +428,7 @@ export class DocumentTransferService {
       this.baseService.ensureDraft(doc.status);
 
       const { sourceStoreId, destinationStoreId, date, items, notes } = updateDto;
-      const docDate = date ? this.baseService.validateDate(date) : new Date();
+      const docDate = date ? new Date(date) : new Date();
       const safeItems = items || [];
 
       if (sourceStoreId === destinationStoreId) {

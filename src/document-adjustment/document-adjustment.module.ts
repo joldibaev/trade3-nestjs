@@ -10,5 +10,6 @@ import { StoreModule } from '../store/store.module';
   imports: [PrismaModule, StoreModule, DocumentLedgerModule],
   controllers: [DocumentAdjustmentController],
   providers: [DocumentAdjustmentService],
+  exports: [DocumentAdjustmentService],
 })
 export class DocumentAdjustmentModule {}

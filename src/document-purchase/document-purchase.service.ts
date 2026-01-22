@@ -37,11 +37,22 @@ export class DocumentPurchaseService {
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items, status, notes } = createDocumentPurchaseDto;
 
-    const targetStatus = status || 'DRAFT';
+    let targetStatus = status || 'DRAFT';
     const safeItems = items || [];
 
     // 0. Validate Date
-    const docDate = this.baseService.validateDate(date);
+    const docDate = new Date(date);
+
+    // Auto-schedule if date is in the future
+    if (targetStatus === 'COMPLETED' && docDate > new Date()) {
+      // We need to cast or ensure the type system knows about SCHEDULED if it wasn't there before,
+      // but since we updated prisma, it should be fine.
+      // However, CreateDocumentPurchaseDto.status might be strict.
+      // Let's assume the DTO allows the enum or string.
+      // If DTO is strict, we might need to update DTOs.
+      // But typically DTOs use the Enum.
+      (targetStatus as any) = 'SCHEDULED';
+    }
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
@@ -215,8 +226,15 @@ export class DocumentPurchaseService {
         });
 
         const oldStatus = purchase.status;
+        let actualNewStatus = newStatus;
 
-        if (oldStatus === newStatus) {
+        // Auto-schedule if date is in the future
+        // Note: when Scheduler calls this, date will be <= now, so it will proceed to "COMPLETED".
+        if (newStatus === 'COMPLETED' && purchase.date > new Date()) {
+          (actualNewStatus as any) = 'SCHEDULED';
+        }
+
+        if (oldStatus === actualNewStatus) {
           return purchase;
         }
 
@@ -233,8 +251,11 @@ export class DocumentPurchaseService {
           total: i.total,
         }));
 
-        // DRAFT -> COMPLETED
-        if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+        // DRAFT/SCHEDULED -> COMPLETED
+        if (
+          (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
+          actualNewStatus === 'COMPLETED'
+        ) {
           // 1. Apply Inventory Movements
           await this.applyInventoryMovements(tx, purchase, items);
 
@@ -252,9 +273,14 @@ export class DocumentPurchaseService {
           }
         }
 
-        // COMPLETED -> DRAFT (or CANCELLED)
+        // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
         // Revert the purchase (decrease stock)
-        if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
+        if (
+          oldStatus === 'COMPLETED' &&
+          (actualNewStatus === 'DRAFT' ||
+            actualNewStatus === 'CANCELLED' ||
+            actualNewStatus === 'SCHEDULED')
+        ) {
           // Check for negative stock before reverting
           await this.validateStockForRevert(tx, purchase.storeId, items);
 
@@ -282,7 +308,7 @@ export class DocumentPurchaseService {
         // Update status
         const updatedDoc = await tx.documentPurchase.update({
           where: { id },
-          data: { status: newStatus },
+          data: { status: actualNewStatus },
           include: { items: true },
         });
 
@@ -438,7 +464,7 @@ export class DocumentPurchaseService {
         this.baseService.ensureDraft(doc.status);
 
         const { storeId, vendorId, date, items, notes } = updateDto;
-        const docDate = date ? this.baseService.validateDate(date) : undefined;
+        const docDate = date ? new Date(date) : undefined;
         const safeItems = items || [];
         // 1. Prepare new Items
         const productIds = safeItems.map((i) => i.productId);
