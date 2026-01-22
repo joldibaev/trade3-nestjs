@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreatePriceTypeDto } from '../generated/dto/price-type/create-price-type.dto';
 import { UpdatePriceTypeDto } from '../generated/dto/price-type/update-price-type.dto';
@@ -15,23 +15,15 @@ export class PriceTypeService {
 
   findAll(isActive?: boolean) {
     return this.prisma.priceType.findMany({
-      where: {
-        isActive,
-        deletedAt: null,
-      },
+      where: { isActive },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: string) {
-    const priceType = await this.prisma.priceType.findFirst({
-      where: {
-        id,
-        deletedAt: null,
-      },
+  findOne(id: string) {
+    return this.prisma.priceType.findUniqueOrThrow({
+      where: { id },
     });
-    if (!priceType) throw new NotFoundException('Тип цены не найден');
-    return priceType;
   }
 
   update(id: string, updatePriceTypeDto: UpdatePriceTypeDto) {
@@ -42,9 +34,8 @@ export class PriceTypeService {
   }
 
   remove(id: string) {
-    return this.prisma.priceType.update({
+    return this.prisma.priceType.delete({
       where: { id },
-      data: { deletedAt: new Date() },
     });
   }
 }

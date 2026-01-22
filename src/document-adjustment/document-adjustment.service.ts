@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
@@ -258,9 +258,8 @@ export class DocumentAdjustmentService {
         details: { status: doc.status },
       });
 
-      return tx.documentAdjustment.update({
+      return tx.documentAdjustment.delete({
         where: { id },
-        data: { deletedAt: new Date() },
       });
     });
   }
@@ -455,18 +454,14 @@ export class DocumentAdjustmentService {
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.documentAdjustment.findMany({
-      where: { deletedAt: null },
       include,
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: string) {
-    const doc = await this.prisma.documentAdjustment.findFirst({
-      where: {
-        id,
-        deletedAt: null,
-      },
+  findOne(id: string) {
+    return this.prisma.documentAdjustment.findUniqueOrThrow({
+      where: { id },
       include: {
         items: true,
         store: true,
@@ -475,7 +470,5 @@ export class DocumentAdjustmentService {
         },
       },
     });
-    if (!doc) throw new NotFoundException('Документ корректировки не найден');
-    return doc;
   }
 }

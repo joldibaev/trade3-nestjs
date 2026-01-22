@@ -21,11 +21,10 @@ enum DocumentStatus {
 }
 
 model User {
-  id        String    @id @default(uuid(7))
+  id        String   @id @default(uuid(7))
   username  String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   stockMovements StockMovement[]
 
@@ -43,7 +42,6 @@ model Store {
   cashboxes     Cashbox[]
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
-  deletedAt     DateTime?
   stocks        Stock[]
   sales         DocumentSale[]
   purchases     DocumentPurchase[]
@@ -80,7 +78,6 @@ model PriceType {
   isActive                   Boolean                     @default(true)
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
-  deletedAt                  DateTime?
 
   @@unique([name])
 }
@@ -129,7 +126,6 @@ model Category {
   isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  deletedAt DateTime?
 
   @@unique([name])
 }
@@ -165,7 +161,6 @@ model Product {
   barcodes        Barcode[]
   movements       StockMovement[]
   isActive        Boolean                  @default(true)
-  deletedAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -190,7 +185,6 @@ model Barcode {
   productId String
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
-  deletedAt DateTime?
 
   @@unique([value])
 }
@@ -206,7 +200,6 @@ model Vendor {
   isActive  Boolean            @default(true)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
-  deletedAt DateTime?
 
   @@unique([name])
 }
@@ -222,7 +215,6 @@ model Client {
   isActive  Boolean          @default(true)
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
-  deletedAt DateTime?
 
   @@unique([name])
 }
@@ -245,7 +237,6 @@ model DocumentSale {
   notes       String?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
-  deletedAt   DateTime?
   movements   StockMovement[]
   history     DocumentHistory[]
 }
@@ -278,7 +269,6 @@ model DocumentPurchase {
   notes                   String?
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
-  deletedAt               DateTime?
   movements               StockMovement[]
   history                 DocumentHistory[]
   generatedPriceHistories PriceHistory[]
@@ -328,7 +318,6 @@ model DocumentReturn {
   notes     String?
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
-  deletedAt DateTime?
   movements StockMovement[]
   history   DocumentHistory[]
 }
@@ -357,7 +346,6 @@ model DocumentAdjustment {
   notes     String?
   createdAt DateTime                 @default(now())
   updatedAt DateTime                 @updatedAt
-  deletedAt DateTime?
   movements StockMovement[]
   history   DocumentHistory[]
 }
@@ -388,7 +376,6 @@ model DocumentTransfer {
   notes              String?
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
-  deletedAt          DateTime?
   movements          StockMovement[]
   history            DocumentHistory[]
 }

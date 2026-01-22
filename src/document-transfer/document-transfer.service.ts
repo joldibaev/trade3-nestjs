@@ -344,9 +344,12 @@ export class DocumentTransferService {
         throw new BadRequestException('Только черновики могут быть удалены');
       }
 
-      return tx.documentTransfer.update({
+      await tx.documentTransferItem.deleteMany({
+        where: { transferId: id },
+      });
+
+      return tx.documentTransfer.delete({
         where: { id },
-        data: { deletedAt: new Date() },
       });
     });
   }
@@ -488,18 +491,14 @@ export class DocumentTransferService {
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.documentTransfer.findMany({
-      where: { deletedAt: null },
       include,
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: string) {
-    const doc = await this.prisma.documentTransfer.findFirst({
-      where: {
-        id,
-        deletedAt: null,
-      },
+  findOne(id: string) {
+    return this.prisma.documentTransfer.findUniqueOrThrow({
+      where: { id },
       include: {
         items: true,
         sourceStore: true,
@@ -509,7 +508,5 @@ export class DocumentTransferService {
         },
       },
     });
-    if (!doc) throw new NotFoundException('Документ перемещения не найден');
-    return doc;
   }
 }

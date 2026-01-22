@@ -482,29 +482,26 @@ export class DocumentSaleService {
         throw new BadRequestException('Только черновики могут быть удалены');
       }
 
-      // Soft delete: Do not delete items physically.
-      // Just mark document as deleted.
-      return tx.documentSale.update({
+      await tx.documentSaleItem.deleteMany({
+        where: { saleId: id },
+      });
+
+      return tx.documentSale.delete({
         where: { id },
-        data: { deletedAt: new Date() },
       });
     });
   }
 
   findAll() {
     return this.prisma.documentSale.findMany({
-      where: { deletedAt: null },
       include: { store: true, client: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: string) {
-    const sale = await this.prisma.documentSale.findFirst({
-      where: {
-        id,
-        deletedAt: null,
-      },
+  findOne(id: string) {
+    return this.prisma.documentSale.findUniqueOrThrow({
+      where: { id },
       include: {
         items: true,
         client: true,
@@ -516,7 +513,5 @@ export class DocumentSaleService {
         },
       },
     });
-    if (!sale) throw new NotFoundException('Документ продажи не найден');
-    return sale;
   }
 }

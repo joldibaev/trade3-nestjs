@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { CreateProductDto } from '../generated/dto/product/create-product.dto';
 import { UpdateProductDto } from '../generated/dto/product/update-product.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
@@ -21,7 +21,6 @@ export class ProductService {
   ) {
     return this.prisma.product.findMany({
       where: {
-        deletedAt: null,
         AND: [
           categoryId ? { categoryId } : {},
           isActive !== undefined ? { isActive } : {},
@@ -34,7 +33,6 @@ export class ProductService {
                     barcodes: {
                       some: {
                         value: { contains: query, mode: 'insensitive' },
-                        deletedAt: null,
                       },
                     },
                   },
@@ -48,12 +46,9 @@ export class ProductService {
     });
   }
 
-  async findOne(id: string) {
-    const product = await this.prisma.product.findFirst({
-      where: {
-        id,
-        deletedAt: null,
-      },
+  findOne(id: string) {
+    return this.prisma.product.findUniqueOrThrow({
+      where: { id },
       include: {
         category: { include: { parent: true } },
         prices: {
@@ -65,13 +60,9 @@ export class ProductService {
         priceHistory: {
           include: { priceType: true },
         },
-        barcodes: {
-          where: { deletedAt: null },
-        },
+        barcodes: true,
       },
     });
-    if (!product) throw new NotFoundException('Продукт не найден');
-    return product;
   }
 
   update(id: string, updateProductDto: UpdateProductDto) {
@@ -83,17 +74,14 @@ export class ProductService {
 
   remove(id: string) {
     return this.prisma.$transaction(async (tx) => {
-      // 1. Soft Delete dependencies
-      await tx.barcode.updateMany({
-        where: { productId: id },
-        data: { deletedAt: new Date() },
-      });
-      // Stock and Price are history/logs, we keep them linked to the deleted product.
+      // 1. Delete dependencies
+      await tx.stock.deleteMany({ where: { productId: id } });
+      await tx.price.deleteMany({ where: { productId: id } });
+      await tx.barcode.deleteMany({ where: { productId: id } });
 
-      // 2. Soft Delete Product
-      return tx.product.update({
+      // 2. Delete Product
+      return tx.product.delete({
         where: { id },
-        data: { deletedAt: new Date() },
       });
     });
   }

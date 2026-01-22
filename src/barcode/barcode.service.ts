@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { CreateBarcodeDto } from './dto/create-barcode.dto';
 import { UpdateBarcodeDto } from './dto/update-barcode.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
@@ -27,21 +27,15 @@ export class BarcodeService {
 
   findAll(include?: Record<string, boolean>) {
     return this.prisma.barcode.findMany({
-      where: { deletedAt: null },
       include,
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(id: string) {
-    const barcode = await this.prisma.barcode.findFirst({
-      where: {
-        id,
-        deletedAt: null,
-      },
+  findOne(id: string) {
+    return this.prisma.barcode.findUniqueOrThrow({
+      where: { id },
     });
-    if (!barcode) throw new NotFoundException('Штрихкод не найден');
-    return barcode;
   }
 
   update(id: string, updateBarcodeDto: UpdateBarcodeDto) {
@@ -57,9 +51,8 @@ export class BarcodeService {
   }
 
   remove(id: string) {
-    return this.prisma.barcode.update({
+    return this.prisma.barcode.delete({
       where: { id },
-      data: { deletedAt: new Date() },
     });
   }
 }

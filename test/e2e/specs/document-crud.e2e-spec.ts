@@ -133,8 +133,7 @@ describe('Document CRUD (e2e)', () => {
       await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(200);
 
       const doc = await prisma.documentPurchase.findUnique({ where: { id: purchaseId } });
-      expect(doc).not.toBeNull();
-      expect(doc!.deletedAt).toBeInstanceOf(Date);
+      expect(doc).toBeNull();
     });
   });
 
@@ -221,8 +220,7 @@ describe('Document CRUD (e2e)', () => {
       await request(app.getHttpServer()).delete(`/document-sales/${saleId}`).expect(200);
 
       const doc = await prisma.documentSale.findUnique({ where: { id: saleId } });
-      expect(doc).not.toBeNull();
-      expect(doc!.deletedAt).toBeInstanceOf(Date);
+      expect(doc).toBeNull();
     });
   });
 
@@ -297,8 +295,7 @@ describe('Document CRUD (e2e)', () => {
       await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(200);
 
       const doc = await prisma.documentReturn.findUnique({ where: { id: returnId } });
-      expect(doc).not.toBeNull();
-      expect(doc!.deletedAt).toBeInstanceOf(Date);
+      expect(doc).toBeNull();
     });
   });
 });

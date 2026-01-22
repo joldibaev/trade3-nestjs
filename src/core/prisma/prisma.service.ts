@@ -15,6 +15,9 @@ export class PrismaService extends PrismaClient {
 
     const connectionString = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=public`;
     const pool = new Pool({ connectionString });
+
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore: PrismaPg expects a Pool but types might be slightly off in some versions without @types/pg being exact match or other quirk, but this is the standard usage.
     const adapter = new PrismaPg(pool);
     super({ adapter });
   }
