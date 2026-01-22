@@ -25,6 +25,11 @@ interface LogActionParams {
   userId?: string;
 }
 
+type PrismaTransaction = Omit<
+  PrismaService,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
+
 @Injectable()
 export class DocumentLedgerService {
   constructor(private readonly prisma: PrismaService) {}
@@ -32,13 +37,12 @@ export class DocumentLedgerService {
   /**
    * Log a generic action for a document.
    */
-  async logAction(tx: Prisma.TransactionClient, params: LogActionParams) {
+  async logAction(tx: PrismaTransaction, params: LogActionParams) {
     const { documentId, documentType, action, details } = params;
 
     const data: Prisma.DocumentLedgerUncheckedCreateInput = {
       action,
       details: details || Prisma.JsonNull,
-      // userId, // REMOVED as User model is gone, logic also removed from earlier iterations but good to confirm
       documentPurchaseId: documentType === 'documentPurchase' ? documentId : null,
       documentSaleId: documentType === 'documentSale' ? documentId : null,
       documentReturnId: documentType === 'documentReturn' ? documentId : null,
@@ -47,11 +51,9 @@ export class DocumentLedgerService {
       documentPriceChangeId: documentType === 'documentPriceChange' ? documentId : null,
     };
 
-    /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-    await (tx as any).documentLedger.create({
+    await tx.documentLedger.create({
       data,
     });
-    /* eslint-enable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
   }
 
   /**
@@ -63,7 +65,7 @@ export class DocumentLedgerService {
    * @param compareFields Fields to compare for 'ITEM_CHANGED'
    */
   async logDiff<T extends { productId: string } & Record<string, unknown>>(
-    tx: Prisma.TransactionClient,
+    tx: PrismaTransaction,
     baseParams: Omit<LogActionParams, 'action' | 'details'>,
     oldItems: T[],
     newItems: T[],

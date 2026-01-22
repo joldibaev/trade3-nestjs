@@ -195,14 +195,29 @@ export class DocumentTransferService {
               },
             });
 
+            // Audit: Log REVERT DEST (Removal)
+            await this.stockLedgerService.create(tx, {
+              type: 'TRANSFER_OUT',
+              storeId: destinationStoreId,
+              productId: item.productId,
+              quantity: item.quantity.negated(),
+              date: doc.date ?? new Date(),
+              documentId: doc.id ?? '',
+              quantityBefore: destQty,
+              quantityAfter: destQty.sub(item.quantity),
+              averagePurchasePrice: destStock?.averagePurchasePrice ?? new Decimal(0),
+              transactionAmount: item.quantity.mul(destStock?.averagePurchasePrice ?? 0).negated(),
+              batchId: doc.id,
+            });
+
             // REVERT SOURCE (Add Qty)
+            const sourceStocks = await tx.stock.findMany({
+              where: { storeId: sourceStoreId, productId: item.productId },
+            });
+            const sourceStock = sourceStocks[0];
+            const sourceQtyBefore = sourceStock ? sourceStock.quantity : new Decimal(0);
+            const sourceWap = sourceStock ? sourceStock.averagePurchasePrice : new Decimal(0);
 
-            // When returning to source, we should technically re-average WAP if it changed on source?
-            // Or just put it back.
-            // Since Transfer OUT didn't change Source WAP (only Qty), putting it back shouldn't change WAP unless we want to be very precise about "it came back from dest".
-            // But usually, cancelling transfer means "it never left". So we just increment Qty.
-
-            // However, applyInventoryMovements creates stock if not exists.
             await tx.stock.upsert({
               where: {
                 productId_storeId: {
@@ -221,9 +236,20 @@ export class DocumentTransferService {
               },
             });
 
-            // Audit: Log REVERT TRANSFER
-            // ... (Skip complex audit for now or log generic movement?)
-            // Existing stockMovementService can log.
+            // Audit: Log REVERT SOURCE (Addition)
+            await this.stockLedgerService.create(tx, {
+              type: 'TRANSFER_IN',
+              storeId: sourceStoreId,
+              productId: item.productId,
+              quantity: item.quantity,
+              date: doc.date ?? new Date(),
+              documentId: doc.id ?? '',
+              quantityBefore: sourceQtyBefore,
+              quantityAfter: sourceQtyBefore.add(item.quantity),
+              averagePurchasePrice: sourceWap,
+              transactionAmount: item.quantity.mul(sourceWap),
+              batchId: doc.id,
+            });
           }
         }
 

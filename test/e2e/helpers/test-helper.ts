@@ -94,6 +94,7 @@ export class TestHelper {
     returns: [] as string[],
     adjustments: [] as string[],
     transfers: [] as string[],
+    priceChanges: [] as string[],
     stocks: [] as string[],
   };
 
@@ -196,13 +197,15 @@ export class TestHelper {
         },
       });
 
-      // Price Changes (linked to store)
-      await this.prismaService.documentPriceChangeItem.deleteMany({
-        where: { document: { storeId: { in: this.createdIds.stores } } },
-      });
-      await this.prismaService.documentPriceChange.deleteMany({
-        where: { storeId: { in: this.createdIds.stores } },
-      });
+      // Price Changes (global)
+      if (this.createdIds.priceChanges.length > 0) {
+        await this.prismaService.documentPriceChangeItem.deleteMany({
+          where: { documentId: { in: this.createdIds.priceChanges } },
+        });
+        await this.prismaService.documentPriceChange.deleteMany({
+          where: { id: { in: this.createdIds.priceChanges } },
+        });
+      }
     }
 
     if (this.createdIds.sales.length > 0) {

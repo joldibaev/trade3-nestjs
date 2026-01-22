@@ -27,10 +27,6 @@ export class CreateDocumentPriceChangeItemDto {
 }
 
 export class CreateDocumentPriceChangeDto {
-  @ApiProperty({ example: 'uuid-store-id' })
-  @IsString()
-  storeId: string;
-
   @ApiProperty({ example: '2023-10-25T12:00:00Z' })
   @IsDateString()
   date: string;

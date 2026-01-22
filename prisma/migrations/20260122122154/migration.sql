@@ -8,16 +8,6 @@ CREATE TYPE "BarcodeType" AS ENUM ('EAN13', 'EAN8', 'CODE128', 'INTERNAL', 'OTHE
 CREATE TYPE "StockMovementType" AS ENUM ('PURCHASE', 'SALE', 'RETURN', 'ADJUSTMENT', 'TRANSFER_IN', 'TRANSFER_OUT');
 
 -- CreateTable
-CREATE TABLE "User" (
-    "id" TEXT NOT NULL,
-    "username" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "Store" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -55,16 +45,19 @@ CREATE TABLE "PriceType" (
 );
 
 -- CreateTable
-CREATE TABLE "PriceHistory" (
+CREATE TABLE "PriceLedger" (
     "id" TEXT NOT NULL,
+    "valueBefore" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "value" DECIMAL(12,2) NOT NULL,
     "productId" TEXT NOT NULL,
     "priceTypeId" TEXT NOT NULL,
-    "documentPurchaseId" TEXT,
+    "documentPriceChangeId" TEXT,
+    "batchId" TEXT,
+    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "PriceHistory_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "PriceLedger_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -221,18 +214,6 @@ CREATE TABLE "DocumentPurchaseItem" (
 );
 
 -- CreateTable
-CREATE TABLE "DocumentPurchaseItemPrice" (
-    "id" TEXT NOT NULL,
-    "itemId" TEXT NOT NULL,
-    "priceTypeId" TEXT NOT NULL,
-    "value" DECIMAL(12,2) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "DocumentPurchaseItemPrice_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "DocumentReturn" (
     "id" TEXT NOT NULL,
     "code" SERIAL NOT NULL,
@@ -318,7 +299,35 @@ CREATE TABLE "DocumentTransferItem" (
 );
 
 -- CreateTable
-CREATE TABLE "StockMovement" (
+CREATE TABLE "DocumentPriceChange" (
+    "id" TEXT NOT NULL,
+    "code" SERIAL NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "documentPurchaseId" TEXT,
+
+    CONSTRAINT "DocumentPriceChange_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DocumentPriceChangeItem" (
+    "id" TEXT NOT NULL,
+    "documentId" TEXT NOT NULL,
+    "productId" TEXT NOT NULL,
+    "priceTypeId" TEXT NOT NULL,
+    "oldValue" DECIMAL(12,2) NOT NULL,
+    "newValue" DECIMAL(12,2) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "DocumentPriceChangeItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "StockLedger" (
     "id" TEXT NOT NULL,
     "type" "StockMovementType" NOT NULL,
     "storeId" TEXT NOT NULL,
@@ -329,7 +338,6 @@ CREATE TABLE "StockMovement" (
     "averagePurchasePrice" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "transactionAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "batchId" TEXT,
-    "userId" TEXT,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -339,11 +347,26 @@ CREATE TABLE "StockMovement" (
     "documentAdjustmentId" TEXT,
     "documentTransferId" TEXT,
 
-    CONSTRAINT "StockMovement_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "StockLedger_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
+-- CreateTable
+CREATE TABLE "DocumentLedger" (
+    "id" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "details" JSONB,
+    "documentPurchaseId" TEXT,
+    "documentSaleId" TEXT,
+    "documentReturnId" TEXT,
+    "documentAdjustmentId" TEXT,
+    "documentTransferId" TEXT,
+    "documentPriceChangeId" TEXT,
+    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DocumentLedger_pkey" PRIMARY KEY ("id")
+);
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Store_name_key" ON "Store"("name");
@@ -355,7 +378,10 @@ CREATE UNIQUE INDEX "Cashbox_name_storeId_key" ON "Cashbox"("name", "storeId");
 CREATE UNIQUE INDEX "PriceType_name_key" ON "PriceType"("name");
 
 -- CreateIndex
-CREATE INDEX "PriceHistory_productId_priceTypeId_idx" ON "PriceHistory"("productId", "priceTypeId");
+CREATE INDEX "PriceLedger_productId_priceTypeId_date_idx" ON "PriceLedger"("productId", "priceTypeId", "date" DESC);
+
+-- CreateIndex
+CREATE INDEX "PriceLedger_batchId_idx" ON "PriceLedger"("batchId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Price_productId_priceTypeId_key" ON "Price"("productId", "priceTypeId");
@@ -394,25 +420,52 @@ CREATE UNIQUE INDEX "DocumentAdjustment_code_key" ON "DocumentAdjustment"("code"
 CREATE UNIQUE INDEX "DocumentTransfer_code_key" ON "DocumentTransfer"("code");
 
 -- CreateIndex
-CREATE INDEX "StockMovement_storeId_productId_idx" ON "StockMovement"("storeId", "productId");
+CREATE UNIQUE INDEX "DocumentPriceChange_code_key" ON "DocumentPriceChange"("code");
 
 -- CreateIndex
-CREATE INDEX "StockMovement_batchId_idx" ON "StockMovement"("batchId");
+CREATE UNIQUE INDEX "DocumentPriceChange_documentPurchaseId_key" ON "DocumentPriceChange"("documentPurchaseId");
 
 -- CreateIndex
-CREATE INDEX "StockMovement_date_idx" ON "StockMovement"("date");
+CREATE INDEX "StockLedger_storeId_productId_date_idx" ON "StockLedger"("storeId", "productId", "date" DESC);
+
+-- CreateIndex
+CREATE INDEX "StockLedger_productId_date_idx" ON "StockLedger"("productId", "date" DESC);
+
+-- CreateIndex
+CREATE INDEX "StockLedger_batchId_idx" ON "StockLedger"("batchId");
+
+-- CreateIndex
+CREATE INDEX "StockLedger_date_idx" ON "StockLedger"("date");
+
+-- CreateIndex
+CREATE INDEX "DocumentLedger_documentPurchaseId_idx" ON "DocumentLedger"("documentPurchaseId");
+
+-- CreateIndex
+CREATE INDEX "DocumentLedger_documentSaleId_idx" ON "DocumentLedger"("documentSaleId");
+
+-- CreateIndex
+CREATE INDEX "DocumentLedger_documentReturnId_idx" ON "DocumentLedger"("documentReturnId");
+
+-- CreateIndex
+CREATE INDEX "DocumentLedger_documentAdjustmentId_idx" ON "DocumentLedger"("documentAdjustmentId");
+
+-- CreateIndex
+CREATE INDEX "DocumentLedger_documentTransferId_idx" ON "DocumentLedger"("documentTransferId");
+
+-- CreateIndex
+CREATE INDEX "DocumentLedger_documentPriceChangeId_idx" ON "DocumentLedger"("documentPriceChangeId");
 
 -- AddForeignKey
 ALTER TABLE "Cashbox" ADD CONSTRAINT "Cashbox_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PriceLedger" ADD CONSTRAINT "PriceLedger_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PriceLedger" ADD CONSTRAINT "PriceLedger_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "PriceLedger" ADD CONSTRAINT "PriceLedger_documentPriceChangeId_fkey" FOREIGN KEY ("documentPriceChangeId") REFERENCES "DocumentPriceChange"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Price" ADD CONSTRAINT "Price_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -466,12 +519,6 @@ ALTER TABLE "DocumentPurchaseItem" ADD CONSTRAINT "DocumentPurchaseItem_purchase
 ALTER TABLE "DocumentPurchaseItem" ADD CONSTRAINT "DocumentPurchaseItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentPurchaseItemPrice" ADD CONSTRAINT "DocumentPurchaseItemPrice_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "DocumentPurchaseItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "DocumentPurchaseItemPrice" ADD CONSTRAINT "DocumentPurchaseItemPrice_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "DocumentReturn" ADD CONSTRAINT "DocumentReturn_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -505,25 +552,52 @@ ALTER TABLE "DocumentTransferItem" ADD CONSTRAINT "DocumentTransferItem_transfer
 ALTER TABLE "DocumentTransferItem" ADD CONSTRAINT "DocumentTransferItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "DocumentPriceChange" ADD CONSTRAINT "DocumentPriceChange_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "DocumentPriceChangeItem" ADD CONSTRAINT "DocumentPriceChangeItem_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "DocumentPriceChange"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "DocumentPriceChangeItem" ADD CONSTRAINT "DocumentPriceChangeItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "DocumentPriceChangeItem" ADD CONSTRAINT "DocumentPriceChangeItem_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentSaleId_fkey" FOREIGN KEY ("documentSaleId") REFERENCES "DocumentSale"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentReturnId_fkey" FOREIGN KEY ("documentReturnId") REFERENCES "DocumentReturn"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentAdjustmentId_fkey" FOREIGN KEY ("documentAdjustmentId") REFERENCES "DocumentAdjustment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_documentTransferId_fkey" FOREIGN KEY ("documentTransferId") REFERENCES "DocumentTransfer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_documentSaleId_fkey" FOREIGN KEY ("documentSaleId") REFERENCES "DocumentSale"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_documentReturnId_fkey" FOREIGN KEY ("documentReturnId") REFERENCES "DocumentReturn"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_documentAdjustmentId_fkey" FOREIGN KEY ("documentAdjustmentId") REFERENCES "DocumentAdjustment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_documentTransferId_fkey" FOREIGN KEY ("documentTransferId") REFERENCES "DocumentTransfer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DocumentLedger" ADD CONSTRAINT "DocumentLedger_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DocumentLedger" ADD CONSTRAINT "DocumentLedger_documentSaleId_fkey" FOREIGN KEY ("documentSaleId") REFERENCES "DocumentSale"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DocumentLedger" ADD CONSTRAINT "DocumentLedger_documentReturnId_fkey" FOREIGN KEY ("documentReturnId") REFERENCES "DocumentReturn"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DocumentLedger" ADD CONSTRAINT "DocumentLedger_documentAdjustmentId_fkey" FOREIGN KEY ("documentAdjustmentId") REFERENCES "DocumentAdjustment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DocumentLedger" ADD CONSTRAINT "DocumentLedger_documentTransferId_fkey" FOREIGN KEY ("documentTransferId") REFERENCES "DocumentTransfer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DocumentLedger" ADD CONSTRAINT "DocumentLedger_documentPriceChangeId_fkey" FOREIGN KEY ("documentPriceChangeId") REFERENCES "DocumentPriceChange"("id") ON DELETE SET NULL ON UPDATE CASCADE;

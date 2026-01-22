@@ -3,7 +3,6 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateDocumentPriceChangeDto } from './dto/create-document-price-change.dto';
 import { UpdateDocumentPriceChangeDto } from './dto/update-document-price-change.dto';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
-import { StoreService } from '../store/store.service';
 import { Prisma } from '../generated/prisma/client';
 import Decimal = Prisma.Decimal;
 
@@ -12,21 +11,11 @@ export class DocumentPriceChangeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledgerService: DocumentLedgerService,
-    private readonly storeService: StoreService,
   ) {}
 
   async create(createDto: CreateDocumentPriceChangeDto) {
-    const { storeId, date, status, notes, items } = createDto;
+    const { date, status, notes, items } = createDto;
     const targetStatus = status || 'DRAFT';
-
-    await this.storeService.validateStore(storeId);
-
-    // await this.ledgerService.logDiff(tx, ...); // Logic moved inside transaction or redundant?
-    // Wait, logDiff is inside the transaction usually.
-    // And this line is outside the transaction block (line 26 starts transaction).
-    // Also `dateStore` is not defined.
-    // It seems this line was completely hallucinated or misplaced.
-    // I will remove it as the actual logging happens inside the transaction at step 3.
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Prepare Items & Fetch Old Values
@@ -59,7 +48,6 @@ export class DocumentPriceChangeService {
       // 2. Create Document
       const doc = await tx.documentPriceChange.create({
         data: {
-          storeId,
           date: new Date(date),
           status: targetStatus,
           notes,
@@ -107,7 +95,7 @@ export class DocumentPriceChangeService {
         throw new BadRequestException('Только черновики могут быть изменены');
       }
 
-      const { storeId, date, notes, items } = updateDto;
+      const { date, notes, items } = updateDto;
 
       // Delete old items
       await tx.documentPriceChangeItem.deleteMany({ where: { documentId: id } });
@@ -142,7 +130,6 @@ export class DocumentPriceChangeService {
       const updatedDoc = await tx.documentPriceChange.update({
         where: { id },
         data: {
-          storeId,
           date: date ? new Date(date) : undefined,
           notes,
           items: {
@@ -177,7 +164,7 @@ export class DocumentPriceChangeService {
 
       // REVERT Logic (Completed -> Draft/Cancelled)
       if (doc.status === 'COMPLETED' && newStatus !== 'COMPLETED') {
-        await this.revertPriceChanges(tx, doc.id, doc.items);
+        await this.revertPriceChanges(tx, doc.id, doc.date, doc.items);
       }
 
       return tx.documentPriceChange.update({
@@ -201,7 +188,6 @@ export class DocumentPriceChangeService {
   findAll() {
     return this.prisma.documentPriceChange.findMany({
       orderBy: { date: 'desc' },
-      include: { store: true },
     });
   }
 
@@ -216,16 +202,18 @@ export class DocumentPriceChangeService {
     tx: Prisma.TransactionClient,
     documentId: string,
     date: Date,
-    items: { productId: string; priceTypeId: string; newValue: Decimal }[],
+    items: { productId: string; priceTypeId: string; newValue: Decimal; oldValue: Decimal }[],
   ) {
     for (const item of items) {
-      // 1. Create Ledger Entry
+      // 1. Create Ledger Entry with snapshots and batchId
       await tx.priceLedger.create({
         data: {
           productId: item.productId,
           priceTypeId: item.priceTypeId,
+          valueBefore: item.oldValue,
           value: item.newValue,
           documentPriceChangeId: documentId,
+          batchId: documentId,
           date: date,
         },
       });
@@ -238,15 +226,27 @@ export class DocumentPriceChangeService {
   private async revertPriceChanges(
     tx: Prisma.TransactionClient,
     documentId: string,
-    items: { productId: string; priceTypeId: string }[],
+    date: Date,
+    items: { productId: string; priceTypeId: string; oldValue: Decimal; newValue: Decimal }[],
   ) {
-    // 1. Delete Ledger Entries linked to this Document
-    await tx.priceLedger.deleteMany({
-      where: { documentPriceChangeId: documentId },
-    });
-
-    // 2. Rebalance (Recalculate Price based on remaining history)
+    // We do NOT delete or update old records.
+    // Instead, we add NEW "reversing" records that restore the previous price.
     for (const item of items) {
+      // To revert, the "new" value is the oldValue of the document,
+      // and the "before" value is the newValue (current price being reverted).
+      await tx.priceLedger.create({
+        data: {
+          productId: item.productId,
+          priceTypeId: item.priceTypeId,
+          valueBefore: item.newValue,
+          value: item.oldValue,
+          documentPriceChangeId: documentId,
+          batchId: documentId,
+          date: date,
+        },
+      });
+
+      // 2. Rebalance (Recalculate Price based on new history)
       await this.rebalanceProductPrice(tx, item.productId, item.priceTypeId);
     }
   }

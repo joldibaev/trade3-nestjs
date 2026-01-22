@@ -35,7 +35,6 @@ describe('Document Price Change (e2e)', () => {
 
     // 1. Create DRAFT
     const createPayload = {
-      storeId: store.id,
       date: new Date().toISOString(),
       status: 'DRAFT',
       notes: 'Initial pricing',
@@ -54,6 +53,7 @@ describe('Document Price Change (e2e)', () => {
       .expect(201);
 
     const docId = res.body.id;
+    helper.createdIds.priceChanges.push(docId);
     expect(res.body.status).toBe('DRAFT');
 
     // Verify Price NOT updated yet
@@ -110,7 +110,6 @@ describe('Document Price Change (e2e)', () => {
 
     // 1. Create and Complete Change to 200
     const createPayload = {
-      storeId: store.id,
       date: new Date().toISOString(),
       status: 'COMPLETED',
       items: [
@@ -128,6 +127,7 @@ describe('Document Price Change (e2e)', () => {
       .expect(201);
 
     const docId = res.body.id;
+    helper.createdIds.priceChanges.push(docId);
 
     // Verify Price is 200
     const price1 = await prisma.price.findUnique({
@@ -147,10 +147,16 @@ describe('Document Price Change (e2e)', () => {
     });
     expect(price2?.value.toNumber()).toBe(100);
 
-    // Verify Ledger for 200 is gone
-    const ledger200 = await prisma.priceLedger.findFirst({
-      where: { documentPriceChangeId: docId },
+    // Verify Ledger for 200 STILL exists (Audit trail)
+    const originalLedger = await prisma.priceLedger.findFirst({
+      where: { documentPriceChangeId: docId, value: 200 },
     });
-    expect(ledger200).toBeNull();
+    expect(originalLedger).toBeDefined();
+
+    // Verify Reverse Ledger entry (Storno) exists
+    const stornoLedger = await prisma.priceLedger.findFirst({
+      where: { documentPriceChangeId: docId, value: 100 },
+    });
+    expect(stornoLedger).toBeDefined();
   });
 });

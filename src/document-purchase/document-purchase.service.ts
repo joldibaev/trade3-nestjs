@@ -30,7 +30,7 @@ export class DocumentPurchaseService {
     private readonly storeService: StoreService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
-  ) { }
+  ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items, status, notes } = createDocumentPurchaseDto;
@@ -133,7 +133,6 @@ export class DocumentPurchaseService {
           // Create the linked Price Change Document
           await tx.documentPriceChange.create({
             data: {
-              storeId,
               date: new Date(date),
               status: 'DRAFT', // Always DRAFT initially
               notes: `Автоматически создан на основе закупки ${doc.code}`,
@@ -454,7 +453,8 @@ export class DocumentPurchaseService {
         if (notes !== undefined && notes !== (doc.notes ?? '')) headerChanges.notes = notes;
         if (storeId !== undefined && storeId !== doc.storeId) headerChanges.storeId = storeId;
         if (vendorId !== undefined && vendorId !== doc.vendorId) headerChanges.vendorId = vendorId;
-        if (date && new Date(date).getTime() !== new Date(doc.date).getTime()) headerChanges.date = date;
+        if (date && new Date(date).getTime() !== new Date(doc.date).getTime())
+          headerChanges.date = date;
 
         if (Object.keys(headerChanges).length > 0) {
           await this.ledgerService.logAction(tx, {
@@ -483,7 +483,6 @@ export class DocumentPurchaseService {
         );
 
         return updatedDoc;
-
       },
       {
         isolationLevel: 'ReadCommitted', // Sufficient for DRAFT updates

@@ -56,8 +56,6 @@ describe('Global Cleanup Verification (e2e)', () => {
       }
     }
 
-
-
     if (garbageFound) {
       throw new Error(`Garbage data detected in: ${details.join(', ')}`);
     }

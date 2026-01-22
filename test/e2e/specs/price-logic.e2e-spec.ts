@@ -38,7 +38,6 @@ describe('Price Logic (Slice Last)', () => {
 
     // 1. Create OLD Price Change (Jan 1st) - Price 100
     const createPayloadOld = {
-      storeId: store.id,
       date: dateOld.toISOString(),
       status: 'DRAFT',
       items: [
@@ -56,6 +55,7 @@ describe('Price Logic (Slice Last)', () => {
       .expect(201);
 
     const idOld = resOld.body.id;
+    helper.createdIds.priceChanges.push(idOld);
 
     // Complete Old
     await request(app.getHttpServer())
@@ -71,7 +71,6 @@ describe('Price Logic (Slice Last)', () => {
 
     // 2. Create NEW Price Change (Feb 1st) - Price 120
     const createPayloadNew = {
-      storeId: store.id,
       date: dateNew.toISOString(),
       status: 'DRAFT',
       items: [
@@ -89,6 +88,7 @@ describe('Price Logic (Slice Last)', () => {
       .expect(201);
 
     const idNew = resNew.body.id;
+    helper.createdIds.priceChanges.push(idNew);
 
     // Complete New
     await request(app.getHttpServer())
@@ -104,7 +104,6 @@ describe('Price Logic (Slice Last)', () => {
 
     // 3. EDIT OLD Price Change (Jan 1st) - Change Price to 150
     const updatePayload = {
-      storeId: store.id,
       date: dateOld.toISOString(), // Keep old date
       items: [
         {
