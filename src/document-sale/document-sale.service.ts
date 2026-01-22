@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
+import { DocumentStatus } from '../generated/prisma/enums';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
@@ -202,7 +203,7 @@ export class DocumentSaleService {
     return result.sale;
   }
 
-  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
+  async updateStatus(id: string, newStatus: DocumentStatus) {
     let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 

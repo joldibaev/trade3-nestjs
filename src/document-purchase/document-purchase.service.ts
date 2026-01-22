@@ -8,6 +8,7 @@ import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import { BaseDocumentService } from '../common/base-document.service';
+import { DocumentStatus } from '../generated/prisma/enums';
 import Decimal = Prisma.Decimal;
 
 interface PreparedPurchaseItem {
@@ -212,7 +213,7 @@ export class DocumentPurchaseService {
     return result.doc;
   }
 
-  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
+  async updateStatus(id: string, newStatus: DocumentStatus) {
     let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 

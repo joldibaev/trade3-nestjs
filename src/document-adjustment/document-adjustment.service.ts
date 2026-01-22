@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
+import { DocumentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
@@ -271,7 +272,7 @@ export class DocumentAdjustmentService {
     );
   }
 
-  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
+  async updateStatus(id: string, newStatus: DocumentStatus) {
     let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
@@ -398,7 +399,6 @@ export class DocumentAdjustmentService {
         });
 
         return tx.documentAdjustment.update({
-          where: { id },
           where: { id },
           data: { status: actualNewStatus },
           include: { items: true },

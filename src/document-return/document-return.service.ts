@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
+import { DocumentStatus } from '../generated/prisma/enums';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
@@ -155,7 +156,7 @@ export class DocumentReturnService {
     return result.doc;
   }
 
-  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
+  async updateStatus(id: string, newStatus: DocumentStatus) {
     let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
@@ -250,7 +251,6 @@ export class DocumentReturnService {
         });
 
         return tx.documentReturn.update({
-          where: { id },
           where: { id },
           data: { status: actualNewStatus },
           include: { items: true },

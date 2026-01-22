@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
+import { DocumentStatus } from '../generated/prisma/enums';
 import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
@@ -173,7 +174,7 @@ export class DocumentTransferService {
     return result.doc;
   }
 
-  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
+  async updateStatus(id: string, newStatus: DocumentStatus) {
     let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
@@ -377,7 +378,6 @@ export class DocumentTransferService {
 
         // Update status
         const updatedDoc = await tx.documentTransfer.update({
-          where: { id },
           where: { id },
           data: { status: actualNewStatus },
           include: { items: true },
