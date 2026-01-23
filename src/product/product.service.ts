@@ -2,14 +2,22 @@ import { Injectable } from '@nestjs/common';
 import { CreateProductDto } from '../generated/dto/product/create-product.dto';
 import { UpdateProductDto } from '../generated/dto/product/update-product.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 
 @Injectable()
 export class ProductService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly codeGenerator: CodeGeneratorService,
+  ) {}
 
-  create(createProductDto: CreateProductDto) {
+  async create(createProductDto: CreateProductDto) {
+    const code = await this.codeGenerator.getNextProductCode();
     return this.prisma.product.create({
-      data: createProductDto,
+      data: {
+        ...createProductDto,
+        code,
+      },
     });
   }
 

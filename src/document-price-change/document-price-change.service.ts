@@ -4,6 +4,7 @@ import { CreateDocumentPriceChangeDto } from './dto/create-document-price-change
 import { UpdateDocumentPriceChangeDto } from './dto/update-document-price-change.dto';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import { BaseDocumentService } from '../common/base-document.service';
+import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import { Prisma } from '../generated/prisma/client';
 import Decimal = Prisma.Decimal;
 
@@ -13,6 +14,7 @@ export class DocumentPriceChangeService {
     private readonly prisma: PrismaService,
     private readonly ledgerService: DocumentLedgerService,
     private readonly baseService: BaseDocumentService,
+    private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
   async create(createDto: CreateDocumentPriceChangeDto) {
@@ -48,9 +50,11 @@ export class DocumentPriceChangeService {
         });
       }
 
-      // 2. Create Document
+      // 2. Generate Code & Create Document
+      const code = await this.codeGenerator.getNextPriceChangeCode();
       const doc = await tx.documentPriceChange.create({
         data: {
+          code,
           date: docDate,
           status: targetStatus,
           notes,

@@ -106,8 +106,10 @@ export class TestHelper {
   }
 
   async cleanup() {
-    // 0. Cleanup DocumentLedger
+    // 0. Cleanup DocumentLedger, Reprocessing Items, and Price Ledger
     await this.prismaService.documentLedger.deleteMany({});
+    await this.prismaService.inventoryReprocessingItem.deleteMany({});
+    await this.prismaService.priceLedger.deleteMany({});
 
     // 1. Delete StockLedger and InventoryReprocessing first as they reference both products and all document types
     await this.prismaService.stockLedger.deleteMany({
@@ -271,6 +273,18 @@ export class TestHelper {
       });
     }
 
+    // Cleanup Price Changes linked to our purchases
+    if (this.createdIds.purchases.length > 0) {
+      await this.prismaService.documentPriceChangeItem.deleteMany({
+        where: {
+          document: { documentPurchaseId: { in: this.createdIds.purchases } },
+        },
+      });
+      await this.prismaService.documentPriceChange.deleteMany({
+        where: { documentPurchaseId: { in: this.createdIds.purchases } },
+      });
+    }
+
     // 3. Cleanup Master Data
     if (this.createdIds.products.length > 0) {
       await this.prismaService.stock.deleteMany({
@@ -385,6 +399,7 @@ export class TestHelper {
     const product = await this.prismaService.product.create({
       data: {
         name: this.uniqueName('Product'),
+        code: this.uniqueName('CODE'),
         ...data,
         categoryId,
       },

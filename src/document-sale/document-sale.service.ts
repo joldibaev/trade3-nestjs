@@ -8,6 +8,7 @@ import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import { BaseDocumentService } from '../common/base-document.service';
+import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedSaleItem {
@@ -35,6 +36,7 @@ export class DocumentSaleService {
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
     private readonly baseService: BaseDocumentService,
+    private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
@@ -148,9 +150,13 @@ export class DocumentSaleService {
           });
         }
 
+        // Generate Code
+        const code = await this.codeGenerator.getNextSaleCode();
+
         // Create DocumentSale
         const sale = await tx.documentSale.create({
           data: {
+            code,
             storeId,
             cashboxId,
             clientId,

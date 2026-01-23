@@ -88,6 +88,7 @@ async function main() {
           create: {
             name: productName,
             categoryId,
+            code: `SEED-${prefix}-${categoryId}-${i}`,
           },
         }),
       );

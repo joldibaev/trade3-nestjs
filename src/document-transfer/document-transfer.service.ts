@@ -8,6 +8,7 @@ import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import { BaseDocumentService } from '../common/base-document.service';
+import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedTransferItem {
@@ -31,6 +32,7 @@ export class DocumentTransferService {
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
     private readonly baseService: BaseDocumentService,
+    private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
@@ -69,9 +71,13 @@ export class DocumentTransferService {
 
     const result = await this.prisma.$transaction(
       async (tx) => {
+        // Generate Code
+        const code = await this.codeGenerator.getNextTransferCode();
+
         // 4. Create Document
         const doc = await tx.documentTransfer.create({
           data: {
+            code,
             sourceStoreId,
             destinationStoreId,
             date: docDate,

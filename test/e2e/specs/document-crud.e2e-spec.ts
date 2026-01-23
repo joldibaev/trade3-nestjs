@@ -57,7 +57,7 @@ describe('Document CRUD (e2e)', () => {
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.items).toHaveLength(0);
       expect(res.body.code).toBeDefined();
-      expect(typeof res.body.code).toBe('number');
+      expect(typeof res.body.code).toBe('string');
 
       helper.createdIds.purchases.push(purchaseId);
 
@@ -167,7 +167,7 @@ describe('Document CRUD (e2e)', () => {
       saleId = res.body.id;
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.code).toBeDefined();
-      expect(typeof res.body.code).toBe('number');
+      expect(typeof res.body.code).toBe('string');
 
       helper.createdIds.sales.push(saleId);
     });
@@ -248,7 +248,7 @@ describe('Document CRUD (e2e)', () => {
       returnId = res.body.id;
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.code).toBeDefined();
-      expect(typeof res.body.code).toBe('number');
+      expect(typeof res.body.code).toBe('string');
 
       helper.createdIds.returns.push(returnId);
     });

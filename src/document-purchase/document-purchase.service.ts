@@ -11,6 +11,7 @@ import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import { BaseDocumentService } from '../common/base-document.service';
+import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import { DocumentStatus } from '../generated/prisma/enums';
 import Decimal = Prisma.Decimal;
 
@@ -37,7 +38,8 @@ export class DocumentPurchaseService {
     private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
     private readonly baseService: BaseDocumentService,
-  ) {}
+    private readonly codeGenerator: CodeGeneratorService,
+  ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items, status, notes } = createDocumentPurchaseDto;
@@ -94,9 +96,13 @@ export class DocumentPurchaseService {
           });
         }
 
+        // Generate Code
+        const code = await this.codeGenerator.getNextPurchaseCode();
+
         // Create DocumentPurchase
         const doc = await tx.documentPurchase.create({
           data: {
+            code,
             storeId,
             vendorId,
             date: docDate,
@@ -450,6 +456,7 @@ export class DocumentPurchaseService {
             quantity,
             price,
             total: quantity.mul(price),
+            newPrices: item.newPrices,
           };
         });
 
@@ -515,6 +522,10 @@ export class DocumentPurchaseService {
           ['quantity', 'price'],
         );
 
+        // --- Handle Automatic DocumentPriceChange ---
+        await this.handlePriceChanges(tx, id, updatedDoc.code, docDate || updatedDoc.date, preparedItems);
+        // ---------------------------------------------
+
         return updatedDoc;
       },
       {
@@ -552,7 +563,7 @@ export class DocumentPurchaseService {
   private async handlePriceChanges(
     tx: Prisma.TransactionClient,
     purchaseId: string,
-    purchaseCode: number,
+    purchaseCode: string,
     date: Date,
     items: PreparedPurchaseItem[],
   ) {
@@ -607,9 +618,13 @@ export class DocumentPurchaseService {
       await tx.documentPriceChange.delete({ where: { id: existing.id } });
     }
 
+    // Generate code for DocumentPriceChange
+    const priceChangeCode = await this.codeGenerator.getNextPriceChangeCode();
+
     // Create the new linked Price Change Document
     await tx.documentPriceChange.create({
       data: {
+        code: priceChangeCode,
         date,
         status: 'DRAFT',
         notes: `Автоматически создан на основе закупки №${purchaseCode}`,
