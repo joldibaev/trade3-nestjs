@@ -2,7 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
-import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
+import {
+  CreateDocumentPurchaseDto,
+  UpdateProductPriceDto,
+} from './dto/create-document-purchase.dto';
 import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
@@ -16,6 +19,7 @@ interface PreparedPurchaseItem {
   quantity: Decimal;
   price: Decimal;
   total: Decimal;
+  newPrices?: UpdateProductPriceDto[];
 }
 
 interface PurchaseContext {
@@ -61,7 +65,7 @@ export class DocumentPurchaseService {
     // 2. Execute Transaction
     const result = await this.prisma.$transaction(
       async (tx) => {
-        let preparedItems: (PreparedPurchaseItem & { newPrice?: number })[] = [];
+        let preparedItems: PreparedPurchaseItem[] = [];
         let total = new Decimal(0);
 
         if (safeItems.length > 0) {
@@ -85,7 +89,7 @@ export class DocumentPurchaseService {
               quantity,
               price,
               total: lineTotal,
-              newPrice: item.newPrice,
+              newPrices: item.newPrices,
             };
           });
         }
@@ -133,47 +137,7 @@ export class DocumentPurchaseService {
         }
 
         // --- Handle Automatic DocumentPriceChange ---
-        const itemsWithNewPrice = preparedItems.filter(
-          (i) => i.newPrice !== undefined && i.newPrice > 0,
-        );
-
-        if (itemsWithNewPrice.length > 0) {
-          // Get "Retail" price type ID - assuming a default logic or standard name exists.
-          // Ideally this should be configurable or passed in DTO.
-          // For now, let's look for a PriceType named "Розничная" or similar, or just the first one.
-          const retailPriceType = await tx.priceType.findFirst({
-            where: { name: 'Розничная' }, // Fallback to 'Retail' or first?
-          });
-
-          const priceTypeId = retailPriceType?.id || (await tx.priceType.findFirstOrThrow()).id;
-
-          // Create the linked Price Change Document
-          await tx.documentPriceChange.create({
-            data: {
-              date: docDate,
-              status: 'DRAFT', // Always DRAFT initially
-              notes: `Автоматически создан на основе закупки ${doc.code}`,
-              documentPurchaseId: doc.id, // Link to purchase
-              items: {
-                create: await Promise.all(
-                  itemsWithNewPrice.map(async (i) => {
-                    // Fetch current price for old value (optional but good for history)
-                    const currentPrice = await tx.price.findUnique({
-                      where: { productId_priceTypeId: { productId: i.productId, priceTypeId } },
-                    });
-
-                    return {
-                      productId: i.productId,
-                      priceTypeId,
-                      newValue: new Decimal(i.newPrice!),
-                      oldValue: currentPrice?.value || 0,
-                    };
-                  }),
-                ),
-              },
-            },
-          });
-        }
+        await this.handlePriceChanges(tx, doc.id, doc.code, docDate, preparedItems);
         // ---------------------------------------------
 
         // 3. Apply Inventory Movements (Only if COMPLETED)
@@ -581,6 +545,78 @@ export class DocumentPurchaseService {
         },
         vendor: true,
         store: true,
+      },
+    });
+  }
+
+  private async handlePriceChanges(
+    tx: Prisma.TransactionClient,
+    purchaseId: string,
+    purchaseCode: number,
+    date: Date,
+    items: PreparedPurchaseItem[],
+  ) {
+    const itemsWithNewPrices = items.filter((i) => i.newPrices && i.newPrices.length > 0);
+
+    if (itemsWithNewPrices.length === 0) {
+      return;
+    }
+
+    // Flatten all price updates into a single list
+    const priceChangeItems: {
+      productId: string;
+      priceTypeId: string;
+      newValue: Decimal;
+      oldValue: number | Decimal;
+    }[] = [];
+
+    for (const item of itemsWithNewPrices) {
+      for (const priceUpdate of item.newPrices!) {
+        const currentPrice = await tx.price.findUnique({
+          where: {
+            productId_priceTypeId: {
+              productId: item.productId,
+              priceTypeId: priceUpdate.priceTypeId,
+            },
+          },
+        });
+
+        priceChangeItems.push({
+          productId: item.productId,
+          priceTypeId: priceUpdate.priceTypeId,
+          newValue: new Decimal(priceUpdate.value),
+          oldValue: currentPrice?.value || 0,
+        });
+      }
+    }
+
+    if (priceChangeItems.length === 0) {
+      return;
+    }
+
+    // Delete existing price change for this purchase if it exists (and is DRAFT)
+    const existing = await tx.documentPriceChange.findUnique({
+      where: { documentPurchaseId: purchaseId },
+    });
+
+    if (existing) {
+      if (existing.status !== 'DRAFT') {
+        // If already completed, we don't automatically update it
+        return;
+      }
+      await tx.documentPriceChange.delete({ where: { id: existing.id } });
+    }
+
+    // Create the new linked Price Change Document
+    await tx.documentPriceChange.create({
+      data: {
+        date,
+        status: 'DRAFT',
+        notes: `Автоматически создан на основе закупки №${purchaseCode}`,
+        documentPurchaseId: purchaseId,
+        items: {
+          create: priceChangeItems,
+        },
       },
     });
   }

@@ -73,7 +73,7 @@ describe('Document Ledger (e2e)', () => {
         storeId,
         vendorId,
         date: new Date(),
-        items: [{ productId, quantity: 15, price: 50 }],
+        items: [{ productId, quantity: 15, price: 50, newPrices: [] }],
         notes: 'Updated notes',
       };
 
@@ -114,6 +114,7 @@ describe('Document Ledger (e2e)', () => {
           productId: i.productId,
           quantity: Number(i.quantity),
           price: Number(i.price),
+          newPrices: [],
         })),
         notes: doc.notes,
         status: 'DRAFT',

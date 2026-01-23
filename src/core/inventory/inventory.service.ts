@@ -123,6 +123,35 @@ export class InventoryService {
 
         let affectedCount = 0;
         for (const move of movements) {
+          // 2.1. Guard check: Only process movements from COMPLETED (conducted) documents
+          // This ensures that DRAFT, SCHEDULED, or CANCELLED documents don't affect history.
+          // Note: When a document is CANCELLED, its original movements are still in the ledger,
+          // but they should no longer affect the recalculation.
+          const isPurchaseCompleted = move.documentPurchase?.status === 'COMPLETED';
+          const isSaleCompleted = move.documentSale?.status === 'COMPLETED';
+          const isReturnCompleted = move.documentReturn?.status === 'COMPLETED';
+          const isAdjustmentCompleted = move.documentAdjustment?.status === 'COMPLETED';
+          const isTransferCompleted = move.documentTransfer?.status === 'COMPLETED';
+
+          if (
+            (move.documentPurchase && !isPurchaseCompleted) ||
+            (move.documentSale && !isSaleCompleted) ||
+            (move.documentReturn && !isReturnCompleted) ||
+            (move.documentAdjustment && !isAdjustmentCompleted) ||
+            (move.documentTransfer && !isTransferCompleted)
+          ) {
+            // Update the audit log to reflect that these movements are now orphaned/inactive in history
+            // We set them to match the CURRENT state (no change)
+            await tx.stockLedger.update({
+              where: { id: move.id },
+              data: {
+                quantityAfter: currentQty,
+                averagePurchasePrice: currentWap,
+              },
+            });
+            continue;
+          }
+
           // Logic mirrors the "Create" logic of each service
           const qtyChange = move.quantity; // + or -
 

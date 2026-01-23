@@ -23,7 +23,9 @@
 
 - `createdIds`: Публичный реестр созданных ID для очистки.
 - `createStore`, `createProduct`: Создание справочников через Prisma с регистрацией ID.
-- `createPurchase`: 2-этапное создание (POST header + PATCH items). Для остальных (`createSale`, `createReturn`, etc.) - стандартный POST. Поддерживает аргументы `status` и ожидаемый код.
+- `createPurchase`: 2-этапное создание (POST header + PATCH items). Для остальных (`createSale`, `createReturn`, etc.) - стандартный POST. 
+  - **Даты**: По умолчанию создают документы с датой "вчера" (`Date.now() - 24h`). Это гарантирует, что документы сразу перейдут в статус `COMPLETED` и не будут автоматически запланированы (`SCHEDULED`). Для тестирования планировщика используйте явную передачу будущей даты.
+
 - `completePurchase`, `completeSale`: Отправка PATCH-запросов для смены статуса.
 - `cleanup`: Каскадное удаление данных на основе `createdIds`.
 

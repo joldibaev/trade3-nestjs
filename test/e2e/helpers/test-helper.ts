@@ -6,7 +6,7 @@ export class TestHelper {
   constructor(
     private readonly app: INestApplication,
     private readonly prismaService: PrismaService,
-  ) {}
+  ) { }
 
   // ... (previous code)
 
@@ -23,7 +23,7 @@ export class TestHelper {
   ) {
     const date = customDate || new Date();
     if (!customDate) {
-      date.setHours(10, 0, 0, 0);
+      date.setHours(0, 0, 0, 0); // Always in the past
     }
 
     // 1. Create Header (POST)
@@ -55,7 +55,7 @@ export class TestHelper {
           productId,
           quantity,
           price,
-          newPrices,
+          newPrices: newPrices || [],
         },
       ],
     };
@@ -417,7 +417,7 @@ export class TestHelper {
   ) {
     const date = customDate || new Date();
     if (!customDate) {
-      date.setHours(14, 0, 0, 0);
+      date.setHours(0, 0, 0, 0); // Always in the past
     }
 
     const payload = {
