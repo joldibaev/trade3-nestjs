@@ -473,7 +473,13 @@ export class DocumentPurchaseService {
       where: { id },
       include: {
         items: {
-          include: { product: true },
+          include: {
+            product: {
+              include: {
+                priceChangeItems: true,
+              },
+            },
+          },
         },
         documentLedger: {
           orderBy: { createdAt: 'asc' },
