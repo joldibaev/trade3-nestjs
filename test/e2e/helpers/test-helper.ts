@@ -8,6 +8,28 @@ export class TestHelper {
     private readonly prismaService: PrismaService,
   ) {}
 
+  async getLatestStockLedger(productId: string) {
+    return this.prismaService.stockLedger.findFirst({
+      where: { productId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getLatestDocumentLedger(documentId: string) {
+    return this.prismaService.documentLedger.findFirst({
+      where: {
+        OR: [
+          { documentPurchaseId: documentId },
+          { documentSaleId: documentId },
+          { documentReturnId: documentId },
+          { documentAdjustmentId: documentId },
+          { documentTransferId: documentId },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   // ... (previous code)
 
   async createPurchase(
@@ -111,7 +133,7 @@ export class TestHelper {
     await this.prismaService.inventoryReprocessingItem.deleteMany({});
     await this.prismaService.priceLedger.deleteMany({});
 
-    // 1. Delete StockLedger and InventoryReprocessing first as they reference both products and all document types
+    // 1. Delete StockLedger and InventoryReprocessing first
     await this.prismaService.stockLedger.deleteMany({
       where: {
         OR: [
@@ -138,7 +160,6 @@ export class TestHelper {
     });
 
     // 2. Cleanup Documents and their Items
-    // Also delete items linked to our products, to catch any orphans
     if (this.createdIds.products.length > 0) {
       await this.prismaService.documentSaleItem.deleteMany({
         where: { productId: { in: this.createdIds.products } },
@@ -160,50 +181,18 @@ export class TestHelper {
       });
     }
 
-    // Also delete documents linked to our stores, to catch orphans
     if (this.createdIds.stores.length > 0) {
-      // Sales
-      await this.prismaService.documentSaleItem.deleteMany({
-        where: { sale: { storeId: { in: this.createdIds.stores } } },
-      });
       await this.prismaService.documentSale.deleteMany({
         where: { storeId: { in: this.createdIds.stores } },
-      });
-
-      // Purchases (linked to store)
-      await this.prismaService.documentPurchaseItem.deleteMany({
-        where: { purchase: { storeId: { in: this.createdIds.stores } } },
       });
       await this.prismaService.documentPurchase.deleteMany({
         where: { storeId: { in: this.createdIds.stores } },
       });
-
-      // Returns
-      await this.prismaService.documentReturnItem.deleteMany({
-        where: { return: { storeId: { in: this.createdIds.stores } } },
-      });
       await this.prismaService.documentReturn.deleteMany({
         where: { storeId: { in: this.createdIds.stores } },
       });
-
-      // Adjustments
-      await this.prismaService.documentAdjustmentItem.deleteMany({
-        where: { adjustment: { storeId: { in: this.createdIds.stores } } },
-      });
       await this.prismaService.documentAdjustment.deleteMany({
         where: { storeId: { in: this.createdIds.stores } },
-      });
-
-      // Transfers (Source or Destination)
-      await this.prismaService.documentTransferItem.deleteMany({
-        where: {
-          transfer: {
-            OR: [
-              { sourceStoreId: { in: this.createdIds.stores } },
-              { destinationStoreId: { in: this.createdIds.stores } },
-            ],
-          },
-        },
       });
       await this.prismaService.documentTransfer.deleteMany({
         where: {
@@ -213,76 +202,6 @@ export class TestHelper {
           ],
         },
       });
-
-      // Price Changes (global)
-      if (this.createdIds.priceChanges.length > 0) {
-        await this.prismaService.documentPriceChangeItem.deleteMany({
-          where: { documentId: { in: this.createdIds.priceChanges } },
-        });
-        await this.prismaService.documentPriceChange.deleteMany({
-          where: { id: { in: this.createdIds.priceChanges } },
-        });
-      }
-    }
-
-    if (this.createdIds.sales.length > 0) {
-      // Cleanup specifically tracked sales (redundant but safe)
-      await this.prismaService.documentSaleItem.deleteMany({
-        where: { saleId: { in: this.createdIds.sales } },
-      });
-      await this.prismaService.documentSale.deleteMany({
-        where: { id: { in: this.createdIds.sales } },
-      });
-    }
-    // ... continue with other explicit deletions if needed, but store-based should cover most.
-
-    // Explicit cleanup for other tracked documents just in case they aren't linked to tracked stores (unlikely in tests but possible)
-    if (this.createdIds.returns.length > 0) {
-      await this.prismaService.documentReturnItem.deleteMany({
-        where: { returnId: { in: this.createdIds.returns } },
-      });
-      await this.prismaService.documentReturn.deleteMany({
-        where: { id: { in: this.createdIds.returns } },
-      });
-    }
-
-    if (this.createdIds.adjustments.length > 0) {
-      await this.prismaService.documentAdjustmentItem.deleteMany({
-        where: { adjustmentId: { in: this.createdIds.adjustments } },
-      });
-      await this.prismaService.documentAdjustment.deleteMany({
-        where: { id: { in: this.createdIds.adjustments } },
-      });
-    }
-
-    if (this.createdIds.transfers.length > 0) {
-      await this.prismaService.documentTransferItem.deleteMany({
-        where: { transferId: { in: this.createdIds.transfers } },
-      });
-      await this.prismaService.documentTransfer.deleteMany({
-        where: { id: { in: this.createdIds.transfers } },
-      });
-    }
-
-    if (this.createdIds.purchases.length > 0) {
-      await this.prismaService.documentPurchaseItem.deleteMany({
-        where: { purchaseId: { in: this.createdIds.purchases } },
-      });
-      await this.prismaService.documentPurchase.deleteMany({
-        where: { id: { in: this.createdIds.purchases } },
-      });
-    }
-
-    // Cleanup Price Changes linked to our purchases
-    if (this.createdIds.purchases.length > 0) {
-      await this.prismaService.documentPriceChangeItem.deleteMany({
-        where: {
-          document: { documentPurchaseId: { in: this.createdIds.purchases } },
-        },
-      });
-      await this.prismaService.documentPriceChange.deleteMany({
-        where: { documentPurchaseId: { in: this.createdIds.purchases } },
-      });
     }
 
     // 3. Cleanup Master Data
@@ -291,9 +210,6 @@ export class TestHelper {
         where: { productId: { in: this.createdIds.products } },
       });
       await this.prismaService.price.deleteMany({
-        where: { productId: { in: this.createdIds.products } },
-      });
-      await this.prismaService.priceLedger.deleteMany({
         where: { productId: { in: this.createdIds.products } },
       });
       await this.prismaService.barcode.deleteMany({
@@ -309,36 +225,34 @@ export class TestHelper {
         where: { id: { in: this.createdIds.categories } },
       });
     }
-
     if (this.createdIds.cashboxes.length > 0) {
       await this.prismaService.cashbox.deleteMany({
         where: { id: { in: this.createdIds.cashboxes } },
       });
     }
-
     if (this.createdIds.stores.length > 0) {
-      await this.prismaService.store.deleteMany({
-        where: { id: { in: this.createdIds.stores } },
-      });
+      await this.prismaService.store.deleteMany({ where: { id: { in: this.createdIds.stores } } });
     }
-
     if (this.createdIds.clients.length > 0) {
       await this.prismaService.client.deleteMany({
         where: { id: { in: this.createdIds.clients } },
       });
     }
-
     if (this.createdIds.vendors.length > 0) {
       await this.prismaService.vendor.deleteMany({
         where: { id: { in: this.createdIds.vendors } },
       });
     }
-
     if (this.createdIds.priceTypes.length > 0) {
       await this.prismaService.priceType.deleteMany({
         where: { id: { in: this.createdIds.priceTypes } },
       });
     }
+
+    // Reset tracked IDs
+    Object.keys(this.createdIds).forEach((key) => {
+      (this.createdIds as any)[key] = [];
+    });
   }
 
   async createStore() {
