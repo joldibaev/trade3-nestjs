@@ -4,7 +4,8 @@ import * as path from 'path';
 export interface Field {
   name: string;
   type: string;
-  isOptional: boolean;
+  isOptional: boolean; // Truly nullable (?)
+  hasDefault: boolean; // Has @default(...)
   isArray: boolean;
   isRelation: boolean;
   isSystem: boolean;
@@ -52,7 +53,8 @@ export function parseFields(body: string): Field[] {
         trimmed.includes('@id') ||
         trimmed.includes('@default(now())') ||
         trimmed.includes('@updatedAt');
-      const isOptional = type.endsWith('?') || trimmed.includes('@default');
+      const isOptional = type.endsWith('?');
+      const hasDefault = trimmed.includes('@default');
       const cleanType = type.replace('?', '');
       const isArray = cleanType.endsWith('[]');
       const baseType = cleanType.replace('[]', '');
@@ -70,6 +72,7 @@ export function parseFields(body: string): Field[] {
         name,
         type: baseType,
         isOptional,
+        hasDefault,
         isArray,
         isRelation,
         isSystem,
@@ -208,7 +211,8 @@ export function generateCreateDtoContent(model: Model): string {
   filteredFields.forEach((f, index) => {
     fieldsContent += `  @ApiProperty({ required: ${!f.isOptional} })\n`;
 
-    if (f.isOptional) {
+    const isActuallyOptional = f.isOptional || f.hasDefault;
+    if (isActuallyOptional) {
       fieldsContent += '  @IsOptional()\n';
       validatorImports.add('IsOptional');
     } else {
@@ -237,7 +241,7 @@ export function generateCreateDtoContent(model: Model): string {
     }
 
     const tsType = f.type === 'Decimal' ? 'Decimal' : mapType(f.type);
-    fieldsContent += `  ${f.name}${f.isOptional ? '?' : ''}: ${tsType};\n`;
+    fieldsContent += `  ${f.name}${isActuallyOptional ? '?' : ''}: ${tsType};\n`;
     if (index < filteredFields.length - 1) {
       fieldsContent += '\n';
     }
@@ -474,7 +478,8 @@ export function generateFrontendCreateDtoContent(model: Model): string {
     }
 
     const tsType = mapType(f.type, 'frontend'); // mapType already maps Decimal to number
-    const suffix = f.isOptional ? '?' : '';
+    const isActuallyOptional = f.isOptional || f.hasDefault;
+    const suffix = isActuallyOptional ? '?' : '';
     fieldsContent += `  ${f.name}${suffix}: ${tsType};\n`;
   });
 

@@ -52,7 +52,8 @@ describe('Resource Generator', () => {
       expect(fields).toContainEqual({
         name: 'id',
         type: 'String',
-        isOptional: true,
+        isOptional: false,
+        hasDefault: true,
         isArray: false,
         isRelation: false,
         isSystem: true,
@@ -61,6 +62,7 @@ describe('Resource Generator', () => {
       expect(fields.find((f) => f.name === 'name')).toMatchObject({
         type: 'String',
         isOptional: false,
+        hasDefault: false,
       });
     });
 
@@ -81,10 +83,11 @@ describe('Resource Generator', () => {
       expect(fields[0].type).toBe('Decimal');
     });
 
-    it('should treat @default fields as optional', () => {
+    it('should treat @default fields as having default but NOT optional', () => {
       const body = 'status String @default("ACTIVE")';
       const fields = parseFields(body);
-      expect(fields[0].isOptional).toBe(true);
+      expect(fields[0].isOptional).toBe(false);
+      expect(fields[0].hasDefault).toBe(true);
     });
   });
 
@@ -129,6 +132,7 @@ describe('Resource Generator', () => {
             isRelation: true,
             isSystem: false,
             isEnum: false,
+            hasDefault: false,
           },
         ],
       };
@@ -161,6 +165,7 @@ describe('Resource Generator', () => {
             isRelation: true,
             isSystem: false,
             isEnum: false,
+            hasDefault: false,
           },
         ],
       };
@@ -186,6 +191,7 @@ describe('Resource Generator', () => {
             isRelation: false,
             isSystem: false,
             isEnum: false,
+            hasDefault: false,
           },
         ],
       };
@@ -209,6 +215,7 @@ describe('Resource Generator', () => {
             isRelation: false,
             isSystem: false,
             isEnum: true,
+            hasDefault: false,
           },
         ],
       };
@@ -257,6 +264,7 @@ describe('Resource Generator', () => {
             isRelation: false,
             isSystem: false,
             isEnum: true,
+            hasDefault: false,
           },
         ],
       };
@@ -267,6 +275,8 @@ describe('Resource Generator', () => {
       expect(content).toContain('category: Category;');
       expect(content).toContain("import { Category } from './category.interface';");
       expect(content).toContain("import { ProductStatus } from '../constants';");
+      expect(content).toContain('status: ProductStatus;'); // Mandatory!
+      expect(content).not.toContain('status?: ProductStatus;');
       expect(content).not.toContain('@ApiProperty');
       expect(content).not.toContain('export const ProductStatus = {');
     });
@@ -284,6 +294,7 @@ describe('Resource Generator', () => {
             isRelation: false,
             isSystem: true,
             isEnum: false,
+            hasDefault: false,
           },
         ],
       };
@@ -305,6 +316,7 @@ describe('Resource Generator', () => {
             isRelation: false,
             isSystem: false,
             isEnum: false,
+            hasDefault: false,
           },
         ],
       };
@@ -350,6 +362,7 @@ describe('Resource Generator', () => {
             isRelation: false,
             isSystem: false,
             isEnum: false,
+            hasDefault: false,
           },
         ],
       };
@@ -394,6 +407,7 @@ describe('Resource Generator', () => {
             isRelation: false,
             isSystem: false,
             isEnum: true,
+            hasDefault: false,
           },
         ],
       };
@@ -407,6 +421,42 @@ describe('Resource Generator', () => {
       expect(content).not.toContain('@ApiProperty');
       expect(content).not.toContain('@IsString');
       expect(content).not.toContain('Decimal');
+    });
+  });
+
+  describe('@default field handling', () => {
+    const model: Model = {
+      name: 'Test',
+      singular: 'test',
+      fields: [
+        {
+          name: 'status',
+          type: 'String',
+          isOptional: false,
+          hasDefault: true,
+          isArray: false,
+          isRelation: false,
+          isSystem: false,
+          isEnum: false,
+        },
+      ],
+    };
+
+    it('should be mandatory in interface', () => {
+      const content = generateInterfaceContent(model, {});
+      expect(content).toContain('status: string;');
+      expect(content).not.toContain('status?: string;');
+    });
+
+    it('should be optional in backend DTO', () => {
+      const content = generateCreateDtoContent(model);
+      expect(content).toContain('@IsOptional()');
+      expect(content).toContain('status?: string;');
+    });
+
+    it('should be optional in frontend DTO', () => {
+      const content = generateFrontendCreateDtoContent(model);
+      expect(content).toContain('status?: string;');
     });
   });
 
