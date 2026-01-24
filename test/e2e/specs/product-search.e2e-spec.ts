@@ -63,6 +63,58 @@ describe('Product Search (e2e)', () => {
       expect(res.body[0].id).toBe(product.id);
     });
 
+    it('should find product by multiple tokens (intersection)', async () => {
+      const category = await helper.createCategory();
+      const product = await helper.createProduct(category.id, {
+        name: 'Professional Drill 2000',
+        article: 'DEW-X1',
+      });
+      await helper.createProduct(category.id, {
+        name: 'Professional Saw 3000',
+        article: 'DEW-Y2',
+      });
+
+      // Search by tokens from different fields
+      const res = await request(app.getHttpServer())
+        .get('/products')
+        .query({ query: 'drill professional DEW' })
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(product.id);
+    });
+
+    it('should NOT find product if one token does not match', async () => {
+      const category = await helper.createCategory();
+      await helper.createProduct(category.id, {
+        name: 'Professional Drill 2000',
+        article: 'DEW-X1',
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/products')
+        .query({ query: 'drill bosch' }) // 'bosch' won't match
+        .expect(200);
+
+      expect(res.body).toHaveLength(0);
+    });
+
+    it('should find product by code', async () => {
+      const category = await helper.createCategory();
+      const product = await helper.createProduct(category.id, {
+        name: 'Product X',
+        code: 'UNIQUE123',
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/products')
+        .query({ query: 'UNIQUE' })
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(product.id);
+    });
+
     it('should find product by article', async () => {
       const category = await helper.createCategory();
       const uniqueArticle = `ART-${Date.now()}`;

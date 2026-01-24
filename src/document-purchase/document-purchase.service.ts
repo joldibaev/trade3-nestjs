@@ -39,7 +39,7 @@ export class DocumentPurchaseService {
     private readonly ledgerService: DocumentLedgerService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
-  ) { }
+  ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, items, status, notes } = createDocumentPurchaseDto;
@@ -523,7 +523,13 @@ export class DocumentPurchaseService {
         );
 
         // --- Handle Automatic DocumentPriceChange ---
-        await this.handlePriceChanges(tx, id, updatedDoc.code, docDate || updatedDoc.date, preparedItems);
+        await this.handlePriceChanges(
+          tx,
+          id,
+          updatedDoc.code,
+          docDate || updatedDoc.date,
+          preparedItems,
+        );
         // ---------------------------------------------
 
         return updatedDoc;

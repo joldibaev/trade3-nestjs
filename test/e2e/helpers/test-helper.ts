@@ -6,7 +6,7 @@ export class TestHelper {
   constructor(
     private readonly app: INestApplication,
     private readonly prismaService: PrismaService,
-  ) { }
+  ) {}
 
   // ... (previous code)
 

@@ -27,28 +27,37 @@ export class ProductService {
     isActive?: boolean,
     include?: Record<string, boolean>,
   ) {
-    return this.prisma.product.findMany({
-      where: {
-        AND: [
-          categoryId ? { categoryId } : {},
-          isActive !== undefined ? { isActive } : {},
-          query
-            ? {
-                OR: [
-                  { name: { contains: query, mode: 'insensitive' } },
-                  { article: { contains: query, mode: 'insensitive' } },
-                  {
-                    barcodes: {
-                      some: {
-                        value: { contains: query, mode: 'insensitive' },
-                      },
-                    },
+    const where: any = {
+      AND: [categoryId ? { categoryId } : {}, isActive !== undefined ? { isActive } : {}],
+    };
+
+    if (query) {
+      const tokens = query
+        .trim()
+        .split(/\s+/)
+        .filter((t) => t.length > 0);
+      if (tokens.length > 0) {
+        where.AND.push({
+          AND: tokens.map((token) => ({
+            OR: [
+              { name: { contains: token, mode: 'insensitive' } },
+              { article: { contains: token, mode: 'insensitive' } },
+              { code: { contains: token, mode: 'insensitive' } },
+              {
+                barcodes: {
+                  some: {
+                    value: { contains: token, mode: 'insensitive' },
                   },
-                ],
-              }
-            : {},
-        ],
-      },
+                },
+              },
+            ],
+          })),
+        });
+      }
+    }
+
+    return this.prisma.product.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       include,
     });
