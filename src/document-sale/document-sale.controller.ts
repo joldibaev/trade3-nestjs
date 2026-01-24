@@ -14,6 +14,11 @@ export class DocumentSaleController {
     return this.documentSaleService.create(createDocumentSaleDto);
   }
 
+  @Get('summary')
+  getSummary() {
+    return this.documentSaleService.getSummary();
+  }
+
   @Get()
   findAll() {
     return this.documentSaleService.findAll();

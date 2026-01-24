@@ -3,6 +3,7 @@ import { CreateProductDto } from '../generated/dto/product/create-product.dto';
 import { UpdateProductDto } from '../generated/dto/product/update-product.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
+import { Prisma } from '../generated/prisma/client';
 
 @Injectable()
 export class ProductService {
@@ -27,7 +28,7 @@ export class ProductService {
     isActive?: boolean,
     include?: Record<string, boolean>,
   ) {
-    const where: any = {
+    const where: Prisma.ProductWhereInput = {
       AND: [categoryId ? { categoryId } : {}, isActive !== undefined ? { isActive } : {}],
     };
 
@@ -37,7 +38,8 @@ export class ProductService {
         .split(/\s+/)
         .filter((t) => t.length > 0);
       if (tokens.length > 0) {
-        where.AND.push({
+        const andArray = (where.AND as Prisma.ProductWhereInput[]) || [];
+        andArray.push({
           AND: tokens.map((token) => ({
             OR: [
               { name: { contains: token, mode: 'insensitive' } },
@@ -53,6 +55,7 @@ export class ProductService {
             ],
           })),
         });
+        where.AND = andArray;
       }
     }
 

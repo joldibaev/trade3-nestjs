@@ -253,7 +253,7 @@ export class DocumentPurchaseService {
             actualNewStatus === 'SCHEDULED')
         ) {
           // Check for negative stock before reverting
-          await this.validateStockForRevert(tx, purchase.storeId, items);
+          await this.inventoryService.validateRevertVisibility(tx, purchase.storeId, items);
 
           // Apply revert (negative quantity)
           const revertItems = items.map((i) => ({
@@ -311,117 +311,6 @@ export class DocumentPurchaseService {
     }
 
     return updatedPurchase;
-  }
-
-  private async validateStockForRevert(
-    tx: Prisma.TransactionClient,
-    storeId: string,
-    items: PreparedPurchaseItem[],
-  ) {
-    const productIds = items.map((i) => i.productId);
-    const stocks = await tx.stock.findMany({
-      where: { storeId, productId: { in: productIds } },
-    });
-    const stockMap = new Map(stocks.map((s) => [s.productId, s]));
-
-    for (const item of items) {
-      const currentQty = stockMap.get(item.productId)?.quantity || new Decimal(0);
-      const currentWap = stockMap.get(item.productId)?.averagePurchasePrice || new Decimal(0);
-
-      // 1. Quantity Check
-      if (currentQty.lessThan(item.quantity)) {
-        throw new BadRequestException(
-          `Недостаточно остатка товара ${item.productId} для отмены закупки`,
-        );
-      }
-
-      // 2. Financial Check (prevent negative WAP)
-      // Current Value = 100 * 55 = 5500
-      // Revert Value = 100 * 100 = 10000
-      // Result = -4500 (Invalid)
-      const currentTotalValue = currentQty.mul(currentWap);
-      const revertTotalValue = item.quantity.mul(item.price);
-
-      if (currentTotalValue.lessThan(revertTotalValue)) {
-        throw new BadRequestException(
-          `Нельзя отменить закупку товара ${item.productId}: остаточная стоимость станет отрицательной. Используйте Корректировку или Возврат.`,
-        );
-      }
-    }
-  }
-
-  private async applyInventoryMovements(
-    tx: Prisma.TransactionClient,
-    purchase: PurchaseContext,
-    items: PreparedPurchaseItem[],
-  ) {
-    const storeId = purchase.storeId;
-    const productIds = items.map((i) => i.productId);
-
-    // Fetch existing stocks in batch
-    const existingStocks = await tx.stock.findMany({
-      where: {
-        storeId,
-        productId: { in: productIds },
-      },
-    });
-    const stockMap = new Map<string, (typeof existingStocks)[0]>(
-      existingStocks.map((s) => [s.productId, s]),
-    );
-
-    // Process stock updates strictly sequentially
-    for (const item of items) {
-      const stock = stockMap.get(item.productId);
-
-      const oldQty = stock ? stock.quantity : new Decimal(0);
-      const oldWap = stock ? stock.averagePurchasePrice : new Decimal(0);
-
-      // Calculate new Quantity
-      const newQty = oldQty.add(item.quantity);
-
-      // Calculate WAP using helper
-      const newWap = this.inventoryService.calculateNewWap(
-        oldQty,
-        oldWap,
-        item.quantity,
-        item.price,
-      );
-
-      await tx.stock.upsert({
-        where: {
-          productId_storeId: { productId: item.productId, storeId },
-        },
-        create: {
-          productId: item.productId,
-          storeId,
-          quantity: newQty,
-          averagePurchasePrice: newWap,
-        },
-        update: {
-          quantity: newQty,
-          averagePurchasePrice: newWap,
-        },
-      });
-
-      // Audit: Log Stock Ledger
-      await this.stockLedgerService.create(tx, {
-        type: 'PURCHASE',
-        storeId,
-        productId: item.productId,
-        quantity: item.quantity,
-        date: purchase.date ?? new Date(),
-        documentId: purchase.id ?? '',
-
-        quantityBefore: oldQty,
-        quantityAfter: newQty,
-
-        averagePurchasePrice: newWap,
-        transactionAmount: item.total, // Total for this item line in purchase is qty * price
-
-        batchId: purchase.id,
-        // userId: TODO: pass from context
-      });
-    }
   }
 
   async update(id: string, updateDto: UpdateDocumentPurchaseDto) {
@@ -550,6 +439,35 @@ export class DocumentPurchaseService {
     });
   }
 
+  async getSummary() {
+    const where: Prisma.DocumentPurchaseWhereInput = {};
+
+    const [aggregate, totalCount] = await Promise.all([
+      this.prisma.documentPurchase.aggregate({
+        where,
+        _sum: { total: true },
+        _count: {
+          id: true,
+          status: true,
+        },
+      }),
+      this.prisma.documentPurchase.count({ where }),
+    ]);
+
+    const completedCount = await this.prisma.documentPurchase.count({
+      where: {
+        ...where,
+        status: 'COMPLETED',
+      },
+    });
+
+    return {
+      totalAmount: aggregate._sum.total?.toNumber() || 0,
+      totalCount,
+      completedCount,
+    };
+  }
+
   findOne(id: string) {
     return this.prisma.documentPurchase.findUniqueOrThrow({
       where: { id },
@@ -564,6 +482,24 @@ export class DocumentPurchaseService {
         store: true,
       },
     });
+  }
+
+  private async applyInventoryMovements(
+    tx: Prisma.TransactionClient,
+    purchase: PurchaseContext,
+    items: PreparedPurchaseItem[],
+  ) {
+    await this.inventoryService.applyMovements(
+      tx,
+      {
+        storeId: purchase.storeId,
+        type: 'PURCHASE',
+        date: purchase.date ?? new Date(),
+        documentId: purchase.id ?? '',
+      },
+      items,
+      'IN',
+    );
   }
 
   private async handlePriceChanges(

@@ -14,6 +14,11 @@ export class DocumentPurchaseController {
     return this.documentPurchaseService.create(createDocumentPurchaseDto);
   }
 
+  @Get('summary')
+  getSummary() {
+    return this.documentPurchaseService.getSummary();
+  }
+
   @Get()
   findAll() {
     return this.documentPurchaseService.findAll();

@@ -5,7 +5,6 @@ import { Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { StoreService } from '../store/store.service';
-import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
@@ -33,7 +32,6 @@ export class DocumentSaleService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentLedgerService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
@@ -357,66 +355,6 @@ export class DocumentSaleService {
     }
   }
 
-  private async applyInventoryMovements(
-    tx: Prisma.TransactionClient,
-    sale: SaleMinimal,
-    items: PreparedSaleItem[],
-  ) {
-    const storeId = sale.storeId;
-
-    for (const item of items) {
-      // Use updateMany with constraint to ensure atomic consistency
-      const result = await tx.stock.updateMany({
-        where: {
-          productId: item.productId,
-          storeId: storeId,
-          quantity: { gte: item.quantity },
-        },
-        data: {
-          quantity: { decrement: item.quantity },
-        },
-      });
-
-      if (result.count === 0) {
-        const currentStock = await tx.stock.findUnique({
-          where: {
-            productId_storeId: { productId: item.productId, storeId },
-          },
-        });
-        const available = currentStock ? currentStock.quantity : 0;
-
-        throw new BadRequestException(
-          `Недостаточно остатка для товара ${item.productId}. Доступно: ${available.toString()}, Запрошено: ${item.quantity.toString()}`,
-        );
-      }
-
-      // Fetch updated stock for accurate snapshot
-      const updatedStock = await tx.stock.findUniqueOrThrow({
-        where: {
-          productId_storeId: { productId: item.productId, storeId },
-        },
-      });
-
-      // Audit: Log Stock Movement
-      await this.stockLedgerService.create(tx, {
-        type: 'SALE',
-        storeId,
-        productId: item.productId,
-        quantity: item.quantity.negated(),
-        date: sale.date ?? new Date(),
-        documentId: sale.id ?? '',
-
-        quantityBefore: updatedStock.quantity.add(item.quantity), // Derived as we fetched AFTER update
-        quantityAfter: updatedStock.quantity,
-
-        averagePurchasePrice: updatedStock.averagePurchasePrice,
-        transactionAmount: item.quantity.mul(updatedStock.averagePurchasePrice).negated(), // COGS value
-
-        batchId: sale.id,
-      });
-    }
-  }
-
   async update(id: string, updateDto: CreateDocumentSaleDto) {
     return this.prisma.$transaction(
       async (tx) => {
@@ -532,11 +470,6 @@ export class DocumentSaleService {
         }
 
         // Log Diffs
-        // Assuming oldItems and preparedItems are available for diffing
-        // This part of the snippet seems to be missing context for `oldItems`
-        // For now, I'll assume `oldItems` would be derived from `sale.items` before deletion.
-        // If `oldItems` is not defined, this will cause a compilation error.
-        // For the purpose of this edit, I'll include it as provided, assuming `oldItems` is defined elsewhere.
         const oldItems = sale.items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -569,6 +502,31 @@ export class DocumentSaleService {
     });
   }
 
+  async getSummary() {
+    const where: Prisma.DocumentSaleWhereInput = {};
+
+    const [aggregate, totalCount] = await Promise.all([
+      this.prisma.documentSale.aggregate({
+        where,
+        _sum: { total: true },
+      }),
+      this.prisma.documentSale.count({ where }),
+    ]);
+
+    const completedCount = await this.prisma.documentSale.count({
+      where: {
+        ...where,
+        status: 'COMPLETED',
+      },
+    });
+
+    return {
+      totalAmount: aggregate._sum.total?.toNumber() || 0,
+      totalCount,
+      completedCount,
+    };
+  }
+
   findOne(id: string) {
     return this.prisma.documentSale.findUniqueOrThrow({
       where: { id },
@@ -583,5 +541,23 @@ export class DocumentSaleService {
         },
       },
     });
+  }
+
+  private async applyInventoryMovements(
+    tx: Prisma.TransactionClient,
+    sale: SaleMinimal,
+    items: PreparedSaleItem[],
+  ) {
+    await this.inventoryService.applyMovements(
+      tx,
+      {
+        storeId: sale.storeId,
+        type: 'SALE',
+        date: sale.date ?? new Date(),
+        documentId: sale.id ?? '',
+      },
+      items,
+      'OUT',
+    );
   }
 }

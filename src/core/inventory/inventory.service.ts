@@ -1,7 +1,23 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
+import { StockMovementType } from '../../generated/prisma/enums';
 import Decimal = Prisma.Decimal;
+
+export type MovementDirection = 'IN' | 'OUT';
+
+export interface MovementContext {
+  storeId: string;
+  type: StockMovementType;
+  date: Date;
+  documentId: string;
+}
+
+export interface MovementItem {
+  productId: string;
+  quantity: Decimal;
+  price: Decimal;
+}
 
 @Injectable()
 export class InventoryService {
@@ -319,5 +335,132 @@ export class InventoryService {
       where: { id },
       data: { status: 'COMPLETED' },
     });
+  }
+
+  /**
+   * Core logic to apply inventory movements (stocks + ledger).
+   * Direction 'IN' increases stock and updates WAP.
+   * Direction 'OUT' decreases stock and checks availability.
+   */
+  async applyMovements(
+    tx: Prisma.TransactionClient,
+    context: MovementContext,
+    items: MovementItem[],
+    direction: MovementDirection,
+  ) {
+    const { storeId, type, date, documentId } = context;
+
+    for (const item of items) {
+      const stock = await tx.stock.findUnique({
+        where: { productId_storeId: { productId: item.productId, storeId } },
+      });
+
+      const oldQty = stock?.quantity || new Decimal(0);
+      const oldWap = stock?.averagePurchasePrice || new Decimal(0);
+
+      // Adjusted quantity based on direction
+      const qtyDelta = direction === 'IN' ? item.quantity : item.quantity.negated();
+
+      // For 'OUT', check if we have enough stock (already checked in services but keeping here for safety)
+      const newQty = oldQty.add(qtyDelta);
+      if (direction === 'OUT' && newQty.lessThan(0)) {
+        throw new Error(`Insufficient stock for product ${item.productId} in store ${storeId}`);
+      }
+
+      // Calculate NEW WAP for incoming movements
+      let newWap = oldWap;
+      if (direction === 'IN' && item.quantity.isPositive()) {
+        newWap = this.calculateNewWap(oldQty, oldWap, item.quantity, item.price);
+      }
+
+      // Update Stock Table
+      await tx.stock.upsert({
+        where: { productId_storeId: { productId: item.productId, storeId } },
+        create: {
+          productId: item.productId,
+          storeId,
+          quantity: newQty,
+          averagePurchasePrice: newWap,
+        },
+        update: {
+          quantity: newQty,
+          averagePurchasePrice: newWap,
+        },
+      });
+
+      // Create Stock Ledger Entry
+      const ledgerData: Prisma.StockLedgerUncheckedCreateInput = {
+        type,
+        storeId,
+        productId: item.productId,
+        quantity: qtyDelta,
+        date,
+        quantityBefore: oldQty,
+        quantityAfter: newQty,
+        averagePurchasePrice: newWap,
+        transactionAmount: qtyDelta.mul(direction === 'IN' ? item.price : oldWap),
+        batchId: documentId,
+      };
+
+      // Set document ID based on type
+      switch (type) {
+        case 'PURCHASE':
+          ledgerData.documentPurchaseId = documentId;
+          break;
+        case 'SALE':
+          ledgerData.documentSaleId = documentId;
+          break;
+        case 'ADJUSTMENT':
+          ledgerData.documentAdjustmentId = documentId;
+          break;
+        case 'RETURN':
+          ledgerData.documentReturnId = documentId;
+          break;
+        case 'TRANSFER_IN':
+        case 'TRANSFER_OUT':
+          ledgerData.documentTransferId = documentId;
+          break;
+      }
+
+      await tx.stockLedger.create({ data: ledgerData });
+    }
+  }
+
+  /**
+   * Validates if a document can be reverted without causing negative stock or negative WAP.
+   */
+  async validateRevertVisibility(
+    tx: Prisma.TransactionClient,
+    storeId: string,
+    items: MovementItem[],
+  ) {
+    const productIds = items.map((i) => i.productId);
+    const stocks = await tx.stock.findMany({
+      where: { storeId, productId: { in: productIds } },
+    });
+    const stockMap = new Map(stocks.map((s) => [s.productId, s]));
+
+    for (const item of items) {
+      const stock = stockMap.get(item.productId);
+      const currentQty = stock?.quantity || new Decimal(0);
+      const currentWap = stock?.averagePurchasePrice || new Decimal(0);
+
+      // 1. Quantity Check
+      if (currentQty.lessThan(item.quantity)) {
+        throw new BadRequestException(
+          `Недостаточно остатка товара ${item.productId} для отмены операции (доступно: ${currentQty.toString()}, требуется: ${item.quantity.toString()})`,
+        );
+      }
+
+      // 2. Financial Check (prevent negative WAP)
+      const currentTotalValue = currentQty.mul(currentWap);
+      const revertTotalValue = item.quantity.mul(item.price);
+
+      if (currentTotalValue.lessThan(revertTotalValue)) {
+        throw new BadRequestException(
+          `Нельзя отменить операцию для товара ${item.productId}: остаточная стоимость станет отрицательной.`,
+        );
+      }
+    }
   }
 }
