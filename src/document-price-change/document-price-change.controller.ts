@@ -3,6 +3,7 @@ import { DocumentPriceChangeService } from './document-price-change.service';
 import { CreateDocumentPriceChangeDto } from './dto/create-document-price-change.dto';
 import { UpdateDocumentPriceChangeDto } from './dto/update-document-price-change.dto';
 import { ApiTags } from '@nestjs/swagger';
+import { UpdateDocumentPriceChangeStatusDto } from './dto/update-document-price-change-status.dto';
 
 @ApiTags('document-price-changes')
 @Controller('document-price-changes')
@@ -30,10 +31,7 @@ export class DocumentPriceChangeController {
   }
 
   @Patch(':id/status')
-  updateStatus(
-    @Param('id') id: string,
-    @Body('status') status: 'DRAFT' | 'COMPLETED' | 'CANCELLED',
-  ) {
-    return this.documentPriceChangeService.updateStatus(id, status);
+  updateStatus(@Param('id') id: string, @Body() body: UpdateDocumentPriceChangeStatusDto) {
+    return this.documentPriceChangeService.updateStatus(id, body.status);
   }
 }

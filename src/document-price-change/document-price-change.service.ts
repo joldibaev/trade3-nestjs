@@ -6,6 +6,7 @@ import { DocumentLedgerService } from '../document-ledger/document-ledger.servic
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import { Prisma } from '../generated/prisma/client';
+import { DocumentStatus } from '../generated/prisma/enums';
 import Decimal = Prisma.Decimal;
 
 @Injectable()
@@ -77,10 +78,6 @@ export class DocumentPriceChangeService {
         action: 'CREATED',
         details: { status: targetStatus, notes },
       });
-      // Note: DocumentHistoryService needs to support 'documentPriceChange' or we need to update it.
-      // I'll assume I need to update DocumentHistoryService or it uses dynamic mapping.
-      // Looking at schema: `documentPriceChange DocumentPriceChange?` exists.
-      // Looking at `DocumentHistoryService` implementation (I haven't read it, but likely switches on type).
 
       // 4. Execute Changes if COMPLETED
       if (targetStatus === 'COMPLETED') {
@@ -103,17 +100,20 @@ export class DocumentPriceChangeService {
       const { date, notes, items } = updateDto;
       const docDate = date ? new Date(date) : undefined;
 
-      // Delete old items
-      await tx.documentPriceChangeItem.deleteMany({ where: { documentId: id } });
+      let itemsUpdateOp: Prisma.DocumentPriceChangeUpdateInput['items'] = undefined;
 
-      // Prepare new items
-      const preparedItems: {
-        productId: string;
-        priceTypeId: string;
-        oldValue: Decimal;
-        newValue: Decimal;
-      }[] = [];
       if (items) {
+        // Delete old items
+        await tx.documentPriceChangeItem.deleteMany({ where: { documentId: id } });
+
+        // Prepare new items
+        const preparedItems: {
+          productId: string;
+          priceTypeId: string;
+          oldValue: Decimal;
+          newValue: Decimal;
+        }[] = [];
+
         const productIds = items.map((i) => i.productId);
         const currentPrices = await tx.price.findMany({
           where: { productId: { in: productIds } },
@@ -131,6 +131,15 @@ export class DocumentPriceChangeService {
             newValue: new Decimal(item.newValue),
           });
         }
+
+        itemsUpdateOp = {
+          create: preparedItems.map((i) => ({
+            productId: i.productId,
+            priceTypeId: i.priceTypeId,
+            oldValue: i.oldValue,
+            newValue: i.newValue,
+          })),
+        };
       }
 
       const updatedDoc = await tx.documentPriceChange.update({
@@ -138,14 +147,7 @@ export class DocumentPriceChangeService {
         data: {
           date: docDate,
           notes,
-          items: {
-            create: preparedItems.map((i) => ({
-              productId: i.productId,
-              priceTypeId: i.priceTypeId,
-              oldValue: i.oldValue,
-              newValue: i.newValue,
-            })),
-          },
+          items: itemsUpdateOp,
         },
         include: { items: true },
       });
@@ -154,7 +156,7 @@ export class DocumentPriceChangeService {
     });
   }
 
-  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
+  async updateStatus(id: string, newStatus: DocumentStatus) {
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.documentPriceChange.findUniqueOrThrow({
         where: { id },

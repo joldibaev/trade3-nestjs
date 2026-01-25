@@ -26,7 +26,7 @@ describe('Global Cleanup Verification (e2e)', () => {
     const tables = ['store', 'cashbox', 'vendor', 'client', 'product', 'category', 'priceType'];
 
     let garbageFound = false;
-    const details = [];
+    const details: string[] = [];
 
     for (const table of tables) {
       const records = await (prisma[table] as any).findMany({
@@ -54,6 +54,25 @@ describe('Global Cleanup Verification (e2e)', () => {
         garbageFound = true;
         details.push(`${table}: ${records.length} records`);
       }
+    }
+
+    // Special check for DocumentPriceChange (no name field)
+    const priceChanges = await prisma.documentPriceChange.findMany({
+      where: {
+        OR: [
+          { notes: { contains: 'Initial pricing' } },
+          { notes: { contains: 'Автоматически создан' } },
+        ],
+      },
+    });
+
+    if (priceChanges.length > 0) {
+      console.error(
+        `GARBAGE FOUND in documentPriceChange:`,
+        priceChanges.map((r) => r.id),
+      );
+      garbageFound = true;
+      details.push(`documentPriceChange: ${priceChanges.length} records`);
     }
 
     if (garbageFound) {

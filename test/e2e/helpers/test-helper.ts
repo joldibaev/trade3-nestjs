@@ -160,6 +160,20 @@ export class TestHelper {
     });
 
     // 2. Cleanup Documents and their Items
+
+    // 2.1 Collect implicitly created PriceChanges from Purchases
+    if (this.createdIds.purchases.length > 0) {
+      const purchases = await this.prismaService.documentPurchase.findMany({
+        where: { id: { in: this.createdIds.purchases } },
+        select: { generatedPriceChange: { select: { id: true } } },
+      });
+      purchases.forEach((p) => {
+        if (p.generatedPriceChange) {
+          this.createdIds.priceChanges.push(p.generatedPriceChange.id);
+        }
+      });
+    }
+
     if (this.createdIds.products.length > 0) {
       await this.prismaService.documentSaleItem.deleteMany({
         where: { productId: { in: this.createdIds.products } },
@@ -176,8 +190,20 @@ export class TestHelper {
       await this.prismaService.documentTransferItem.deleteMany({
         where: { productId: { in: this.createdIds.products } },
       });
+      // Also delete items by productId
       await this.prismaService.documentPriceChangeItem.deleteMany({
         where: { productId: { in: this.createdIds.products } },
+      });
+    }
+
+    // Delete PriceChange items by Document ID (in case product wasn't tracked or deleted)
+    if (this.createdIds.priceChanges.length > 0) {
+      await this.prismaService.documentPriceChangeItem.deleteMany({
+        where: { documentId: { in: this.createdIds.priceChanges } },
+      });
+
+      await this.prismaService.documentPriceChange.deleteMany({
+        where: { id: { in: this.createdIds.priceChanges } },
       });
     }
 
