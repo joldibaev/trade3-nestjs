@@ -51,4 +51,9 @@ export class ProductController {
   remove(@Param('id') id: string) {
     return this.productsService.remove(id);
   }
+
+  @Get(':id/last-purchase-price')
+  getLastPurchasePrice(@Param('id') id: string) {
+    return this.productsService.getLastPurchasePrice(id);
+  }
 }

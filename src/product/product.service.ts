@@ -105,4 +105,14 @@ export class ProductService {
       });
     });
   }
+
+  async getLastPurchasePrice(id: string): Promise<number> {
+    const lastItem = await this.prisma.documentPurchaseItem.findFirst({
+      where: { productId: id },
+      orderBy: { purchase: { date: 'desc' } }, // Order by document date, most recent first
+      select: { price: true },
+    });
+
+    return lastItem?.price ? Number(lastItem.price) : 0;
+  }
 }
