@@ -15,6 +15,11 @@ export class DocumentPriceChangeController {
     return this.documentPriceChangeService.create(createDto);
   }
 
+  @Get('summary')
+  getSummary() {
+    return this.documentPriceChangeService.getSummary();
+  }
+
   @Get()
   findAll() {
     return this.documentPriceChangeService.findAll();

@@ -434,6 +434,7 @@ export class DocumentPurchaseService {
       include: {
         store: true,
         vendor: true,
+        generatedPriceChange: true,
       },
       orderBy: { createdAt: 'desc' },
     });

@@ -195,6 +195,24 @@ export class DocumentPriceChangeService {
     });
   }
 
+  async getSummary() {
+    const where: Prisma.DocumentPriceChangeWhereInput = {};
+
+    const totalCount = await this.prisma.documentPriceChange.count({ where });
+
+    const completedCount = await this.prisma.documentPriceChange.count({
+      where: {
+        ...where,
+        status: 'COMPLETED',
+      },
+    });
+
+    return {
+      totalCount,
+      completedCount,
+    };
+  }
+
   private async applyPriceChanges(
     tx: Prisma.TransactionClient,
     documentId: string,
