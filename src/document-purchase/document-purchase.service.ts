@@ -486,6 +486,7 @@ export class DocumentPurchaseService {
         },
         vendor: true,
         store: true,
+        generatedPriceChange: true,
       },
     });
   }
