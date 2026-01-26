@@ -165,7 +165,7 @@ export class DocumentTransferService {
         const _newItem = await tx.documentTransferItem.create({
           data: {
             transferId: id,
-            productId,
+            productId: productId!,
             quantity: qVal,
           },
         });
@@ -174,7 +174,7 @@ export class DocumentTransferService {
           documentId: id,
           documentType: 'documentTransfer',
           action: 'ITEM_ADDED',
-          details: { productId, quantity: qVal },
+          details: { productId: productId!, quantity: qVal },
         });
 
         return tx.documentTransfer.findUniqueOrThrow({

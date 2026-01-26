@@ -139,7 +139,7 @@ export class DocumentAdjustmentService {
 
         // Fetch current stock to calculate snapshots
         const stock = await tx.stock.findUnique({
-          where: { productId_storeId: { productId, storeId: doc.storeId } },
+          where: { productId_storeId: { productId: productId!, storeId: doc.storeId } },
         });
 
         const quantityBefore = stock ? stock.quantity : new Decimal(0);
@@ -148,7 +148,7 @@ export class DocumentAdjustmentService {
         const _newItem = await tx.documentAdjustmentItem.create({
           data: {
             adjustmentId: id,
-            productId,
+            productId: productId!,
             quantity: qDelta,
             quantityBefore,
             quantityAfter,

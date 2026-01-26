@@ -179,14 +179,14 @@ export class DocumentSaleService {
 
         // Fetch current cost price for snapshot
         const stock = await tx.stock.findUnique({
-          where: { productId_storeId: { productId, storeId: sale.storeId } },
+          where: { productId_storeId: { productId: productId!, storeId: sale.storeId } },
         });
         const costPrice = stock ? stock.averagePurchasePrice : new Decimal(0);
 
         const _newItem = await tx.documentSaleItem.create({
           data: {
             saleId: id,
-            productId,
+            productId: productId!,
             quantity: qVal,
             price: finalPrice,
             costPrice,

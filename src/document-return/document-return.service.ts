@@ -146,7 +146,7 @@ export class DocumentReturnService {
         const _newItem = await tx.documentReturnItem.create({
           data: {
             returnId: id,
-            productId,
+            productId: productId!,
             quantity: qDelta,
             price: pVal,
             total: itemTotal,
