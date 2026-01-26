@@ -184,6 +184,7 @@ export class DocumentPriceChangeService {
 
   findAll() {
     return this.prisma.documentPriceChange.findMany({
+      include: { documentPurchase: true },
       orderBy: { date: 'desc' },
     });
   }
