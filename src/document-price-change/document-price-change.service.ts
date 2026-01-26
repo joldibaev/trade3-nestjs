@@ -198,7 +198,12 @@ export class DocumentPriceChangeService {
   findOne(id: string) {
     return this.prisma.documentPriceChange.findUniqueOrThrow({
       where: { id },
-      include: { items: { include: { product: true, priceType: true } } },
+      include: {
+        items: { include: { product: true, priceType: true } },
+        documentLedger: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
   }
 

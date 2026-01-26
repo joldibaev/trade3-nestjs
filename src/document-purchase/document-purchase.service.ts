@@ -39,7 +39,7 @@ export class DocumentPurchaseService {
     private readonly ledgerService: DocumentLedgerService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
-  ) {}
+  ) { }
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, status, notes } = createDocumentPurchaseDto;
@@ -254,6 +254,19 @@ export class DocumentPurchaseService {
             await tx.documentPriceChange.update({
               where: { id: pcId },
               data: { status: newPriceChangeStatus },
+            });
+
+            await this.ledgerService.logAction(tx, {
+              documentId: pcId,
+              documentType: 'documentPriceChange',
+              action: 'STATUS_CHANGED',
+              details: {
+                from: updatedDoc.generatedPriceChange.status,
+                to: newPriceChangeStatus,
+                isAutomatic: true,
+                sourceCode: updatedDoc.code,
+                sourceType: 'documentPurchase',
+              },
             });
 
             if (newPriceChangeStatus === 'COMPLETED') {
@@ -899,7 +912,7 @@ export class DocumentPurchaseService {
     const priceChangeCode = await this.codeGenerator.getNextPriceChangeCode();
 
     // Create the new linked Price Change Document
-    await tx.documentPriceChange.create({
+    const pcDoc = await tx.documentPriceChange.create({
       data: {
         code: priceChangeCode,
         date,
@@ -909,6 +922,20 @@ export class DocumentPurchaseService {
         items: {
           create: priceChangeItems,
         },
+      },
+    });
+
+    // Log the creation in DocumentLedger
+    await this.ledgerService.logAction(tx, {
+      documentId: pcDoc.id,
+      documentType: 'documentPriceChange',
+      action: 'CREATED',
+      details: {
+        status: 'DRAFT',
+        notes: pcDoc.notes,
+        isAutomatic: true,
+        sourceCode: purchaseCode,
+        sourceType: 'documentPurchase',
       },
     });
   }

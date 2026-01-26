@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "DocumentStatus" AS ENUM ('DRAFT', 'COMPLETED', 'CANCELLED');
+CREATE TYPE "DocumentStatus" AS ENUM ('DRAFT', 'COMPLETED', 'CANCELLED', 'SCHEDULED');
 
 -- CreateEnum
 CREATE TYPE "BarcodeType" AS ENUM ('EAN13', 'EAN8', 'CODE128', 'INTERNAL', 'OTHER');
@@ -100,6 +100,7 @@ CREATE TABLE "Stock" (
 -- CreateTable
 CREATE TABLE "Product" (
     "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "article" TEXT,
     "categoryId" TEXT NOT NULL,
@@ -153,7 +154,7 @@ CREATE TABLE "Client" (
 -- CreateTable
 CREATE TABLE "DocumentSale" (
     "id" TEXT NOT NULL,
-    "code" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "cashboxId" TEXT,
@@ -186,7 +187,7 @@ CREATE TABLE "DocumentSaleItem" (
 -- CreateTable
 CREATE TABLE "DocumentPurchase" (
     "id" TEXT NOT NULL,
-    "code" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "vendorId" TEXT,
     "storeId" TEXT NOT NULL,
@@ -216,7 +217,7 @@ CREATE TABLE "DocumentPurchaseItem" (
 -- CreateTable
 CREATE TABLE "DocumentReturn" (
     "id" TEXT NOT NULL,
-    "code" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "clientId" TEXT,
@@ -246,7 +247,7 @@ CREATE TABLE "DocumentReturnItem" (
 -- CreateTable
 CREATE TABLE "DocumentAdjustment" (
     "id" TEXT NOT NULL,
-    "code" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "storeId" TEXT NOT NULL,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
@@ -274,7 +275,7 @@ CREATE TABLE "DocumentAdjustmentItem" (
 -- CreateTable
 CREATE TABLE "DocumentTransfer" (
     "id" TEXT NOT NULL,
-    "code" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "sourceStoreId" TEXT NOT NULL,
     "destinationStoreId" TEXT NOT NULL,
@@ -301,7 +302,7 @@ CREATE TABLE "DocumentTransferItem" (
 -- CreateTable
 CREATE TABLE "DocumentPriceChange" (
     "id" TEXT NOT NULL,
-    "code" SERIAL NOT NULL,
+    "code" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "status" "DocumentStatus" NOT NULL DEFAULT 'DRAFT',
     "notes" TEXT,
@@ -351,6 +352,39 @@ CREATE TABLE "StockLedger" (
 );
 
 -- CreateTable
+CREATE TABLE "InventoryReprocessing" (
+    "id" TEXT NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "status" TEXT NOT NULL,
+    "documentPurchaseId" TEXT,
+    "documentSaleId" TEXT,
+    "documentReturnId" TEXT,
+    "documentAdjustmentId" TEXT,
+    "documentTransferId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "InventoryReprocessing_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "InventoryReprocessingItem" (
+    "id" TEXT NOT NULL,
+    "reprocessingId" TEXT NOT NULL,
+    "productId" TEXT NOT NULL,
+    "storeId" TEXT NOT NULL,
+    "oldAveragePurchasePrice" DECIMAL(12,2) NOT NULL,
+    "newAveragePurchasePrice" DECIMAL(12,2) NOT NULL,
+    "oldQuantity" DECIMAL(12,3) NOT NULL,
+    "newQuantity" DECIMAL(12,3) NOT NULL,
+    "affectedLedgerCount" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "InventoryReprocessingItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "DocumentLedger" (
     "id" TEXT NOT NULL,
     "action" TEXT NOT NULL,
@@ -391,6 +425,9 @@ CREATE UNIQUE INDEX "Category_name_key" ON "Category"("name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Stock_productId_storeId_key" ON "Stock"("productId", "storeId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Product_code_key" ON "Product"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Product_categoryId_name_key" ON "Product"("categoryId", "name");
@@ -583,6 +620,30 @@ ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_documentAdjustmentId_fkey"
 
 -- AddForeignKey
 ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_documentTransferId_fkey" FOREIGN KEY ("documentTransferId") REFERENCES "DocumentTransfer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventoryReprocessing" ADD CONSTRAINT "InventoryReprocessing_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventoryReprocessing" ADD CONSTRAINT "InventoryReprocessing_documentSaleId_fkey" FOREIGN KEY ("documentSaleId") REFERENCES "DocumentSale"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventoryReprocessing" ADD CONSTRAINT "InventoryReprocessing_documentReturnId_fkey" FOREIGN KEY ("documentReturnId") REFERENCES "DocumentReturn"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventoryReprocessing" ADD CONSTRAINT "InventoryReprocessing_documentAdjustmentId_fkey" FOREIGN KEY ("documentAdjustmentId") REFERENCES "DocumentAdjustment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventoryReprocessing" ADD CONSTRAINT "InventoryReprocessing_documentTransferId_fkey" FOREIGN KEY ("documentTransferId") REFERENCES "DocumentTransfer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventoryReprocessingItem" ADD CONSTRAINT "InventoryReprocessingItem_reprocessingId_fkey" FOREIGN KEY ("reprocessingId") REFERENCES "InventoryReprocessing"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventoryReprocessingItem" ADD CONSTRAINT "InventoryReprocessingItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InventoryReprocessingItem" ADD CONSTRAINT "InventoryReprocessingItem_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DocumentLedger" ADD CONSTRAINT "DocumentLedger_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
