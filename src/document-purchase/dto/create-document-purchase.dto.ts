@@ -85,11 +85,4 @@ export class CreateDocumentPurchaseDto {
   @IsString()
   @IsOptional()
   notes?: string;
-
-  @ApiProperty({ type: [CreateDocumentPurchaseItemDto], required: false })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateDocumentPurchaseItemDto)
-  @IsOptional()
-  items?: CreateDocumentPurchaseItemDto[];
 }

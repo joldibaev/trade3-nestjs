@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateDocumentPriceChangeDto } from './dto/create-document-price-change.dto';
 import { UpdateDocumentPriceChangeDto } from './dto/update-document-price-change.dto';
@@ -162,6 +162,12 @@ export class DocumentPriceChangeService {
         where: { id },
         include: { items: true },
       });
+
+      if (doc.documentPurchaseId) {
+        throw new BadRequestException(
+          'Нельзя изменить статус этого документа вручную (он управляется закупкой)',
+        );
+      }
 
       if (doc.status === newStatus) return doc;
 

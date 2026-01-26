@@ -1,6 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { DocumentPurchaseService } from './document-purchase.service';
-import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
+import {
+  CreateDocumentPurchaseDto,
+  CreateDocumentPurchaseItemDto,
+} from './dto/create-document-purchase.dto';
+import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -35,7 +39,26 @@ export class DocumentPurchaseController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDto: CreateDocumentPurchaseDto) {
+  update(@Param('id') id: string, @Body() updateDto: UpdateDocumentPurchaseDto) {
     return this.documentPurchaseService.update(id, updateDto);
+  }
+
+  @Post(':id/items')
+  addItem(@Param('id') id: string, @Body() item: CreateDocumentPurchaseItemDto) {
+    return this.documentPurchaseService.addItem(id, item);
+  }
+
+  @Patch(':id/items/:itemId')
+  updateItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() item: CreateDocumentPurchaseItemDto,
+  ) {
+    return this.documentPurchaseService.updateItem(id, itemId, item);
+  }
+
+  @Delete(':id/items/:itemId')
+  removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.documentPurchaseService.removeItem(id, itemId);
   }
 }
