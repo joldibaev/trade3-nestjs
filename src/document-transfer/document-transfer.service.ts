@@ -185,7 +185,7 @@ export class DocumentTransferService {
             items: true,
             sourceStore: true,
             destinationStore: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -235,7 +235,7 @@ export class DocumentTransferService {
             items: true,
             sourceStore: true,
             destinationStore: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -277,7 +277,7 @@ export class DocumentTransferService {
             items: true,
             sourceStore: true,
             destinationStore: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -680,7 +680,7 @@ export class DocumentTransferService {
         items: true,
         sourceStore: true,
         destinationStore: true,
-       documentHistory: {
+        documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
       },

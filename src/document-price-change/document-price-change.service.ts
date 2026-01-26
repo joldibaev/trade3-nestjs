@@ -200,7 +200,7 @@ export class DocumentPriceChangeService {
       where: { id },
       include: {
         items: { include: { product: true, priceType: true } },
-       documentHistory: {
+        documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
       },

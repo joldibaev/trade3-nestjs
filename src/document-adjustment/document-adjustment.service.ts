@@ -169,7 +169,7 @@ export class DocumentAdjustmentService {
           include: {
             items: true,
             store: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -222,7 +222,7 @@ export class DocumentAdjustmentService {
           include: {
             items: true,
             store: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -263,7 +263,7 @@ export class DocumentAdjustmentService {
           include: {
             items: true,
             store: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -499,7 +499,7 @@ export class DocumentAdjustmentService {
       include: {
         items: true,
         store: true,
-       documentHistory: {
+        documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
       },

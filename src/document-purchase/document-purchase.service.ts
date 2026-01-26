@@ -474,7 +474,7 @@ export class DocumentPurchaseService {
                 },
               },
             },
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
             vendor: true,
@@ -581,7 +581,7 @@ export class DocumentPurchaseService {
                 },
               },
             },
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
             vendor: true,
@@ -658,7 +658,7 @@ export class DocumentPurchaseService {
                 },
               },
             },
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
             vendor: true,
@@ -818,7 +818,7 @@ export class DocumentPurchaseService {
             },
           },
         },
-       documentHistory: {
+        documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
         vendor: true,

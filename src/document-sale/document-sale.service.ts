@@ -225,7 +225,7 @@ export class DocumentSaleService {
             store: true,
             cashbox: true,
             priceType: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -289,7 +289,7 @@ export class DocumentSaleService {
             store: true,
             cashbox: true,
             priceType: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -342,7 +342,7 @@ export class DocumentSaleService {
             store: true,
             cashbox: true,
             priceType: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -541,7 +541,7 @@ export class DocumentSaleService {
         store: true,
         cashbox: true,
         priceType: true,
-       documentHistory: {
+        documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
       },

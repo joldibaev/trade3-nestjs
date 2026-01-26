@@ -24,6 +24,10 @@ import { DocumentPriceChangeModule } from './document-price-change/document-pric
 import { CommonModule } from './common/common.module';
 import { SchedulerCoreModule } from './core/scheduler/scheduler.module';
 import { CodeGeneratorModule } from './core/code-generator/code-generator.module';
+import { AuthModule } from './core/auth/auth.module';
+import { UsersModule } from './core/users/users.module';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from './core/auth/guards/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -53,6 +57,14 @@ import { CodeGeneratorModule } from './core/code-generator/code-generator.module
     CommonModule,
     SchedulerCoreModule,
     CodeGeneratorModule,
+    AuthModule,
+    UsersModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
   ],
 })
 export class AppModule {}

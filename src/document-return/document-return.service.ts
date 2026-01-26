@@ -176,7 +176,7 @@ export class DocumentReturnService {
             items: true,
             client: true,
             store: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -238,7 +238,7 @@ export class DocumentReturnService {
             items: true,
             client: true,
             store: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -289,7 +289,7 @@ export class DocumentReturnService {
             items: true,
             client: true,
             store: true,
-           documentHistory: {
+            documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -512,7 +512,7 @@ export class DocumentReturnService {
         items: true,
         client: true,
         store: true,
-       documentHistory: {
+        documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
       },
