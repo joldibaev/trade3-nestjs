@@ -8,7 +8,7 @@
 
 Позволяет создать корректировку (только заголовок).
 
-- **Items**: Теперь добавляются отдельно через `addItem`.
+- **Items**: Теперь добавляются отдельно через `addItems`.
 - **Status**: По умолчанию `DRAFT`. Остатки не меняются до проведения.
 - **Code**: Генерируется автоматически с префиксом `A-` (например, `A-1`).
 
@@ -18,17 +18,17 @@
 
 - **Ограничение**: Только для статуса **DRAFT**.
 
-### `addItem(id: string, dto: CreateDocumentAdjustmentItemDto)`
+### `addItems(id: string, dto: CreateDocumentAdjustmentItemsDto)`
 
-Добавляет одну позицию в документ. Рассчитывает `quantityBefore` и `quantityAfter` на основе текущего остатка.
+Добавляет позиции в документ. Рассчитывает `quantityBefore` и `quantityAfter` на основе текущего остатка для каждой позиции.
 
 ### `updateItem(id: string, itemId: string, dto: CreateDocumentAdjustmentItemDto)`
 
 Обновляет количество в существующей позиции.
 
-### `removeItem(id: string, itemId: string)`
+### `removeItems(id: string, dto: RemoveDocumentAdjustmentItemsDto)`
 
-Удаляет позицию из документа.
+Удаляет позиции из документа.
 
 ### `updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED')`
 

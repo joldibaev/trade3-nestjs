@@ -20,17 +20,17 @@
 
 Обновление заголовка.
 
-### `addItem(id: string, dto: CreateDocumentTransferItemDto)`
+### `addItems(id: string, dto: CreateDocumentTransferItemsDto)`
 
-Добавляет позицию для перемещения.
+Добавляет позиции для перемещения.
 
 ### `updateItem(id: string, itemId: string, dto: CreateDocumentTransferItemDto)`
 
 Обновляет количество в позиции.
 
-### `removeItem(id: string, itemId: string)`
+### `removeItems(id: string, dto: RemoveDocumentTransferItemsDto)`
 
-Удаляет позицию.
+Удаляет позиции.
 
 - **Ограничение**: Статус **DRAFT**.
 - **Логика**: Замена всех позиций.

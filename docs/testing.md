@@ -26,7 +26,7 @@
 - **Создание документов (гранулярный подход):**
   - `createPurchase`, `createSale`, `createReturn`, `createTransfer`, `createAdjustment`: Используют **3-этапный процесс**:
     1. POST `/document-{type}` - создание заголовка документа (DRAFT)
-    2. POST `/document-{type}/{id}/items` - добавление позиций
+    2. POST `/document-{type}/{id}/items` - добавление позиций (поддерживает массовое добавление через массив `items`)
     3. PATCH `/document-{type}/{id}/status` - изменение статуса (если нужно COMPLETED)
   - Все методы возвращают **полный документ** через финальный GET запрос для консистентности
   - Параметр `expectedStatus` применяется к операции изменения статуса, а не к созданию документа

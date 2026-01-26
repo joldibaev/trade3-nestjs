@@ -10,7 +10,7 @@
 
 - **Status**: По умолчанию `DRAFT`.
 - **Code**: Генерируется автоматически с префиксом `P-`.
-- **Items**: В этом методе **не передаются**. Товары добавляются после создания документа через `addItem`.
+- **Items**: В этом методе **не передаются**. Товары добавляются после создания документа через `addItems`.
 
 1.  **Валидация**: Проверяет существование склада (`storeId`).
 2.  **Запись**: Создает `DocumentPurchase` с суммой 0.
@@ -24,17 +24,19 @@
 - **Логика**: При изменении данных записывает `UPDATED` в `DocumentLedger` с деталями изменений.
 - **Позиции**: Позиции товаров в этом методе **не обновляются**.
 
-### `addItem(id: string, dto: CreateDocumentPurchaseItemDto)`
+### `addItems(id: string, dto: CreateDocumentPurchaseItemsDto)`
 
-Добавляет новый товар в документ.
+Добавляет новые товары в документ.
 
 - **Ограничение**: Доступно только в статусе `DRAFT`.
+- **Payload**: `{ items: CreateDocumentPurchaseItemDto[] }`
 
-1. **Расчет**: Вычисляет `total` позиции (`quantity * price`).
-2. **Создание**: Добавляет запись в `DocumentPurchaseItem`.
-3. **Итог**: Обновляет общую сумму документа (`total`) путем прибавления суммы новой позиции.
+1. **Итерация**: Проходит по всем переданным позициям.
+2. **Расчет**: Вычисляет `total` позиции (`quantity * price`).
+3. **Создание**: Добавляет запись в `DocumentPurchaseItem`.
 4. **Цены**: Если переданы `newPrices`, синхронизирует их со связанным документом `DocumentPriceChange`.
-5. **Логирование**: Записывает `ITEM_ADDED` в `DocumentLedger`.
+5. **Логирование**: Записывает `ITEM_ADDED` в `DocumentLedger` для каждой позиции.
+6. **Итог**: Обновляет общую сумму документа (`total`).
 
 ### `updateItem(id: string, productId: string, dto: CreateDocumentPurchaseItemDto)`
 
@@ -48,16 +50,17 @@
 4. **Цены**: Синхронизирует `newPrices`.
 5. **Логирование**: Записывает `DIFF` изменений позиции в `DocumentLedger`.
 
-### `removeItem(id: string, productId: string)`
+### `removeItems(id: string, dto: RemoveDocumentPurchaseItemsDto)`
 
-Удаляет позицию из документа.
+Удаляет позиции из документа.
 
 - **Ограничение**: Доступно только в статусе `DRAFT`.
+- **Payload**: `{ productIds: string[] }`
 
-1. **Удаление**: Удаляет запись из `DocumentPurchaseItem`.
-2. **Итог**: Уменьшает общую сумму документа (`total`) на сумму удаленной позиции.
-3. **Цены**: Если удаленный товар имел `newPrices`, они удаляются из связанного `DocumentPriceChange`.
-4. **Логирование**: Записывает `ITEM_REMOVED` в `DocumentLedger`.
+1. **Удаление**: Удаляет записи из `DocumentPurchaseItem` по списку `productIds`.
+2. **Итог**: Уменьшает общую сумму документа (`total`) на сумму удаленных позиций.
+3. **Цены**: Если удаленные товары имели `newPrices`, они удаляются из связанного `DocumentPriceChange`.
+4. **Логирование**: Записывает `ITEM_REMOVED` в `DocumentLedger` для каждой удаленной позиции.
 
 ### `findAll(include?)`
 

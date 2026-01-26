@@ -14,10 +14,11 @@
 
 Обновление заголовка (склад, касса, клиент, тип цены и т.д.).
 
-### `addItem(id: string, dto: CreateDocumentSaleItemDto)`
+### `addItems(id: string, dto: CreateDocumentSaleItemsDto)`
 
-Добавляет товар.
+Добавляет товары.
 
+- **Payload**: `{ items: CreateDocumentSaleItemDto[] }`
 - Если цена не указана, она автоматически подтягивается из справочника цен согласно `priceTypeId` документа.
 - Фиксирует `costPrice` (на основе WAP из остатков) на момент добавления.
 - Обновляет `total` документа.
@@ -26,9 +27,9 @@
 
 Обновляет количество или цену. Корректирует `total`.
 
-### `removeItem(id: string, itemId: string)`
+### `removeItems(id: string, dto: RemoveDocumentSaleItemsDto)`
 
-Удаляет товар, корректирует `total`.
+Удаляет товары, корректирует `total`.
 
 - **Ограничение**: Только для статуса **DRAFT**.
 - **Логика**: Старые позиции удаляются, новые создаются. Цены пересчитываются заново.
