@@ -21,7 +21,7 @@ interface LogActionParams {
     | 'documentTransfer'
     | 'documentPriceChange';
   action: LedgerActionType;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 type PrismaTransaction = Omit<
@@ -154,13 +154,12 @@ export class DocumentLedgerService {
 
   // Helper type guard for Decimal-like objects
 
-  private isDecimal(value: unknown): value is { equals: (other: any) => boolean } {
+  private isDecimal(value: unknown): value is { equals: (other: unknown) => boolean } {
     return (
       !!value &&
       typeof value === 'object' &&
       'equals' in value &&
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      typeof (value as any).equals === 'function'
+      typeof (value as { equals: unknown }).equals === 'function'
     );
   }
 
@@ -169,10 +168,8 @@ export class DocumentLedgerService {
       !!value &&
       (typeof value === 'object' || typeof value === 'function') &&
       'toString' in value &&
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      typeof (value as any).toString === 'function' &&
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (value as any).toString !== Object.prototype.toString
+      typeof (value as { toString: unknown }).toString === 'function' &&
+      (value as { toString: () => string }).toString !== Object.prototype.toString
     );
   }
 }

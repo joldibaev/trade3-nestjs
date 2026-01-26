@@ -46,7 +46,7 @@ export class DocumentAdjustmentService {
     const docDate = date ? new Date(date) : new Date();
 
     if (targetStatus === 'COMPLETED' && docDate > new Date()) {
-      (targetStatus as any) = 'SCHEDULED';
+      targetStatus = 'SCHEDULED' as DocumentStatus;
     }
 
     // 1. Validate Store
@@ -100,7 +100,7 @@ export class DocumentAdjustmentService {
         },
       });
 
-      const changes: Record<string, any> = {};
+      const changes: Record<string, unknown> = {};
       if (notes !== undefined && notes !== (doc.notes ?? '')) {
         changes.notes = notes;
       }
@@ -283,7 +283,7 @@ export class DocumentAdjustmentService {
         let actualNewStatus = newStatus;
 
         if (newStatus === 'COMPLETED' && doc.date > new Date()) {
-          (actualNewStatus as any) = 'SCHEDULED';
+          actualNewStatus = 'SCHEDULED' as DocumentStatus;
         }
 
         if (doc.status === actualNewStatus) {

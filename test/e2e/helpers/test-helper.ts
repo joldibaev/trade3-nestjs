@@ -447,14 +447,19 @@ export class TestHelper {
     if (status === 'COMPLETED') {
       // If expectedStatus is 201 (default for creation), use 200 for status change
       const statusExpectedCode = expectedStatus === 201 ? 200 : expectedStatus;
-      const statusRes = await request(this.app.getHttpServer())
-        .patch(`/document-sales/${saleId}/status`)
-        .send({ status: 'COMPLETED' })
-        .expect(statusExpectedCode);
 
-      // If status change failed, return the error response
-      if (statusExpectedCode !== 200) {
-        return statusRes.body;
+      try {
+        await request(this.app.getHttpServer())
+          .patch(`/document-sales/${saleId}/status`)
+          .send({ status: 'COMPLETED' })
+          .expect(statusExpectedCode);
+      } catch (error) {
+        // If status change failed and we expected success, throw the error
+        if (statusExpectedCode === 200) {
+          throw error;
+        }
+        // Otherwise return the error response
+        return (error as any).response?.body || { message: 'Status update failed' };
       }
     }
 

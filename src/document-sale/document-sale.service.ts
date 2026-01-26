@@ -46,7 +46,7 @@ export class DocumentSaleService {
 
     // Auto-schedule if date is in the future
     if (targetStatus === 'COMPLETED' && docDate > new Date()) {
-      (targetStatus as any) = 'SCHEDULED';
+      targetStatus = 'SCHEDULED' as DocumentStatus;
     }
 
     // 1. Validate Store
@@ -115,7 +115,7 @@ export class DocumentSaleService {
         });
 
         // Log Update
-        const changes: Record<string, any> = {};
+        const changes: Record<string, unknown> = {};
         if (notes !== undefined && notes !== (sale.notes ?? '')) {
           changes.notes = notes;
         }
@@ -357,7 +357,7 @@ export class DocumentSaleService {
         let actualNewStatus = newStatus;
 
         if (newStatus === 'COMPLETED' && sale.date > new Date()) {
-          (actualNewStatus as any) = 'SCHEDULED';
+          actualNewStatus = 'SCHEDULED' as DocumentStatus;
         }
 
         if (oldStatus === actualNewStatus) {

@@ -39,7 +39,7 @@ export class DocumentPurchaseService {
     private readonly ledgerService: DocumentLedgerService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
-  ) { }
+  ) {}
 
   async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
     const { storeId, vendorId, date, status, notes } = createDocumentPurchaseDto;
@@ -51,7 +51,7 @@ export class DocumentPurchaseService {
 
     // Auto-schedule if date is in the future
     if (targetStatus === 'COMPLETED' && docDate > new Date()) {
-      (targetStatus as any) = 'SCHEDULED';
+      targetStatus = 'SCHEDULED' as DocumentStatus;
     }
 
     // 1. Validate Store
@@ -121,7 +121,7 @@ export class DocumentPurchaseService {
         // Auto-schedule if date is in the future
         // Note: when Scheduler calls this, date will be <= now, so it will proceed to "COMPLETED".
         if (newStatus === 'COMPLETED' && purchase.date > new Date()) {
-          (actualNewStatus as any) = 'SCHEDULED';
+          actualNewStatus = 'SCHEDULED' as DocumentStatus;
         }
 
         if (oldStatus === actualNewStatus) {
@@ -306,7 +306,7 @@ export class DocumentPurchaseService {
               }
             } else if (
               updatedDoc.generatedPriceChange.status === 'COMPLETED' &&
-              newPriceChangeStatus !== ('COMPLETED' as any)
+              newPriceChangeStatus !== 'COMPLETED'
             ) {
               // Revert
               const pcItems = await tx.documentPriceChangeItem.findMany({
@@ -689,7 +689,7 @@ export class DocumentPurchaseService {
         });
 
         // Log Header Changes
-        const headerChanges: Record<string, any> = {};
+        const headerChanges: Record<string, unknown> = {};
         if (notes !== undefined && notes !== (doc.notes ?? '')) headerChanges.notes = notes;
         if (storeId !== undefined && storeId !== doc.storeId) headerChanges.storeId = storeId;
         if (vendorId !== undefined && vendorId !== doc.vendorId) headerChanges.vendorId = vendorId;
