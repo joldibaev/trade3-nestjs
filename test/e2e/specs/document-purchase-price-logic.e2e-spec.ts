@@ -86,27 +86,27 @@ describe('Document Purchase Price Integration (e2e)', () => {
     const purchaseId = res.body.id;
     helper.createdIds.purchases.push(purchaseId);
 
+    // Add first product with new price
     await request(app.getHttpServer())
-      .patch(`/document-purchases/${purchaseId}`)
+      .post(`/document-purchases/${purchaseId}/items`)
       .send({
-        storeId: store.id,
-        vendorId: vendor.id,
-        items: [
-          {
-            productId: product1.id,
-            quantity: 5,
-            price: 100,
-            newPrices: [{ priceTypeId: retail.id, value: 150 }],
-          },
-          {
-            productId: product2.id,
-            quantity: 10,
-            price: 200,
-            newPrices: [{ priceTypeId: retail.id, value: 300 }],
-          },
-        ],
+        productId: product1.id,
+        quantity: 5,
+        price: 100,
+        newPrices: [{ priceTypeId: retail.id, value: 150 }],
       })
-      .expect(200);
+      .expect(201);
+
+    // Add second product with new price
+    await request(app.getHttpServer())
+      .post(`/document-purchases/${purchaseId}/items`)
+      .send({
+        productId: product2.id,
+        quantity: 10,
+        price: 200,
+        newPrices: [{ priceTypeId: retail.id, value: 300 }],
+      })
+      .expect(201);
 
     // Verify one DocumentPriceChange with two items
     const priceChange = await prisma.documentPriceChange.findFirst({

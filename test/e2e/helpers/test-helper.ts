@@ -67,42 +67,79 @@ export class TestHelper {
     const purchaseId = res.body.id;
     this.createdIds.purchases.push(purchaseId);
 
-    // 2. Add Items (PATCH)
-    const updatePayload: any = {
-      storeId,
-      vendorId,
-      date: date.toISOString(),
-      items: [
-        {
-          productId,
-          quantity,
-          price,
-          newPrices: newPrices || [],
-        },
-      ],
+    // 2. Add Item (POST /items)
+    const itemPayload = {
+      productId,
+      quantity,
+      price,
+      newPrices: newPrices || [],
     };
 
-    res = await request(this.app.getHttpServer())
-      .patch(`/document-purchases/${purchaseId}`)
-      .send(updatePayload)
-      .expect(200);
+    await request(this.app.getHttpServer())
+      .post(`/document-purchases/${purchaseId}/items`)
+      .send(itemPayload)
+      .expect(201);
 
     // 3. Update Status if needed
     if (status === 'COMPLETED') {
-      res = await request(this.app.getHttpServer())
+      await request(this.app.getHttpServer())
         .patch(`/document-purchases/${purchaseId}/status`)
         .send({ status: 'COMPLETED' })
         .expect(200);
     }
 
-    return res.body;
+    // 4. Fetch and return the final document
+    const finalRes = await request(this.app.getHttpServer())
+      .get(`/document-purchases/${purchaseId}`)
+      .expect(200);
+
+    return finalRes.body;
   }
 
   async updatePurchase(id: string, updateDto: any, expectedStatus = 200) {
+    // Extract items from the DTO
+    const { items, ...headerDto } = updateDto;
+
+    // 1. Update header fields
     const res = await request(this.app.getHttpServer())
       .patch(`/document-purchases/${id}`)
-      .send(updateDto)
+      .send(headerDto)
       .expect(expectedStatus);
+
+    // 2. If items are provided, update them individually
+    if (items && items.length > 0 && expectedStatus === 200) {
+      // Get current document to find existing items
+      const doc = await this.prismaService.documentPurchase.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+
+      for (const itemDto of items) {
+        // Find existing item by productId
+        const existingItem = doc?.items.find((i) => i.productId === itemDto.productId);
+
+        if (existingItem) {
+          // Update existing item
+          await request(this.app.getHttpServer())
+            .patch(`/document-purchases/${id}/items/${itemDto.productId}`)
+            .send(itemDto)
+            .expect(200);
+        } else {
+          // Add new item
+          await request(this.app.getHttpServer())
+            .post(`/document-purchases/${id}/items`)
+            .send(itemDto)
+            .expect(201);
+        }
+      }
+
+      // Fetch the updated document to return
+      const updatedRes = await request(this.app.getHttpServer())
+        .get(`/document-purchases/${id}`)
+        .expect(200);
+      return updatedRes.body;
+    }
+
     return res.body;
   }
 
@@ -381,35 +418,52 @@ export class TestHelper {
       clientId,
       priceTypeId,
       date: date.toISOString(),
-      status: status,
-      items: [
-        {
-          productId,
-          quantity,
-        },
-      ],
+      status: 'DRAFT',
     };
 
-    let res = await request(this.app.getHttpServer())
+    const res = await request(this.app.getHttpServer())
       .post('/document-sales')
       .send(payload)
-      .expect(expectedStatus);
-
-    if (expectedStatus !== 201 && expectedStatus !== 200) {
-      return res.body;
-    }
+      .expect(201);
 
     const saleId = res.body.id;
+    this.createdIds.sales.push(saleId);
 
-    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
-      res = await request(this.app.getHttpServer())
-        .patch(`/document-sales/${saleId}/status`)
-        .send({ status: 'COMPLETED' })
-        .expect(200);
+    // Add item - may fail if validation errors occur
+    try {
+      await request(this.app.getHttpServer())
+        .post(`/document-sales/${saleId}/items`)
+        .send({ productId, quantity, price })
+        .expect(201);
+    } catch (error) {
+      // If expectedStatus is not 201, this might be the expected failure
+      if (expectedStatus !== 201) {
+        // Return error response
+        return (error as any).response?.body || { message: 'Item addition failed' };
+      }
+      throw error;
     }
 
-    this.createdIds.sales.push(saleId);
-    return res.body;
+    if (status === 'COMPLETED') {
+      // If expectedStatus is 201 (default for creation), use 200 for status change
+      const statusExpectedCode = expectedStatus === 201 ? 200 : expectedStatus;
+      const statusRes = await request(this.app.getHttpServer())
+        .patch(`/document-sales/${saleId}/status`)
+        .send({ status: 'COMPLETED' })
+        .expect(statusExpectedCode);
+
+      // If status change failed, return the error response
+      if (statusExpectedCode !== 200) {
+        return statusRes.body;
+      }
+    }
+
+    // Fetch and return the final document
+    const finalRes = await request(this.app.getHttpServer())
+      .get(`/document-sales/${saleId}`)
+      .expect(200);
+
+    return finalRes.body;
   }
 
   async createReturn(
@@ -425,8 +479,7 @@ export class TestHelper {
       storeId,
       clientId,
       date: new Date().toISOString(),
-      status: status,
-      items: [{ productId, quantity, price }],
+      status: 'DRAFT',
     };
 
     let res = await request(this.app.getHttpServer())
@@ -439,15 +492,21 @@ export class TestHelper {
     }
 
     const docId = res.body.id;
+    this.createdIds.returns.push(docId);
 
-    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
+    // Add item
+    await request(this.app.getHttpServer())
+      .post(`/document-returns/${docId}/items`)
+      .send({ productId, quantity, price })
+      .expect(201);
+
+    if (status === 'COMPLETED') {
       res = await request(this.app.getHttpServer())
         .patch(`/document-returns/${docId}/status`)
         .send({ status: 'COMPLETED' })
         .expect(200);
     }
 
-    this.createdIds.returns.push(docId);
     return res.body;
   }
 
@@ -461,8 +520,7 @@ export class TestHelper {
     const payload = {
       storeId,
       date: new Date().toISOString(),
-      status: status,
-      items: [{ productId, quantity: quantityDelta }],
+      status: 'DRAFT',
     };
 
     let res = await request(this.app.getHttpServer())
@@ -475,15 +533,21 @@ export class TestHelper {
     }
 
     const docId = res.body.id;
+    this.createdIds.adjustments.push(docId);
 
-    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
+    // Add item
+    await request(this.app.getHttpServer())
+      .post(`/document-adjustments/${docId}/items`)
+      .send({ productId, quantity: quantityDelta })
+      .expect(201);
+
+    if (status === 'COMPLETED') {
       res = await request(this.app.getHttpServer())
         .patch(`/document-adjustments/${docId}/status`)
         .send({ status: 'COMPLETED' })
         .expect(200);
     }
 
-    this.createdIds.adjustments.push(docId);
     return res.body;
   }
 
@@ -499,30 +563,43 @@ export class TestHelper {
       sourceStoreId,
       destinationStoreId,
       date: new Date().toISOString(),
-      status: status,
-      items: [{ productId, quantity }],
+      status: 'DRAFT',
     };
 
-    let res = await request(this.app.getHttpServer())
+    const res = await request(this.app.getHttpServer())
       .post('/document-transfers')
       .send(payload)
-      .expect(expectedStatus);
-
-    if (expectedStatus !== 201 && expectedStatus !== 200) {
-      return res.body;
-    }
+      .expect(201);
 
     const docId = res.body.id;
+    this.createdIds.transfers.push(docId);
 
-    if (status === 'COMPLETED' && res.body.status !== 'COMPLETED') {
-      res = await request(this.app.getHttpServer())
+    // Add item
+    await request(this.app.getHttpServer())
+      .post(`/document-transfers/${docId}/items`)
+      .send({ productId, quantity })
+      .expect(201);
+
+    if (status === 'COMPLETED') {
+      // If expectedStatus is 201 (default for creation), use 200 for status change
+      const statusExpectedCode = expectedStatus === 201 ? 200 : expectedStatus;
+      const statusRes = await request(this.app.getHttpServer())
         .patch(`/document-transfers/${docId}/status`)
         .send({ status: 'COMPLETED' })
-        .expect(200);
+        .expect(statusExpectedCode);
+
+      // If status change failed, return the error response
+      if (statusExpectedCode !== 200) {
+        return statusRes.body;
+      }
     }
 
-    this.createdIds.transfers.push(docId);
-    return res.body;
+    // Fetch and return the final document
+    const finalRes = await request(this.app.getHttpServer())
+      .get(`/document-transfers/${docId}`)
+      .expect(200);
+
+    return finalRes.body;
   }
 
   async completePurchase(

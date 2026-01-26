@@ -400,13 +400,71 @@ export class DocumentPurchaseService {
           },
         });
 
-        // Sync Price Changes
-        await this.syncPriceChanges(tx, doc, [
-          ...doc.items,
-          { ...itemDto, quantity, price, total },
-        ]);
+        // Sync Price Changes with ALL items (including the new one)
+        // Load existing DocumentPriceChange to preserve newPrices from previous items
+        const existingPriceChange = await tx.documentPriceChange.findUnique({
+          where: { documentPurchaseId: id },
+          include: { items: true },
+        });
 
-        return this.findOne(id);
+        // Reconstruct newPrices for existing items from DocumentPriceChange
+        const existingNewPricesMap = new Map<string, UpdateProductPriceDto[]>();
+        if (existingPriceChange) {
+          for (const priceItem of existingPriceChange.items) {
+            if (!existingNewPricesMap.has(priceItem.productId)) {
+              existingNewPricesMap.set(priceItem.productId, []);
+            }
+            existingNewPricesMap.get(priceItem.productId)!.push({
+              priceTypeId: priceItem.priceTypeId,
+              value: priceItem.newValue.toNumber(),
+            });
+          }
+        }
+
+        // Map existing items to PreparedPurchaseItem format with preserved newPrices
+        const allItems = [
+          ...doc.items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            price: i.price,
+            total: i.total,
+            newPrices: existingNewPricesMap.get(i.productId) || [],
+          })),
+          {
+            productId: itemDto.productId,
+            quantity,
+            price,
+            total,
+            newPrices: itemDto.newPrices || [],
+          },
+        ];
+        await this.syncPriceChanges(tx, doc, allItems);
+
+        return tx.documentPurchase.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: {
+              include: {
+                product: {
+                  include: {
+                    prices: true,
+                    priceChangeItems: true,
+                  },
+                },
+              },
+            },
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+            vendor: true,
+            store: true,
+            generatedPriceChange: {
+              include: {
+                items: true,
+              },
+            },
+          },
+        });
       },
       { isolationLevel: 'ReadCommitted' },
     );
@@ -489,7 +547,31 @@ export class DocumentPurchaseService {
         }
         await this.syncPriceChanges(tx, doc, updatedItems);
 
-        return this.findOne(id);
+        return tx.documentPurchase.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: {
+              include: {
+                product: {
+                  include: {
+                    prices: true,
+                    priceChangeItems: true,
+                  },
+                },
+              },
+            },
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+            vendor: true,
+            store: true,
+            generatedPriceChange: {
+              include: {
+                items: true,
+              },
+            },
+          },
+        });
       },
       { isolationLevel: 'ReadCommitted' },
     );
@@ -537,7 +619,31 @@ export class DocumentPurchaseService {
         const updatedItems = doc.items.filter((i) => i.productId !== itemId);
         await this.syncPriceChanges(tx, doc, updatedItems);
 
-        return this.findOne(id);
+        return tx.documentPurchase.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: {
+              include: {
+                product: {
+                  include: {
+                    prices: true,
+                    priceChangeItems: true,
+                  },
+                },
+              },
+            },
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+            vendor: true,
+            store: true,
+            generatedPriceChange: {
+              include: {
+                items: true,
+              },
+            },
+          },
+        });
       },
       { isolationLevel: 'ReadCommitted' },
     );

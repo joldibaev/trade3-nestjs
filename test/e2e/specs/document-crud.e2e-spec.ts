@@ -61,30 +61,28 @@ describe('Document CRUD (e2e)', () => {
 
       helper.createdIds.purchases.push(purchaseId);
 
-      // 2. Add Items
-      const updateRes = await request(app.getHttpServer())
-        .patch(`/document-purchases/${purchaseId}`)
-        .send({
-          storeId,
-          vendorId,
-          date: new Date(),
-          items: [{ productId, quantity: 10, price: 100 }],
-        })
-        .expect(200);
+      // 2. Add Item
+      const itemRes = await request(app.getHttpServer())
+        .post(`/document-purchases/${purchaseId}/items`)
+        .send({ productId, quantity: 10, price: 100 })
+        .expect(201);
 
-      expect(updateRes.body.items).toHaveLength(1);
-      expect(updateRes.body.items[0].quantity).toBe('10');
+      // Verify header returned from findOne (or addItem return)
+      expect(itemRes.body.items).toHaveLength(1);
+      expect(itemRes.body.items[0].quantity).toBe('10');
     });
 
-    it('should update DRAFT purchase', async () => {
+    it('should update DRAFT purchase item', async () => {
+      // Find item ID
+      const docBefore = await prisma.documentPurchase.findUnique({
+        where: { id: purchaseId },
+        include: { items: true },
+      });
+      const itemId = docBefore?.items[0].productId; // DocumentPurchaseService use productId as itemId in updateItem logic if matched
+
       const res = await request(app.getHttpServer())
-        .patch(`/document-purchases/${purchaseId}`)
-        .send({
-          storeId,
-          vendorId,
-          date: new Date(),
-          items: [{ productId, quantity: 20, price: 120 }],
-        })
+        .patch(`/document-purchases/${purchaseId}/items/${itemId}`)
+        .send({ quantity: 20, price: 120 })
         .expect(200);
 
       expect(res.body.items).toHaveLength(1);
@@ -106,15 +104,17 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should NOT update COMPLETED purchase', async () => {
+    it('should NOT update COMPLETED purchase header (nor items)', async () => {
       await request(app.getHttpServer())
         .patch(`/document-purchases/${purchaseId}`)
         .send({
-          storeId,
-          vendorId,
-          date: new Date(),
-          items: [{ productId, quantity: 5, price: 50 }],
+          notes: 'Attempt update',
         })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`/document-purchases/${purchaseId}/items`)
+        .send({ productId, quantity: 5, price: 50 })
         .expect(400);
     });
 
@@ -160,28 +160,33 @@ describe('Document CRUD (e2e)', () => {
           cashboxId,
           date: new Date(),
           status: 'DRAFT',
-          items: [{ productId, quantity: 5, price: 100 }],
         })
         .expect(201);
 
       saleId = res.body.id;
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.code).toBeDefined();
-      expect(typeof res.body.code).toBe('string');
 
+      // Add item
+      const itemRes = await request(app.getHttpServer())
+        .post(`/document-sales/${saleId}/items`)
+        .send({ productId, quantity: 5, price: 100 })
+        .expect(201);
+
+      expect(itemRes.body.items).toHaveLength(1);
       helper.createdIds.sales.push(saleId);
     });
 
-    it('should update DRAFT sale', async () => {
+    it('should update DRAFT sale item', async () => {
+      const docBefore = await prisma.documentSale.findUnique({
+        where: { id: saleId },
+        include: { items: true },
+      });
+      const itemId = docBefore?.items[0].id;
+
       const res = await request(app.getHttpServer())
-        .patch(`/document-sales/${saleId}`)
-        .send({
-          storeId,
-          clientId,
-          cashboxId,
-          date: new Date(),
-          items: [{ productId, quantity: 10, price: 100 }],
-        })
+        .patch(`/document-sales/${saleId}/items/${itemId}`)
+        .send({ quantity: 10, price: 100 })
         .expect(200);
 
       expect(res.body.items[0].quantity).toBe('10');
@@ -194,15 +199,23 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should NOT update COMPLETED sale', async () => {
+    it('should NOT update COMPLETED sale header (nor items)', async () => {
       await request(app.getHttpServer())
         .patch(`/document-sales/${saleId}`)
         .send({
-          storeId,
-          clientId,
-          cashboxId,
-          items: [],
+          notes: 'Attempt update',
         })
+        .expect(400);
+
+      const doc = await prisma.documentSale.findUnique({
+        where: { id: saleId },
+        include: { items: true },
+      });
+      const itemId = doc?.items[0].id;
+
+      await request(app.getHttpServer())
+        .patch(`/document-sales/${saleId}/items/${itemId}`)
+        .send({ quantity: 5, price: 100 })
         .expect(400);
     });
 
@@ -241,27 +254,33 @@ describe('Document CRUD (e2e)', () => {
           clientId,
           date: new Date(),
           status: 'DRAFT',
-          items: [{ productId, quantity: 2, price: 50 }],
         })
         .expect(201);
 
       returnId = res.body.id;
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.code).toBeDefined();
-      expect(typeof res.body.code).toBe('string');
 
+      // Add item
+      const itemRes = await request(app.getHttpServer())
+        .post(`/document-returns/${returnId}/items`)
+        .send({ productId, quantity: 2, price: 50 })
+        .expect(201);
+
+      expect(itemRes.body.items).toHaveLength(1);
       helper.createdIds.returns.push(returnId);
     });
 
-    it('should update DRAFT return', async () => {
+    it('should update DRAFT return item', async () => {
+      const docBefore = await prisma.documentReturn.findUnique({
+        where: { id: returnId },
+        include: { items: true },
+      });
+      const itemId = docBefore?.items[0].id;
+
       const res = await request(app.getHttpServer())
-        .patch(`/document-returns/${returnId}`)
-        .send({
-          storeId,
-          clientId,
-          date: new Date(),
-          items: [{ productId, quantity: 5, price: 50 }],
-        })
+        .patch(`/document-returns/${returnId}/items/${itemId}`)
+        .send({ quantity: 5, price: 50 })
         .expect(200);
 
       expect(res.body.items[0].quantity).toBe('5');

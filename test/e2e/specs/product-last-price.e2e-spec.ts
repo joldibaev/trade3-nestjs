@@ -98,14 +98,9 @@ describe('Product Last Purchase Price (e2e)', () => {
     helper.createdIds.purchases.push(purchaseId);
 
     await request(app.getHttpServer())
-      .patch(`/document-purchases/${purchaseId}`)
-      .send({
-        storeId,
-        vendorId,
-        date: date.toISOString(),
-        items: [{ productId, quantity: 10, price, newPrices: [] }],
-      })
-      .expect(200);
+      .post(`/document-purchases/${purchaseId}/items`)
+      .send({ productId, quantity: 10, price, newPrices: [] })
+      .expect(201);
 
     return purchaseId;
   }

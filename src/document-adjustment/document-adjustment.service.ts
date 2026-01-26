@@ -3,7 +3,10 @@ import { Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
-import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
+import {
+  CreateDocumentAdjustmentDto,
+  CreateDocumentAdjustmentItemDto,
+} from './dto/create-document-adjustment.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
@@ -37,7 +40,7 @@ export class DocumentAdjustmentService {
   ) {}
 
   async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
-    const { storeId, date, status, items, notes } = createDocumentAdjustmentDto;
+    const { storeId, date, status, notes } = createDocumentAdjustmentDto;
 
     let targetStatus = status || 'DRAFT';
     const docDate = date ? new Date(date) : new Date();
@@ -49,125 +52,79 @@ export class DocumentAdjustmentService {
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
-    const safeItems = items || [];
+    const doc = await this.prisma.$transaction(async (tx) => {
+      // Generate Code
+      const code = await this.codeGenerator.getNextAdjustmentCode();
 
-    // Prepare IDs
-    const productIds = safeItems.map((i) => i.productId);
+      // 4. Create Document
+      const newDoc = await tx.documentAdjustment.create({
+        data: {
+          code,
+          storeId,
+          date: docDate,
+          status: targetStatus,
+          notes,
+        },
+      });
 
-    // 1a. Pre-fetch Fallback WAPs (checking other stores)
-    const fallbackWapMap = await this.inventoryService.getFallbackWapMap(productIds);
+      await this.ledgerService.logAction(tx, {
+        documentId: newDoc.id,
+        documentType: 'documentAdjustment',
+        action: 'CREATED',
+        details: { status: targetStatus, notes },
+      });
 
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        let preparedItems: PreparedAdjustmentItem[] = [];
+      return newDoc;
+    });
 
-        // Generate Code
-        const code = await this.codeGenerator.getNextAdjustmentCode();
-
-        if (safeItems.length > 0) {
-          // 2. Batch Fetch Existing Stocks (Current Store) - MUST be inside TX
-          const existingStocks = await tx.stock.findMany({
-            where: {
-              storeId,
-              productId: { in: productIds },
-            },
-          });
-          const stockMap = new Map(existingStocks.map((s) => [s.productId, s]));
-
-          // 3. Prepare Items Data (Calculate Before/After)
-          preparedItems = safeItems.map((item) => {
-            const stock = stockMap.get(item.productId);
-            const quantity = new Decimal(item.quantity); // Delta
-
-            const oldQty = stock ? stock.quantity : new Decimal(0);
-            const newQty = oldQty.add(quantity);
-
-            return {
-              productId: item.productId,
-              quantityRelative: quantity,
-              quantityBefore: oldQty,
-              quantityAfter: newQty,
-            };
-          });
-        }
-
-        // 4. Create Document with Items
-        const doc = await tx.documentAdjustment.create({
-          data: {
-            code,
-            storeId,
-            date: docDate,
-            status: targetStatus,
-            notes,
-            items: {
-              create: preparedItems.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantityRelative,
-                quantityBefore: i.quantityBefore,
-                quantityAfter: i.quantityAfter,
-              })),
-            },
-          },
-          include: { items: true },
-        });
-
-        await this.ledgerService.logAction(tx, {
-          documentId: doc.id,
-          documentType: 'documentAdjustment',
-          action: 'CREATED',
-          details: { status: targetStatus, notes },
-        });
-
-        for (const item of preparedItems) {
-          await this.ledgerService.logAction(tx, {
-            documentId: doc.id,
-            documentType: 'documentAdjustment',
-            action: 'ITEM_ADDED',
-            details: {
-              productId: item.productId,
-              quantity: item.quantityRelative,
-            },
-          });
-        }
-
-        let reprocessingId: string | null = null;
-        // 5. Update Stocks (Only if COMPLETED)
-        if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
-          await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
-
-          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
-            storeId,
-            productId: preparedItems.map((i) => i.productId),
-            date: docDate,
-            documentId: doc.id,
-            documentType: 'documentAdjustment',
-          });
-        }
-
-        return { doc, reprocessingId };
-      },
-      {
-        isolationLevel: 'Serializable',
-      },
-    );
-
-    // POST-TRANSACTION: Reprocess History
-    if (result.reprocessingId) {
-      for (const item of result.doc.items) {
-        await this.inventoryService.reprocessProductHistory(
-          result.doc.storeId,
-          item.productId,
-          result.doc.date,
-          result.reprocessingId,
-        );
-      }
-      await this.inventoryService.completeReprocessing(result.reprocessingId);
-    }
-
-    return result.doc;
+    return doc;
   }
 
   async update(id: string, updateDto: CreateDocumentAdjustmentDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const doc = await tx.documentAdjustment.findUniqueOrThrow({
+        where: { id },
+      });
+
+      this.baseService.ensureDraft(doc.status);
+
+      const { storeId, date, notes } = updateDto;
+      const docDate = date ? new Date(date) : new Date();
+
+      const updatedDoc = await tx.documentAdjustment.update({
+        where: { id },
+        data: {
+          storeId,
+          date: docDate,
+          notes,
+        },
+      });
+
+      const changes: Record<string, any> = {};
+      if (notes !== undefined && notes !== (doc.notes ?? '')) {
+        changes.notes = notes;
+      }
+      if (storeId !== doc.storeId) {
+        changes.storeId = storeId;
+      }
+      if (date && new Date(date).getTime() !== doc.date?.getTime()) {
+        changes.date = date;
+      }
+
+      if (Object.keys(changes).length > 0) {
+        await this.ledgerService.logAction(tx, {
+          documentId: updatedDoc.id,
+          documentType: 'documentAdjustment',
+          action: 'UPDATED',
+          details: changes,
+        });
+      }
+
+      return updatedDoc;
+    });
+  }
+
+  async addItem(id: string, dto: CreateDocumentAdjustmentItemDto) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
@@ -175,106 +132,140 @@ export class DocumentAdjustmentService {
           include: { items: true },
         });
 
-        const oldItems = doc.items;
+        this.baseService.ensureDraft(doc.status);
+
+        const { productId, quantity } = dto;
+        const qDelta = new Decimal(quantity);
+
+        // Fetch current stock to calculate snapshots
+        const stock = await tx.stock.findUnique({
+          where: { productId_storeId: { productId, storeId: doc.storeId } },
+        });
+
+        const quantityBefore = stock ? stock.quantity : new Decimal(0);
+        const quantityAfter = quantityBefore.add(qDelta);
+
+        const _newItem = await tx.documentAdjustmentItem.create({
+          data: {
+            adjustmentId: id,
+            productId,
+            quantity: qDelta,
+            quantityBefore,
+            quantityAfter,
+          },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentAdjustment',
+          action: 'ITEM_ADDED',
+          details: { productId, quantity: qDelta },
+        });
+
+        return tx.documentAdjustment.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            store: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  async updateItem(id: string, itemId: string, dto: CreateDocumentAdjustmentItemDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentAdjustment.findUniqueOrThrow({
+          where: { id },
+        });
 
         this.baseService.ensureDraft(doc.status);
 
-        // 1. Delete existing items
-        await tx.documentAdjustmentItem.deleteMany({
-          where: { adjustmentId: id },
+        const item = await tx.documentAdjustmentItem.findUniqueOrThrow({
+          where: { id: itemId },
         });
 
-        // 2. Prepare new items
-        const { storeId, date, items, notes } = updateDto;
-        const docDate = date ? new Date(date) : new Date();
-        const safeItems = items || [];
-        const productIds = safeItems.map((i) => i.productId);
-        // 2. Batch Fetch Existing Stocks (Current Store) - MUST be inside TX
-        const existingStocks = await tx.stock.findMany({
-          where: {
-            storeId,
-            productId: { in: productIds },
+        const { quantity } = dto;
+        const qDelta = new Decimal(quantity);
+
+        // Recalculate snapshots based on original quantityBefore
+        const quantityAfter = item.quantityBefore.add(qDelta);
+
+        const _updatedItem = await tx.documentAdjustmentItem.update({
+          where: { id: itemId },
+          data: {
+            quantity: qDelta,
+            quantityAfter,
           },
         });
-        const stockMap = new Map(existingStocks.map((s) => [s.productId, s]));
 
-        // 3. Prepare Items Data (Calculate Before/After)
-        const preparedItems = safeItems.map((item) => {
-          const stock = stockMap.get(item.productId);
-          const quantity = new Decimal(item.quantity); // Delta
-
-          const oldQty = stock ? stock.quantity : new Decimal(0);
-          const newQty = oldQty.add(quantity);
-
-          return {
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentAdjustment',
+          action: 'ITEM_CHANGED',
+          details: {
             productId: item.productId,
-            quantityRelative: quantity,
-            quantityBefore: oldQty,
-            quantityAfter: newQty,
-          };
+            oldQuantity: item.quantity,
+            newQuantity: qDelta,
+          },
         });
 
-        const updatedDoc = await tx.documentAdjustment.update({
+        return tx.documentAdjustment.findUniqueOrThrow({
           where: { id },
-          data: {
-            storeId,
-            date: docDate,
-            notes,
-            items: {
-              create: preparedItems.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantityRelative,
-                quantityBefore: i.quantityBefore, // In draft these are tentative
-                quantityAfter: i.quantityAfter,
-              })),
+          include: {
+            items: true,
+            store: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
             },
           },
-          include: { items: true },
+        });
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  async removeItem(id: string, itemId: string) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentAdjustment.findUniqueOrThrow({
+          where: { id },
         });
 
-        const changes: Record<string, any> = {};
-        if (notes !== undefined && notes !== (doc.notes ?? '')) {
-          changes.notes = notes;
-        }
-        if (storeId !== doc.storeId) {
-          changes.storeId = storeId;
-        }
-        if (date && new Date(date).getTime() !== doc.date?.getTime()) {
-          changes.date = date;
-        }
+        this.baseService.ensureDraft(doc.status);
 
-        if (Object.keys(changes).length > 0) {
-          await this.ledgerService.logAction(tx, {
-            documentId: updatedDoc.id,
-            documentType: 'documentAdjustment',
-            action: 'UPDATED',
-            details: changes,
-          });
-        }
+        const item = await tx.documentAdjustmentItem.findUniqueOrThrow({
+          where: { id: itemId },
+        });
 
-        // Log Diffs
-        await this.ledgerService.logDiff(
-          tx,
-          {
-            documentId: updatedDoc.id,
-            documentType: 'documentAdjustment',
+        await tx.documentAdjustmentItem.delete({
+          where: { id: itemId },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentAdjustment',
+          action: 'ITEM_REMOVED',
+          details: { productId: item.productId, quantity: item.quantity },
+        });
+
+        return tx.documentAdjustment.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            store: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
           },
-          oldItems.map((i) => ({
-            productId: i.productId,
-            quantity: i.quantity,
-          })),
-          preparedItems.map((i) => ({
-            productId: i.productId,
-            quantity: i.quantityRelative,
-          })),
-          ['quantity'],
-        );
-
-        return updatedDoc;
+        });
       },
-      {
-        isolationLevel: 'Serializable',
-      },
+      { isolationLevel: 'Serializable' },
     );
   }
 

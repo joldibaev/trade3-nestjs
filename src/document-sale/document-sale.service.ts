@@ -1,9 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
-import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
+import { CreateDocumentSaleDto, CreateDocumentSaleItemDto } from './dto/create-document-sale.dto';
 import { StoreService } from '../store/store.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
 import { BaseDocumentService } from '../common/base-document.service';
@@ -38,11 +38,10 @@ export class DocumentSaleService {
   ) {}
 
   async create(createDocumentSaleDto: CreateDocumentSaleDto) {
-    const { storeId, cashboxId, clientId, date, status, priceTypeId, items, notes } =
+    const { storeId, cashboxId, clientId, date, status, priceTypeId, notes } =
       createDocumentSaleDto;
 
     let targetStatus = status || 'DRAFT';
-    const safeItems = items || [];
     const docDate = date ? new Date(date) : new Date();
 
     // Auto-schedule if date is in the future
@@ -53,101 +52,9 @@ export class DocumentSaleService {
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
-    // 2. Prepare Items (Fetch Products & Calculate Prices)
-    const productIds = safeItems.map((i) => i.productId);
-    const products = await this.prisma.product.findMany({
-      where: { id: { in: productIds } },
-      include: { prices: true },
-    });
-
-    const productsMap = new Map(products.map((p) => [p.id, p]));
-    const preparedItems: {
-      productId: string;
-      quantity: Decimal;
-      price: Decimal;
-      total: Decimal;
-    }[] = [];
-    let total = new Decimal(0);
-
-    for (const item of safeItems) {
-      const product = productsMap.get(item.productId);
-      if (!product) {
-        throw new NotFoundException(`Товар ${item.productId} не найден`);
-      }
-
-      let finalPrice = new Decimal(item.price ?? 0);
-      if (item.price === undefined) {
-        if (priceTypeId) {
-          const priceObj = product.prices.find((p) => p.priceTypeId === priceTypeId);
-          finalPrice = priceObj ? priceObj.value : new Decimal(0);
-        } else {
-          // Default to first available price
-          finalPrice = product.prices[0] ? product.prices[0].value : new Decimal(0);
-        }
-      }
-
-      const quantity = new Decimal(item.quantity);
-      const itemTotal = finalPrice.mul(quantity);
-      total = total.add(itemTotal);
-
-      preparedItems.push({
-        productId: item.productId,
-        quantity,
-        price: finalPrice,
-        total: itemTotal,
-      });
-    }
-
-    // 3. Execute Transaction
+    // 2. Execute Transaction
     const result = await this.prisma.$transaction(
       async (tx) => {
-        // Fetch all relevant stocks in one go
-        const stocks = await tx.stock.findMany({
-          where: {
-            storeId,
-            productId: { in: productIds },
-          },
-        });
-        const stockMap = new Map(stocks.map((s) => [s.productId, s]));
-
-        // ACQUIRE LOCKS for all products involved in this sale
-        // Sort IDs to avoid deadlocks
-        const sortedProductIds = [...productIds].sort();
-        for (const pid of sortedProductIds) {
-          await this.inventoryService.lockProduct(tx, storeId, pid);
-        }
-
-        const documentItemsData: {
-          productId: string;
-          quantity: Decimal;
-          price: Decimal;
-          costPrice: Decimal;
-          total: Decimal;
-        }[] = [];
-
-        for (const item of preparedItems) {
-          const stock = stockMap.get(item.productId);
-          const currentQty = stock ? stock.quantity : new Decimal(0);
-          const costPrice = stock ? stock.averagePurchasePrice : new Decimal(0);
-
-          // Validate Stock Availability only if status is COMPLETED
-          if (targetStatus === 'COMPLETED') {
-            if (currentQty.lessThan(item.quantity)) {
-              throw new BadRequestException(
-                `Недостаточно остатка для товара ${item.productId}. Доступно: ${currentQty.toString()}, Запрошено: ${item.quantity.toString()}`,
-              );
-            }
-          }
-
-          documentItemsData.push({
-            productId: item.productId,
-            quantity: item.quantity,
-            price: item.price,
-            costPrice,
-            total: item.total,
-          });
-        }
-
         // Generate Code
         const code = await this.codeGenerator.getNextSaleCode();
 
@@ -162,49 +69,270 @@ export class DocumentSaleService {
             status: targetStatus,
             priceTypeId,
             notes,
-            total,
-            items: {
-              create: documentItemsData,
-            },
+            total: 0,
           },
-          include: { items: true },
         });
 
-        // Update Stock if COMPLETED
-        let reprocessingId: string | null = null;
-        if (sale.status === 'COMPLETED' && preparedItems.length > 0) {
-          await this.applyInventoryMovements(tx, sale, preparedItems);
+        await this.ledgerService.logAction(tx, {
+          documentId: sale.id,
+          documentType: 'documentSale',
+          action: 'CREATED',
+          details: { status: targetStatus, notes },
+        });
 
-          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
-            storeId,
-            productId: productIds,
-            date: docDate,
-            documentId: sale.id,
-            documentType: 'documentSale',
-          });
-        }
-
-        return { sale, reprocessingId };
+        return sale;
       },
       {
         isolationLevel: 'ReadCommitted',
       },
     );
 
-    // POST-TRANSACTION: Reprocess History
-    if (result.reprocessingId) {
-      for (const item of result.sale.items) {
-        await this.inventoryService.reprocessProductHistory(
-          result.sale.storeId,
-          item.productId,
-          result.sale.date,
-          result.reprocessingId,
-        );
-      }
-      await this.inventoryService.completeReprocessing(result.reprocessingId);
-    }
+    return result;
+  }
 
-    return result.sale;
+  async update(id: string, updateDto: CreateDocumentSaleDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const sale = await tx.documentSale.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(sale.status);
+
+        const { storeId, cashboxId, clientId, date, priceTypeId, notes } = updateDto;
+        const docDate = date ? new Date(date) : new Date();
+
+        const updatedSale = await tx.documentSale.update({
+          where: { id },
+          data: {
+            storeId,
+            cashboxId,
+            clientId,
+            date: docDate,
+            priceTypeId,
+            notes,
+          },
+        });
+
+        // Log Update
+        const changes: Record<string, any> = {};
+        if (notes !== undefined && notes !== (sale.notes ?? '')) {
+          changes.notes = notes;
+        }
+        if (storeId !== sale.storeId) {
+          changes.storeId = storeId;
+        }
+        if (clientId !== sale.clientId) {
+          changes.clientId = clientId;
+        }
+        if (priceTypeId !== sale.priceTypeId) {
+          changes.priceTypeId = priceTypeId;
+        }
+        if (date && new Date(date).getTime() !== sale.date?.getTime()) {
+          changes.date = date;
+        }
+
+        if (Object.keys(changes).length > 0) {
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentSale',
+            action: 'UPDATED',
+            details: changes,
+          });
+        }
+
+        return updatedSale;
+      },
+      {
+        isolationLevel: 'ReadCommitted',
+      },
+    );
+  }
+
+  async addItem(id: string, dto: CreateDocumentSaleItemDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const sale = await tx.documentSale.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(sale.status);
+
+        const { productId, quantity } = dto;
+        const product = await tx.product.findUniqueOrThrow({
+          where: { id: productId },
+          include: { prices: true },
+        });
+
+        let finalPrice = new Decimal(dto.price ?? 0);
+        if (dto.price === undefined) {
+          if (sale.priceTypeId) {
+            const priceObj = product.prices.find((p) => p.priceTypeId === sale.priceTypeId);
+            finalPrice = priceObj ? priceObj.value : new Decimal(0);
+          } else {
+            finalPrice = product.prices[0] ? product.prices[0].value : new Decimal(0);
+          }
+        }
+
+        const qVal = new Decimal(quantity);
+        const itemTotal = qVal.mul(finalPrice);
+
+        // Fetch current cost price for snapshot
+        const stock = await tx.stock.findUnique({
+          where: { productId_storeId: { productId, storeId: sale.storeId } },
+        });
+        const costPrice = stock ? stock.averagePurchasePrice : new Decimal(0);
+
+        const _newItem = await tx.documentSaleItem.create({
+          data: {
+            saleId: id,
+            productId,
+            quantity: qVal,
+            price: finalPrice,
+            costPrice,
+            total: itemTotal,
+          },
+        });
+
+        await tx.documentSale.update({
+          where: { id },
+          data: { total: { increment: itemTotal } },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentSale',
+          action: 'ITEM_ADDED',
+          details: { productId, quantity: qVal, price: finalPrice, total: itemTotal },
+        });
+
+        return tx.documentSale.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            client: true,
+            store: true,
+            cashbox: true,
+            priceType: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'ReadCommitted' },
+    );
+  }
+
+  async updateItem(id: string, itemId: string, dto: CreateDocumentSaleItemDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const sale = await tx.documentSale.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(sale.status);
+
+        const item = await tx.documentSaleItem.findUniqueOrThrow({
+          where: { id: itemId },
+        });
+
+        const { quantity, price } = dto;
+        const qVal = new Decimal(quantity);
+        const pVal = price !== undefined ? new Decimal(price) : item.price;
+        const newTotal = qVal.mul(pVal);
+        const amountDiff = newTotal.sub(item.total);
+
+        const _updatedItem = await tx.documentSaleItem.update({
+          where: { id: itemId },
+          data: {
+            quantity: qVal,
+            price: pVal,
+            total: newTotal,
+          },
+        });
+
+        await tx.documentSale.update({
+          where: { id },
+          data: { total: { increment: amountDiff } },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentSale',
+          action: 'ITEM_CHANGED',
+          details: {
+            productId: item.productId,
+            oldQuantity: item.quantity,
+            newQuantity: qVal,
+            oldPrice: item.price,
+            newPrice: pVal,
+          },
+        });
+
+        return tx.documentSale.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            client: true,
+            store: true,
+            cashbox: true,
+            priceType: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'ReadCommitted' },
+    );
+  }
+
+  async removeItem(id: string, itemId: string) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const sale = await tx.documentSale.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(sale.status);
+
+        const item = await tx.documentSaleItem.findUniqueOrThrow({
+          where: { id: itemId },
+        });
+
+        await tx.documentSaleItem.delete({
+          where: { id: itemId },
+        });
+
+        await tx.documentSale.update({
+          where: { id },
+          data: { total: { decrement: item.total } },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentSale',
+          action: 'ITEM_REMOVED',
+          details: { productId: item.productId, quantity: item.quantity, total: item.total },
+        });
+
+        return tx.documentSale.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            client: true,
+            store: true,
+            cashbox: true,
+            priceType: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'ReadCommitted' },
+    );
   }
 
   async updateStatus(id: string, newStatus: DocumentStatus) {
@@ -353,146 +481,6 @@ export class DocumentSaleService {
         data: { costPrice },
       });
     }
-  }
-
-  async update(id: string, updateDto: CreateDocumentSaleDto) {
-    return this.prisma.$transaction(
-      async (tx) => {
-        const sale = await tx.documentSale.findUniqueOrThrow({
-          where: { id },
-          include: { items: true },
-        });
-
-        this.baseService.ensureDraft(sale.status);
-
-        const { storeId, cashboxId, clientId, date, priceTypeId, items, notes } = updateDto;
-        const docDate = date ? new Date(date) : new Date();
-        const safeItems = items || [];
-
-        // 1. Prepare new Items
-        const productIds = safeItems.map((i) => i.productId);
-
-        const products = await tx.product.findMany({
-          where: { id: { in: productIds } },
-          include: { prices: true },
-        });
-        const productsMap = new Map(products.map((p) => [p.id, p]));
-
-        const preparedItems: {
-          productId: string;
-          quantity: Decimal;
-          price: Decimal;
-          total: Decimal;
-        }[] = [];
-        let total = new Decimal(0);
-
-        for (const item of safeItems) {
-          const product = productsMap.get(item.productId);
-          if (!product) {
-            throw new NotFoundException(`Товар ${item.productId} не найден`);
-          }
-
-          let finalPrice = new Decimal(item.price ?? 0);
-          if (item.price === undefined) {
-            if (priceTypeId) {
-              const priceObj = product.prices.find((p) => p.priceTypeId === priceTypeId);
-              finalPrice = priceObj ? priceObj.value : new Decimal(0);
-            } else {
-              finalPrice = product.prices[0] ? product.prices[0].value : new Decimal(0);
-            }
-          }
-
-          const quantity = new Decimal(item.quantity);
-          const itemTotal = finalPrice.mul(quantity);
-          total = total.add(itemTotal);
-
-          preparedItems.push({
-            productId: item.productId,
-            quantity,
-            price: finalPrice,
-            total: itemTotal,
-          });
-        }
-
-        // 2. Delete existing items
-        await tx.documentSaleItem.deleteMany({
-          where: { saleId: id },
-        });
-
-        // 3. Update Document
-        const updatedSale = await tx.documentSale.update({
-          where: { id },
-          data: {
-            storeId,
-            cashboxId,
-            clientId,
-            date: docDate,
-            priceTypeId,
-            notes,
-            total,
-            items: {
-              create: preparedItems.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantity,
-                price: i.price,
-                total: i.total,
-              })),
-            },
-          },
-          include: { items: true },
-        });
-
-        // Log Update (notes etc)
-        const changes: Record<string, any> = {};
-        if (notes !== undefined && notes !== (sale.notes ?? '')) {
-          changes.notes = notes;
-        }
-        if (storeId !== sale.storeId) {
-          changes.storeId = storeId;
-        }
-        if (clientId !== sale.clientId) {
-          changes.clientId = clientId;
-        }
-        if (priceTypeId !== sale.priceTypeId) {
-          changes.priceTypeId = priceTypeId;
-        }
-        if (date && new Date(date).getTime() !== sale.date?.getTime()) {
-          changes.date = date;
-        }
-
-        if (Object.keys(changes).length > 0) {
-          await this.ledgerService.logAction(tx, {
-            documentId: id,
-            documentType: 'documentSale',
-            action: 'UPDATED',
-            details: changes,
-          });
-        }
-
-        // Log Diffs
-        const oldItems = sale.items.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          price: item.price,
-        }));
-
-        await this.ledgerService.logDiff(
-          tx,
-          {
-            documentId: id,
-            documentType: 'documentSale',
-          },
-          oldItems,
-          preparedItems,
-          ['quantity', 'price'],
-        );
-
-        return updatedSale;
-      },
-      {
-        isolationLevel: 'ReadCommitted',
-      },
-    );
   }
 
   findAll() {

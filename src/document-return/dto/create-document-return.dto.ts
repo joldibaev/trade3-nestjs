@@ -1,22 +1,21 @@
 import {
-  IsArray,
   IsDateString,
   IsEnum,
   IsNumber,
   IsOptional,
-  IsString,
-  ValidateNested,
   IsPositive,
+  IsString,
   Min,
 } from 'class-validator';
 import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
-class CreateDocumentReturnItemDto {
-  @ApiProperty({ example: 'uuid-product-id' })
+export class CreateDocumentReturnItemDto {
+  @ApiProperty({ example: 'uuid-product-id', required: false })
   @IsString()
-  productId: string;
+  @IsOptional()
+  productId?: string;
 
   @ApiProperty({ example: 5 })
   @IsNumber()
@@ -60,11 +59,4 @@ export class CreateDocumentReturnDto {
   @IsString()
   @IsOptional()
   notes?: string;
-
-  @ApiProperty({ type: [CreateDocumentReturnItemDto], required: false })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateDocumentReturnItemDto)
-  @IsOptional()
-  items?: CreateDocumentReturnItemDto[];
 }

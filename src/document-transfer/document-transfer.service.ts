@@ -3,7 +3,10 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
-import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
+import {
+  CreateDocumentTransferDto,
+  CreateDocumentTransferItemDto,
+} from './dto/create-document-transfer.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
@@ -36,8 +39,7 @@ export class DocumentTransferService {
   ) {}
 
   async create(createDocumentTransferDto: CreateDocumentTransferDto) {
-    const { sourceStoreId, destinationStoreId, date, status, items, notes } =
-      createDocumentTransferDto;
+    const { sourceStoreId, destinationStoreId, date, status, notes } = createDocumentTransferDto;
 
     let targetStatus = status || 'DRAFT';
     const docDate = date ? new Date(date) : new Date();
@@ -45,14 +47,12 @@ export class DocumentTransferService {
     if (targetStatus === 'COMPLETED' && docDate > new Date()) {
       (targetStatus as any) = 'SCHEDULED';
     }
-    const safeItems = items || [];
 
     if (sourceStoreId === destinationStoreId) {
       throw new BadRequestException('Склад отправителя и получателя должны отличаться');
     }
 
     // 1. Validate Stores
-    // Use concurrent validation
     await Promise.all([
       this.storeService.validateStore(sourceStoreId).catch(() => {
         throw new NotFoundException('Склад отправителя не найден');
@@ -61,13 +61,6 @@ export class DocumentTransferService {
         throw new NotFoundException('Склад получателя не найден');
       }),
     ]);
-
-    // Prepare Items
-    const productIds = safeItems.map((i) => i.productId);
-    const preparedItems = safeItems.map((item) => ({
-      productId: item.productId,
-      quantity: new Decimal(item.quantity),
-    }));
 
     const result = await this.prisma.$transaction(
       async (tx) => {
@@ -83,14 +76,7 @@ export class DocumentTransferService {
             date: docDate,
             status: targetStatus,
             notes,
-            items: {
-              create: preparedItems.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantity,
-              })),
-            },
           },
-          include: { items: true },
         });
 
         // Log CREATED
@@ -101,83 +87,200 @@ export class DocumentTransferService {
           details: { status: targetStatus, notes },
         });
 
-        for (const item of preparedItems) {
-          await this.ledgerService.logAction(tx, {
-            documentId: doc.id,
-            documentType: 'documentTransfer',
-            action: 'ITEM_ADDED',
-            details: {
-              productId: item.productId,
-              quantity: item.quantity,
-            },
-          });
-        }
-
-        let reprocessingId: string | null = null;
-        if (targetStatus === 'COMPLETED' && preparedItems.length > 0) {
-          await this.applyInventoryMovements(tx, doc, preparedItems);
-
-          // Check if we need reprocessing in EITHER store
-          const hasSourceHistory = await tx.stockLedger
-            .count({
-              where: {
-                storeId: sourceStoreId,
-                productId: { in: productIds },
-                date: { gt: docDate },
-              },
-            })
-            .then((c) => c > 0);
-
-          const hasDestHistory = await tx.stockLedger
-            .count({
-              where: {
-                storeId: destinationStoreId,
-                productId: { in: productIds },
-                date: { gt: docDate },
-              },
-            })
-            .then((c) => c > 0);
-
-          if (hasSourceHistory || hasDestHistory) {
-            const reprocessing = await tx.inventoryReprocessing.create({
-              data: {
-                status: 'PENDING',
-                documentTransferId: doc.id,
-                date: docDate,
-              },
-            });
-            reprocessingId = reprocessing.id;
-          }
-        }
-
-        return { doc, reprocessingId };
+        return doc;
       },
       {
         isolationLevel: 'Serializable',
       },
     );
 
-    // POST-TRANSACTION: Reprocess History
-    if (result.reprocessingId) {
-      for (const productId of productIds) {
-        // Reprocess both stores
-        await this.inventoryService.reprocessProductHistory(
-          sourceStoreId,
-          productId,
-          result.doc.date,
-          result.reprocessingId,
-        );
-        await this.inventoryService.reprocessProductHistory(
-          destinationStoreId,
-          productId,
-          result.doc.date,
-          result.reprocessingId,
-        );
-      }
-      await this.inventoryService.completeReprocessing(result.reprocessingId);
-    }
+    return result;
+  }
 
-    return result.doc;
+  async update(id: string, updateDto: CreateDocumentTransferDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const doc = await tx.documentTransfer.findUniqueOrThrow({
+        where: { id },
+      });
+
+      this.baseService.ensureDraft(doc.status);
+
+      const { sourceStoreId, destinationStoreId, date, notes } = updateDto;
+      const docDate = date ? new Date(date) : new Date();
+
+      if (sourceStoreId === destinationStoreId) {
+        throw new BadRequestException('Склад отправителя и получателя должны отличаться');
+      }
+
+      // 3. Update Document
+      const updatedDoc = await tx.documentTransfer.update({
+        where: { id },
+        data: {
+          sourceStoreId,
+          destinationStoreId,
+          date: docDate,
+          notes,
+        },
+      });
+
+      const changes: Record<string, any> = {};
+      if (notes !== undefined && notes !== (doc.notes ?? '')) {
+        changes.notes = notes;
+      }
+      if (sourceStoreId !== doc.sourceStoreId) {
+        changes.sourceStoreId = sourceStoreId;
+      }
+      if (destinationStoreId !== doc.destinationStoreId) {
+        changes.destinationStoreId = destinationStoreId;
+      }
+      if (date && new Date(date).getTime() !== doc.date?.getTime()) {
+        changes.date = date;
+      }
+
+      if (Object.keys(changes).length > 0) {
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentTransfer',
+          action: 'UPDATED',
+          details: changes,
+        });
+      }
+
+      return updatedDoc;
+    });
+  }
+
+  async addItem(id: string, dto: CreateDocumentTransferItemDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentTransfer.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(doc.status);
+
+        const { productId, quantity } = dto;
+        const qVal = new Decimal(quantity);
+
+        const _newItem = await tx.documentTransferItem.create({
+          data: {
+            transferId: id,
+            productId,
+            quantity: qVal,
+          },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentTransfer',
+          action: 'ITEM_ADDED',
+          details: { productId, quantity: qVal },
+        });
+
+        return tx.documentTransfer.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            sourceStore: true,
+            destinationStore: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  async updateItem(id: string, itemId: string, dto: CreateDocumentTransferItemDto) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentTransfer.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(doc.status);
+
+        const item = await tx.documentTransferItem.findUniqueOrThrow({
+          where: { id: itemId },
+        });
+
+        const { quantity } = dto;
+        const qVal = new Decimal(quantity);
+
+        const _updatedItem = await tx.documentTransferItem.update({
+          where: { id: itemId },
+          data: {
+            quantity: qVal,
+          },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentTransfer',
+          action: 'ITEM_CHANGED',
+          details: {
+            productId: item.productId,
+            oldQuantity: item.quantity,
+            newQuantity: qVal,
+          },
+        });
+
+        return tx.documentTransfer.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            sourceStore: true,
+            destinationStore: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  async removeItem(id: string, itemId: string) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentTransfer.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(doc.status);
+
+        const item = await tx.documentTransferItem.findUniqueOrThrow({
+          where: { id: itemId },
+        });
+
+        await tx.documentTransferItem.delete({
+          where: { id: itemId },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentTransfer',
+          action: 'ITEM_REMOVED',
+          details: { productId: item.productId, quantity: item.quantity },
+        });
+
+        return tx.documentTransfer.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            sourceStore: true,
+            destinationStore: true,
+            documentLedger: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'Serializable' },
+    );
   }
 
   async updateStatus(id: string, newStatus: DocumentStatus) {
@@ -422,93 +525,6 @@ export class DocumentTransferService {
     }
 
     return updatedDoc;
-  }
-
-  async update(id: string, updateDto: CreateDocumentTransferDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentTransfer.findUniqueOrThrow({
-        where: { id },
-        include: { items: true },
-      });
-
-      this.baseService.ensureDraft(doc.status);
-
-      const { sourceStoreId, destinationStoreId, date, items, notes } = updateDto;
-      const docDate = date ? new Date(date) : new Date();
-      const safeItems = items || [];
-
-      if (sourceStoreId === destinationStoreId) {
-        throw new BadRequestException('Склад отправителя и получателя должны отличаться');
-      }
-
-      // 1. Delete existing items
-      await tx.documentTransferItem.deleteMany({
-        where: { transferId: id },
-      });
-
-      // 2. Prepare Items
-      const preparedItems = safeItems.map((item) => ({
-        productId: item.productId,
-        quantity: new Decimal(item.quantity),
-      }));
-
-      // 3. Update Document
-      const updatedDoc = await tx.documentTransfer.update({
-        where: { id },
-        data: {
-          sourceStoreId,
-          destinationStoreId,
-          date: docDate,
-          notes,
-          items: {
-            create: preparedItems.map((i) => ({
-              productId: i.productId,
-              quantity: i.quantity,
-            })),
-          },
-        },
-        include: { items: true },
-      });
-
-      const changes: Record<string, any> = {};
-      if (notes !== undefined && notes !== (doc.notes ?? '')) {
-        changes.notes = notes;
-      }
-      if (sourceStoreId !== doc.sourceStoreId) {
-        changes.sourceStoreId = sourceStoreId;
-      }
-      if (destinationStoreId !== doc.destinationStoreId) {
-        changes.destinationStoreId = destinationStoreId;
-      }
-      if (date && new Date(date).getTime() !== doc.date?.getTime()) {
-        changes.date = date;
-      }
-
-      if (Object.keys(changes).length > 0) {
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentTransfer',
-          action: 'UPDATED',
-          details: changes,
-        });
-      }
-
-      await this.ledgerService.logDiff(
-        tx,
-        {
-          documentId: id,
-          documentType: 'documentTransfer',
-        },
-        doc.items,
-        preparedItems.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity, // quantity is Decimal? No, in preparedItems it is Decimal
-        })),
-        ['quantity'],
-      );
-
-      return updatedDoc;
-    });
   }
 
   private async applyInventoryMovements(

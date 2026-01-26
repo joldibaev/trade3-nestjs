@@ -1,21 +1,13 @@
-import {
-  IsArray,
-  IsDateString,
-  IsEnum,
-  IsNumber,
-  IsOptional,
-  IsString,
-  ValidateNested,
-  IsPositive,
-} from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsPositive, IsString } from 'class-validator';
 import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
-class CreateDocumentTransferItemDto {
-  @ApiProperty({ example: 'uuid-product-id' })
+export class CreateDocumentTransferItemDto {
+  @ApiProperty({ example: 'uuid-product-id', required: false })
   @IsString()
-  productId: string;
+  @IsOptional()
+  productId?: string;
 
   @ApiProperty({ example: 5 })
   @IsNumber()
@@ -51,11 +43,4 @@ export class CreateDocumentTransferDto {
   @IsString()
   @IsOptional()
   notes?: string;
-
-  @ApiProperty({ type: [CreateDocumentTransferItemDto], required: false })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateDocumentTransferItemDto)
-  @IsOptional()
-  items?: CreateDocumentTransferItemDto[];
 }
