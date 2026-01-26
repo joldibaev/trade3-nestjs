@@ -19,7 +19,7 @@ import { BarcodeModule } from './barcode/barcode.module';
 import { PriceModule } from './price/price.module';
 import { InventoryModule } from './core/inventory/inventory.module';
 import { StockLedgerModule } from './stock-ledger/stock-ledger.module';
-import { DocumentLedgerModule } from './document-ledger/document-ledger.module';
+import { DocumentHistoryModule } from './document-history/document-history.module';
 import { DocumentPriceChangeModule } from './document-price-change/document-price-change.module';
 import { CommonModule } from './common/common.module';
 import { SchedulerCoreModule } from './core/scheduler/scheduler.module';
@@ -49,7 +49,7 @@ import { CodeGeneratorModule } from './core/code-generator/code-generator.module
     InventoryModule,
     StockLedgerModule,
     DocumentPriceChangeModule,
-    DocumentLedgerModule,
+    DocumentHistoryModule,
     CommonModule,
     SchedulerCoreModule,
     CodeGeneratorModule,

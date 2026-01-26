@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateDocumentPriceChangeDto } from './dto/create-document-price-change.dto';
 import { UpdateDocumentPriceChangeDto } from './dto/update-document-price-change.dto';
-import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import { Prisma } from '../generated/prisma/client';
@@ -13,7 +13,7 @@ import Decimal = Prisma.Decimal;
 export class DocumentPriceChangeService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ledgerService: DocumentLedgerService,
+    private readonly ledgerService: DocumentHistoryService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
@@ -200,7 +200,7 @@ export class DocumentPriceChangeService {
       where: { id },
       include: {
         items: { include: { product: true, priceType: true } },
-        documentLedger: {
+       documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -313,7 +313,7 @@ export class DocumentPriceChangeService {
     } else {
       // No history left? Should we delete the price?
       // Maybe defaults to 0 or delete.
-      // Safer to delete if no history exists to avoid stale data.
+      // Safer to delete if no.documentHistory exists to avoid stale data.
       try {
         await tx.price.delete({
           where: { productId_priceTypeId: { productId, priceTypeId } },

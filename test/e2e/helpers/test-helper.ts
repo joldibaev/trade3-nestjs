@@ -15,8 +15,8 @@ export class TestHelper {
     });
   }
 
-  async getLatestDocumentLedger(documentId: string) {
-    return this.prismaService.documentLedger.findFirst({
+  async getLatestDocumentHistory(documentId: string) {
+    return this.prismaService.documentHistory.findFirst({
       where: {
         OR: [
           { documentPurchaseId: documentId },
@@ -165,8 +165,8 @@ export class TestHelper {
   }
 
   async cleanup() {
-    // 0. Cleanup DocumentLedger, Reprocessing Items, and Price Ledger
-    await this.prismaService.documentLedger.deleteMany({});
+    // 0. Cleanup DocumentHistory, Reprocessing Items, and Price Ledger
+    await this.prismaService.documentHistory.deleteMany({});
     await this.prismaService.inventoryReprocessingItem.deleteMany({});
     await this.prismaService.priceLedger.deleteMany({});
 

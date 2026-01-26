@@ -5,7 +5,7 @@ import { Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
 import { CreateDocumentSaleDto, CreateDocumentSaleItemDto } from './dto/create-document-sale.dto';
 import { StoreService } from '../store/store.service';
-import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
@@ -32,7 +32,7 @@ export class DocumentSaleService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly ledgerService: DocumentLedgerService,
+    private readonly ledgerService: DocumentHistoryService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
@@ -225,7 +225,7 @@ export class DocumentSaleService {
             store: true,
             cashbox: true,
             priceType: true,
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -289,7 +289,7 @@ export class DocumentSaleService {
             store: true,
             cashbox: true,
             priceType: true,
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -342,7 +342,7 @@ export class DocumentSaleService {
             store: true,
             cashbox: true,
             priceType: true,
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -541,7 +541,7 @@ export class DocumentSaleService {
         store: true,
         cashbox: true,
         priceType: true,
-        documentLedger: {
+       documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
       },

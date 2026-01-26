@@ -5,10 +5,10 @@ import { PrismaModule } from '../core/prisma/prisma.module';
 
 import { StoreModule } from '../store/store.module';
 
-import { DocumentLedgerModule } from '../document-ledger/document-ledger.module';
+import { DocumentHistoryModule } from '../document-history/document-history.module';
 
 @Module({
-  imports: [PrismaModule, StoreModule, DocumentLedgerModule],
+  imports: [PrismaModule, StoreModule, DocumentHistoryModule],
   controllers: [DocumentTransferController],
   providers: [DocumentTransferService],
   exports: [DocumentTransferService],

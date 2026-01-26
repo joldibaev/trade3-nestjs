@@ -9,7 +9,7 @@ import {
 } from './dto/create-document-purchase.dto';
 import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { StoreService } from '../store/store.service';
-import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import { DocumentStatus } from '../generated/prisma/enums';
@@ -36,7 +36,7 @@ export class DocumentPurchaseService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly ledgerService: DocumentLedgerService,
+    private readonly ledgerService: DocumentHistoryService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
@@ -474,7 +474,7 @@ export class DocumentPurchaseService {
                 },
               },
             },
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
             vendor: true,
@@ -581,7 +581,7 @@ export class DocumentPurchaseService {
                 },
               },
             },
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
             vendor: true,
@@ -658,7 +658,7 @@ export class DocumentPurchaseService {
                 },
               },
             },
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
             vendor: true,
@@ -818,7 +818,7 @@ export class DocumentPurchaseService {
             },
           },
         },
-        documentLedger: {
+       documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
         vendor: true,
@@ -938,7 +938,7 @@ export class DocumentPurchaseService {
       },
     });
 
-    // Log the creation in DocumentLedger
+    // Log the creation in DocumentHistory
     await this.ledgerService.logAction(tx, {
       documentId: pcDoc.id,
       documentType: 'documentPriceChange',

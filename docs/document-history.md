@@ -1,6 +1,6 @@
-# DocumentLedger (Аудит документов)
+# DocumentHistory (Аудит документов)
 
-`DocumentLedger` — это централизованный механизм логирования всех действий, совершаемых с документами в системе. Он обеспечивает полную прослеживаемость правок, изменений статусов и состава товаров в документах.
+`DocumentHistory` — это централизованный механизм логирования всех действий, совершаемых с документами в системе. Он обеспечивает полную прослеживаемость правок, изменений статусов и состава товаров в документах.
 
 ## Назначение
 
@@ -12,10 +12,10 @@
 
 ## Структура данных (Prisma)
 
-Лог хранится в таблице `DocumentLedger` и связан с основными типами документов через опциональные внешние ключи:
+Лог хранится в таблице `DocumentHistory` и связан с основными типами документов через опциональные внешние ключи:
 
 ```prisma
-model DocumentLedger {
+model DocumentHistory {
   id      String @id @default(uuid(7))
   action  String // Тип действия (CREATED, UPDATED, ITEM_ADDED и т.д.)
   details Json? // Детальная информация в формате JSON
@@ -45,9 +45,9 @@ model DocumentLedger {
 - `ITEM_CHANGED`: Изменение параметров существующей позиции (количество, цена).
 - `DELETED`: Удаление самого документа.
 
-## DocumentLedgerService
+## DocumentHistoryService
 
-Сервис `DocumentLedgerService` предоставляет два основных метода для работы:
+Сервис `DocumentHistoryService` предоставляет два основных метода для работы:
 
 ### 1. `logAction`
 
@@ -86,7 +86,7 @@ await this.ledgerService.logDiff(
 
 ## Интеграция
 
-`DocumentLedger` интегрирован во все основные сервисы:
+`DocumentHistory` интегрирован во все основные сервисы:
 
 - `DocumentPurchaseService`
 - `DocumentSaleService`
@@ -95,4 +95,4 @@ await this.ledgerService.logDiff(
 - `DocumentTransferService`
 - `DocumentPriceChangeService`
 
-Любое изменение данных в этих сервисах должно сопровождаться вызовом `DocumentLedgerService` внутри той же транзакции базы данных.
+Любое изменение данных в этих сервисах должно сопровождаться вызовом `DocumentHistoryService` внутри той же транзакции базы данных.

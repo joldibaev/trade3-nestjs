@@ -140,7 +140,7 @@ export class InventoryService {
         let affectedCount = 0;
         for (const move of movements) {
           // 2.1. Guard check: Only process movements from COMPLETED (conducted) documents
-          // This ensures that DRAFT, SCHEDULED, or CANCELLED documents don't affect history.
+          // This ensures that DRAFT, SCHEDULED, or CANCELLED documents don't affect.documentHistory.
           // Note: When a document is CANCELLED, its original movements are still in the ledger,
           // but they should no longer affect the recalculation.
           const isPurchaseCompleted = move.documentPurchase?.status === 'COMPLETED';

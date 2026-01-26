@@ -236,7 +236,7 @@ model DocumentSale {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   stockLedger            StockLedger[]
-  documentLedger         DocumentLedger[]
+  documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
 }
 
@@ -269,7 +269,7 @@ model DocumentPurchase {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   stockLedger            StockLedger[]
-  documentLedger         DocumentLedger[]
+  documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
 
   // Optional: Link to a price change document generated from this purchase
@@ -305,7 +305,7 @@ model DocumentReturn {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   stockLedger            StockLedger[]
-  documentLedger         DocumentLedger[]
+  documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
 }
 
@@ -334,7 +334,7 @@ model DocumentAdjustment {
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
   stockLedger            StockLedger[]
-  documentLedger         DocumentLedger[]
+  documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
 }
 
@@ -365,7 +365,7 @@ model DocumentTransfer {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   stockLedger            StockLedger[]
-  documentLedger         DocumentLedger[]
+  documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
 }
 
@@ -393,7 +393,7 @@ model DocumentPriceChange {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  documentLedger       DocumentLedger[]
+  documentHistory      DocumentHistory[]
   generatedPriceLedger PriceLedger[]
 
   // Relation to the purchase that generated this price change
@@ -522,8 +522,8 @@ model InventoryReprocessingItem {
   updatedAt DateTime @updatedAt
 }
 
-// Ledger
-model DocumentLedger {
+// History
+model DocumentHistory {
   id      String @id @default(uuid(7))
   action  String // e.g. "CREATED", "UPDATED", "STATUS_CHANGED", "ITEM_ADDED", "ITEM_REMOVED", "ITEM_CHANGED"
   details Json? // Structured data about what changed (oldVal, newVal)

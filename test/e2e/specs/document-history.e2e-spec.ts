@@ -50,7 +50,7 @@ describe('Document Ledger (e2e)', () => {
       const res = await helper.createPurchase(storeId, vendorId, productId, 10, 50, 'DRAFT');
       purchaseId = res.id;
 
-      const ledger = await prisma.documentLedger.findMany({
+      const ledger = await prisma.documentHistory.findMany({
         where: { documentPurchaseId: purchaseId },
         orderBy: { createdAt: 'asc' },
       });
@@ -79,7 +79,7 @@ describe('Document Ledger (e2e)', () => {
 
       await helper.updatePurchase(purchaseId, updateDto);
 
-      const ledger = await prisma.documentLedger.findMany({
+      const ledger = await prisma.documentHistory.findMany({
         where: { documentPurchaseId: purchaseId },
       });
       // console.log('Purchase Ledger:', JSON.stringify(ledger, null, 2));
@@ -122,7 +122,7 @@ describe('Document Ledger (e2e)', () => {
 
       await helper.updatePurchase(purchaseId, sameUpdateDto);
 
-      const ledger = await prisma.documentLedger.findMany({
+      const ledger = await prisma.documentHistory.findMany({
         where: { documentPurchaseId: purchaseId },
         orderBy: { createdAt: 'desc' },
       });
@@ -135,7 +135,7 @@ describe('Document Ledger (e2e)', () => {
     it('should log STATUS_CHANGED on completion', async () => {
       await helper.completePurchase(purchaseId);
 
-      const ledger = await prisma.documentLedger.findFirst({
+      const ledger = await prisma.documentHistory.findFirst({
         where: { documentPurchaseId: purchaseId, action: 'STATUS_CHANGED' },
       });
 
@@ -146,9 +146,9 @@ describe('Document Ledger (e2e)', () => {
     it('should return ledger sorted by createdAt ASC', async () => {
       const res = await prisma.documentPurchase.findUniqueOrThrow({
         where: { id: purchaseId },
-        include: { documentLedger: true },
+        include: { documentHistory: true },
       });
-      const ledger = res.documentLedger;
+      const ledger = res.documentHistory;
 
       expect(ledger.length).toBeGreaterThan(1);
 

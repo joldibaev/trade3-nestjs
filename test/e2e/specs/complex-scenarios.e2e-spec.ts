@@ -126,7 +126,7 @@ describe('Complex Inventory Scenarios (e2e)', () => {
     expect(si2.costPrice).toEqual(new Decimal('183.33'));
   });
 
-  it('should log detailed changes in DocumentLedger for status updates', async () => {
+  it('should log detailed changes in DocumentHistory for status updates', async () => {
     const store = await helper.createStore();
     const vendor = await helper.createVendor();
     const category = await helper.createCategory();
@@ -136,7 +136,7 @@ describe('Complex Inventory Scenarios (e2e)', () => {
 
     await helper.completePurchase(purchase.id, 'COMPLETED');
 
-    const ledger = await helper.getLatestDocumentLedger(purchase.id);
+    const ledger = await helper.getLatestDocumentHistory(purchase.id);
     expect(ledger).toBeDefined();
     expect(ledger?.action).toBe('STATUS_CHANGED');
     expect((ledger?.details as any).to).toBe('COMPLETED');

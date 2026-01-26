@@ -30,7 +30,7 @@ type PrismaTransaction = Omit<
 >;
 
 @Injectable()
-export class DocumentLedgerService {
+export class DocumentHistoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -39,7 +39,7 @@ export class DocumentLedgerService {
   async logAction(tx: PrismaTransaction, params: LogActionParams) {
     const { documentId, documentType, action, details } = params;
 
-    const data: Prisma.DocumentLedgerUncheckedCreateInput = {
+    const data: Prisma.DocumentHistoryUncheckedCreateInput = {
       action,
       details: (details as Prisma.InputJsonValue) || Prisma.JsonNull,
       documentPurchaseId: documentType === 'documentPurchase' ? documentId : null,
@@ -50,7 +50,7 @@ export class DocumentLedgerService {
       documentPriceChangeId: documentType === 'documentPriceChange' ? documentId : null,
     };
 
-    await tx.documentLedger.create({
+    await tx.documentHistory.create({
       data,
     });
   }

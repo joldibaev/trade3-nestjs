@@ -9,7 +9,7 @@ import {
 } from './dto/create-document-adjustment.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
-import { DocumentLedgerService } from '../document-ledger/document-ledger.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
@@ -34,7 +34,7 @@ export class DocumentAdjustmentService {
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
     private readonly stockLedgerService: StockLedgerService,
-    private readonly ledgerService: DocumentLedgerService,
+    private readonly ledgerService: DocumentHistoryService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
@@ -169,7 +169,7 @@ export class DocumentAdjustmentService {
           include: {
             items: true,
             store: true,
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -222,7 +222,7 @@ export class DocumentAdjustmentService {
           include: {
             items: true,
             store: true,
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -263,7 +263,7 @@ export class DocumentAdjustmentService {
           include: {
             items: true,
             store: true,
-            documentLedger: {
+           documentHistory: {
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -499,7 +499,7 @@ export class DocumentAdjustmentService {
       include: {
         items: true,
         store: true,
-        documentLedger: {
+       documentHistory: {
           orderBy: { createdAt: 'asc' },
         },
       },
