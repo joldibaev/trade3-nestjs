@@ -150,7 +150,7 @@ export class DocumentTransferService {
     });
   }
 
-  async addItem(id: string, dto: CreateDocumentTransferItemDto) {
+  async addItems(id: string, itemsDto: CreateDocumentTransferItemDto[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentTransfer.findUniqueOrThrow({
@@ -159,23 +159,25 @@ export class DocumentTransferService {
 
         this.baseService.ensureDraft(doc.status);
 
-        const { productId, quantity } = dto;
-        const qVal = new Decimal(quantity);
+        for (const dto of itemsDto) {
+          const { productId, quantity } = dto;
+          const qVal = new Decimal(quantity);
 
-        const _newItem = await tx.documentTransferItem.create({
-          data: {
-            transferId: id,
-            productId: productId!,
-            quantity: qVal,
-          },
-        });
+          await tx.documentTransferItem.create({
+            data: {
+              transferId: id,
+              productId: productId!,
+              quantity: qVal,
+            },
+          });
 
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentTransfer',
-          action: 'ITEM_ADDED',
-          details: { productId: productId!, quantity: qVal },
-        });
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentTransfer',
+            action: 'ITEM_ADDED',
+            details: { productId: productId!, quantity: qVal },
+          });
+        }
 
         return tx.documentTransfer.findUniqueOrThrow({
           where: { id },
@@ -243,7 +245,7 @@ export class DocumentTransferService {
     );
   }
 
-  async removeItem(id: string, itemId: string) {
+  async removeItems(id: string, itemIds: string[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentTransfer.findUniqueOrThrow({
@@ -252,20 +254,22 @@ export class DocumentTransferService {
 
         this.baseService.ensureDraft(doc.status);
 
-        const item = await tx.documentTransferItem.findUniqueOrThrow({
-          where: { id: itemId },
-        });
+        for (const itemId of itemIds) {
+          const item = await tx.documentTransferItem.findUniqueOrThrow({
+            where: { id: itemId },
+          });
 
-        await tx.documentTransferItem.delete({
-          where: { id: itemId },
-        });
+          await tx.documentTransferItem.delete({
+            where: { id: itemId },
+          });
 
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentTransfer',
-          action: 'ITEM_REMOVED',
-          details: { productId: item.productId, quantity: item.quantity },
-        });
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentTransfer',
+            action: 'ITEM_REMOVED',
+            details: { productId: item.productId, quantity: item.quantity },
+          });
+        }
 
         return tx.documentTransfer.findUniqueOrThrow({
           where: { id },

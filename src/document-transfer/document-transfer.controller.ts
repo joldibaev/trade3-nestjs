@@ -3,6 +3,8 @@ import { DocumentTransferService } from './document-transfer.service';
 import {
   CreateDocumentTransferDto,
   CreateDocumentTransferItemDto,
+  CreateDocumentTransferItemsDto,
+  RemoveDocumentTransferItemsDto,
 } from './dto/create-document-transfer.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
@@ -38,8 +40,8 @@ export class DocumentTransferController {
   }
 
   @Post(':id/items')
-  addItem(@Param('id') id: string, @Body() dto: CreateDocumentTransferItemDto) {
-    return this.documentTransferService.addItem(id, dto);
+  addItems(@Param('id') id: string, @Body() dto: CreateDocumentTransferItemsDto) {
+    return this.documentTransferService.addItems(id, dto.items);
   }
 
   @Patch(':id/items/:itemId')
@@ -51,8 +53,8 @@ export class DocumentTransferController {
     return this.documentTransferService.updateItem(id, itemId, dto);
   }
 
-  @Delete(':id/items/:itemId')
-  removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.documentTransferService.removeItem(id, itemId);
+  @Delete(':id/items')
+  removeItems(@Param('id') id: string, @Body() dto: RemoveDocumentTransferItemsDto) {
+    return this.documentTransferService.removeItems(id, dto.itemIds);
   }
 }

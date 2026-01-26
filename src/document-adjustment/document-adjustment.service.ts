@@ -124,7 +124,7 @@ export class DocumentAdjustmentService {
     });
   }
 
-  async addItem(id: string, dto: CreateDocumentAdjustmentItemDto) {
+  async addItems(id: string, itemsDto: CreateDocumentAdjustmentItemDto[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
@@ -134,33 +134,35 @@ export class DocumentAdjustmentService {
 
         this.baseService.ensureDraft(doc.status);
 
-        const { productId, quantity } = dto;
-        const qDelta = new Decimal(quantity);
+        for (const dto of itemsDto) {
+          const { productId, quantity } = dto;
+          const qDelta = new Decimal(quantity);
 
-        // Fetch current stock to calculate snapshots
-        const stock = await tx.stock.findUnique({
-          where: { productId_storeId: { productId: productId!, storeId: doc.storeId } },
-        });
+          // Fetch current stock to calculate snapshots
+          const stock = await tx.stock.findUnique({
+            where: { productId_storeId: { productId: productId!, storeId: doc.storeId } },
+          });
 
-        const quantityBefore = stock ? stock.quantity : new Decimal(0);
-        const quantityAfter = quantityBefore.add(qDelta);
+          const quantityBefore = stock ? stock.quantity : new Decimal(0);
+          const quantityAfter = quantityBefore.add(qDelta);
 
-        const _newItem = await tx.documentAdjustmentItem.create({
-          data: {
-            adjustmentId: id,
-            productId: productId!,
-            quantity: qDelta,
-            quantityBefore,
-            quantityAfter,
-          },
-        });
+          await tx.documentAdjustmentItem.create({
+            data: {
+              adjustmentId: id,
+              productId: productId!,
+              quantity: qDelta,
+              quantityBefore,
+              quantityAfter,
+            },
+          });
 
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentAdjustment',
-          action: 'ITEM_ADDED',
-          details: { productId, quantity: qDelta },
-        });
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentAdjustment',
+            action: 'ITEM_ADDED',
+            details: { productId, quantity: qDelta },
+          });
+        }
 
         return tx.documentAdjustment.findUniqueOrThrow({
           where: { id },
@@ -230,7 +232,7 @@ export class DocumentAdjustmentService {
     );
   }
 
-  async removeItem(id: string, itemId: string) {
+  async removeItems(id: string, itemIds: string[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
@@ -239,20 +241,22 @@ export class DocumentAdjustmentService {
 
         this.baseService.ensureDraft(doc.status);
 
-        const item = await tx.documentAdjustmentItem.findUniqueOrThrow({
-          where: { id: itemId },
-        });
+        for (const itemId of itemIds) {
+          const item = await tx.documentAdjustmentItem.findUniqueOrThrow({
+            where: { id: itemId },
+          });
 
-        await tx.documentAdjustmentItem.delete({
-          where: { id: itemId },
-        });
+          await tx.documentAdjustmentItem.delete({
+            where: { id: itemId },
+          });
 
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentAdjustment',
-          action: 'ITEM_REMOVED',
-          details: { productId: item.productId, quantity: item.quantity },
-        });
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentAdjustment',
+            action: 'ITEM_REMOVED',
+            details: { productId: item.productId, quantity: item.quantity },
+          });
+        }
 
         return tx.documentAdjustment.findUniqueOrThrow({
           where: { id },

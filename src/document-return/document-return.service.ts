@@ -129,7 +129,7 @@ export class DocumentReturnService {
     });
   }
 
-  async addItem(id: string, dto: CreateDocumentReturnItemDto) {
+  async addItems(id: string, itemsDto: CreateDocumentReturnItemDto[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
@@ -138,31 +138,36 @@ export class DocumentReturnService {
 
         this.baseService.ensureDraft(doc.status);
 
-        const { productId, quantity, price } = dto;
-        const qDelta = new Decimal(quantity);
-        const pVal = new Decimal(price || 0);
-        const itemTotal = qDelta.mul(pVal);
+        let totalAddition = new Decimal(0);
 
-        const _newItem = await tx.documentReturnItem.create({
-          data: {
-            returnId: id,
-            productId: productId!,
-            quantity: qDelta,
-            price: pVal,
-            total: itemTotal,
-          },
-        });
+        for (const dto of itemsDto) {
+          const { productId, quantity, price } = dto;
+          const qDelta = new Decimal(quantity);
+          const pVal = new Decimal(price || 0);
+          const itemTotal = qDelta.mul(pVal);
+          totalAddition = totalAddition.add(itemTotal);
+
+          await tx.documentReturnItem.create({
+            data: {
+              returnId: id,
+              productId: productId!,
+              quantity: qDelta,
+              price: pVal,
+              total: itemTotal,
+            },
+          });
+
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentReturn',
+            action: 'ITEM_ADDED',
+            details: { productId, quantity: qDelta, price: pVal, total: itemTotal },
+          });
+        }
 
         await tx.documentReturn.update({
           where: { id },
-          data: { total: { increment: itemTotal } },
-        });
-
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentReturn',
-          action: 'ITEM_ADDED',
-          details: { productId, quantity: qDelta, price: pVal, total: itemTotal },
+          data: { total: { increment: totalAddition } },
         });
 
         return tx.documentReturn.findUniqueOrThrow({
@@ -243,7 +248,7 @@ export class DocumentReturnService {
     );
   }
 
-  async removeItem(id: string, itemId: string) {
+  async removeItems(id: string, itemIds: string[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
@@ -252,24 +257,30 @@ export class DocumentReturnService {
 
         this.baseService.ensureDraft(doc.status);
 
-        const item = await tx.documentReturnItem.findUniqueOrThrow({
-          where: { id: itemId },
-        });
+        let totalSubtraction = new Decimal(0);
 
-        await tx.documentReturnItem.delete({
-          where: { id: itemId },
-        });
+        for (const itemId of itemIds) {
+          const item = await tx.documentReturnItem.findUniqueOrThrow({
+            where: { id: itemId },
+          });
+
+          await tx.documentReturnItem.delete({
+            where: { id: itemId },
+          });
+
+          totalSubtraction = totalSubtraction.add(item.total);
+
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentReturn',
+            action: 'ITEM_REMOVED',
+            details: { productId: item.productId, quantity: item.quantity, total: item.total },
+          });
+        }
 
         await tx.documentReturn.update({
           where: { id },
-          data: { total: { decrement: item.total } },
-        });
-
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentReturn',
-          action: 'ITEM_REMOVED',
-          details: { productId: item.productId, quantity: item.quantity, total: item.total },
+          data: { total: { decrement: totalSubtraction } },
         });
 
         return tx.documentReturn.findUniqueOrThrow({

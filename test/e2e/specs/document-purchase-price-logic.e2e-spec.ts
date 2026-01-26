@@ -90,10 +90,14 @@ describe('Document Purchase Price Integration (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/document-purchases/${purchaseId}/items`)
       .send({
-        productId: product1.id,
-        quantity: 5,
-        price: 100,
-        newPrices: [{ priceTypeId: retail.id, value: 150 }],
+        items: [
+          {
+            productId: product1.id,
+            quantity: 5,
+            price: 100,
+            newPrices: [{ priceTypeId: retail.id, value: 150 }],
+          },
+        ],
       })
       .expect(201);
 
@@ -101,10 +105,14 @@ describe('Document Purchase Price Integration (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/document-purchases/${purchaseId}/items`)
       .send({
-        productId: product2.id,
-        quantity: 10,
-        price: 200,
-        newPrices: [{ priceTypeId: retail.id, value: 300 }],
+        items: [
+          {
+            productId: product2.id,
+            quantity: 10,
+            price: 200,
+            newPrices: [{ priceTypeId: retail.id, value: 300 }],
+          },
+        ],
       })
       .expect(201);
 

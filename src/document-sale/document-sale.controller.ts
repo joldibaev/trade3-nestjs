@@ -1,6 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { DocumentSaleService } from './document-sale.service';
-import { CreateDocumentSaleDto, CreateDocumentSaleItemDto } from './dto/create-document-sale.dto';
+import {
+  CreateDocumentSaleDto,
+  CreateDocumentSaleItemDto,
+  CreateDocumentSaleItemsDto,
+  RemoveDocumentSaleItemsDto,
+} from './dto/create-document-sale.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
 
@@ -40,8 +45,8 @@ export class DocumentSaleController {
   }
 
   @Post(':id/items')
-  addItem(@Param('id') id: string, @Body() dto: CreateDocumentSaleItemDto) {
-    return this.documentSaleService.addItem(id, dto);
+  addItems(@Param('id') id: string, @Body() dto: CreateDocumentSaleItemsDto) {
+    return this.documentSaleService.addItems(id, dto.items);
   }
 
   @Patch(':id/items/:itemId')
@@ -53,8 +58,8 @@ export class DocumentSaleController {
     return this.documentSaleService.updateItem(id, itemId, dto);
   }
 
-  @Delete(':id/items/:itemId')
-  removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.documentSaleService.removeItem(id, itemId);
+  @Delete(':id/items')
+  removeItems(@Param('id') id: string, @Body() dto: RemoveDocumentSaleItemsDto) {
+    return this.documentSaleService.removeItems(id, dto.itemIds);
   }
 }

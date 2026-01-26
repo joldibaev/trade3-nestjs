@@ -3,6 +3,8 @@ import { DocumentReturnService } from './document-return.service';
 import {
   CreateDocumentReturnDto,
   CreateDocumentReturnItemDto,
+  CreateDocumentReturnItemsDto,
+  RemoveDocumentReturnItemsDto,
 } from './dto/create-document-return.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
@@ -38,8 +40,8 @@ export class DocumentReturnController {
   }
 
   @Post(':id/items')
-  addItem(@Param('id') id: string, @Body() dto: CreateDocumentReturnItemDto) {
-    return this.documentReturnService.addItem(id, dto);
+  addItems(@Param('id') id: string, @Body() dto: CreateDocumentReturnItemsDto) {
+    return this.documentReturnService.addItems(id, dto.items);
   }
 
   @Patch(':id/items/:itemId')
@@ -51,8 +53,8 @@ export class DocumentReturnController {
     return this.documentReturnService.updateItem(id, itemId, dto);
   }
 
-  @Delete(':id/items/:itemId')
-  removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.documentReturnService.removeItem(id, itemId);
+  @Delete(':id/items')
+  removeItems(@Param('id') id: string, @Body() dto: RemoveDocumentReturnItemsDto) {
+    return this.documentReturnService.removeItems(id, dto.itemIds);
   }
 }

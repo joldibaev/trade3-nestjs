@@ -149,7 +149,7 @@ export class DocumentSaleService {
     );
   }
 
-  async addItem(id: string, dto: CreateDocumentSaleItemDto) {
+  async addItems(id: string, itemsDto: CreateDocumentSaleItemDto[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
@@ -158,54 +158,65 @@ export class DocumentSaleService {
 
         this.baseService.ensureDraft(sale.status);
 
-        const { productId, quantity } = dto;
-        const product = await tx.product.findUniqueOrThrow({
-          where: { id: productId },
-          include: { prices: true },
-        });
+        let totalAddition = new Decimal(0);
 
-        let finalPrice = new Decimal(dto.price ?? 0);
-        if (dto.price === undefined) {
-          if (sale.priceTypeId) {
-            const priceObj = product.prices.find((p) => p.priceTypeId === sale.priceTypeId);
-            finalPrice = priceObj ? priceObj.value : new Decimal(0);
-          } else {
-            finalPrice = product.prices[0] ? product.prices[0].value : new Decimal(0);
+        for (const dto of itemsDto) {
+          const { productId, quantity } = dto;
+          if (!productId) {
+            throw new BadRequestException('ID товара обязателен');
           }
+
+          const product = await tx.product.findUniqueOrThrow({
+            where: { id: productId },
+            include: { prices: true },
+          });
+
+          let finalPrice = new Decimal(dto.price ?? 0);
+          if (dto.price === undefined) {
+            if (sale.priceTypeId) {
+              const priceObj = product.prices.find((p) => p.priceTypeId === sale.priceTypeId);
+              finalPrice = priceObj ? priceObj.value : new Decimal(0);
+            } else {
+              finalPrice = product.prices[0] ? product.prices[0].value : new Decimal(0);
+            }
+          }
+
+          const qVal = new Decimal(quantity);
+          const itemTotal = qVal.mul(finalPrice);
+          totalAddition = totalAddition.add(itemTotal);
+
+          // Fetch current cost price for snapshot
+          const stock = await tx.stock.findUnique({
+            where: { productId_storeId: { productId: productId, storeId: sale.storeId } },
+          });
+          const costPrice = stock ? stock.averagePurchasePrice : new Decimal(0);
+
+          await tx.documentSaleItem.create({
+            data: {
+              saleId: id,
+              productId: productId,
+              quantity: qVal,
+              price: finalPrice,
+              costPrice,
+              total: itemTotal,
+            },
+          });
+
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentSale',
+            action: 'ITEM_ADDED',
+            details: { productId, quantity: qVal, price: finalPrice, total: itemTotal },
+          });
         }
-
-        const qVal = new Decimal(quantity);
-        const itemTotal = qVal.mul(finalPrice);
-
-        // Fetch current cost price for snapshot
-        const stock = await tx.stock.findUnique({
-          where: { productId_storeId: { productId: productId!, storeId: sale.storeId } },
-        });
-        const costPrice = stock ? stock.averagePurchasePrice : new Decimal(0);
-
-        const _newItem = await tx.documentSaleItem.create({
-          data: {
-            saleId: id,
-            productId: productId!,
-            quantity: qVal,
-            price: finalPrice,
-            costPrice,
-            total: itemTotal,
-          },
-        });
 
         await tx.documentSale.update({
           where: { id },
-          data: { total: { increment: itemTotal } },
+          data: { total: { increment: totalAddition } },
         });
 
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentSale',
-          action: 'ITEM_ADDED',
-          details: { productId, quantity: qVal, price: finalPrice, total: itemTotal },
-        });
-
+        // Use tx context for findOne if needed, but since it's read-only and transaction will commit,
+        // we can fetch it after or inside. Let's do it inside using tx.
         return tx.documentSale.findUniqueOrThrow({
           where: { id },
           include: {
@@ -288,7 +299,7 @@ export class DocumentSaleService {
     );
   }
 
-  async removeItem(id: string, itemId: string) {
+  async removeItems(id: string, itemIds: string[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
@@ -297,24 +308,30 @@ export class DocumentSaleService {
 
         this.baseService.ensureDraft(sale.status);
 
-        const item = await tx.documentSaleItem.findUniqueOrThrow({
-          where: { id: itemId },
-        });
+        let totalSubtraction = new Decimal(0);
 
-        await tx.documentSaleItem.delete({
-          where: { id: itemId },
-        });
+        for (const itemId of itemIds) {
+          const item = await tx.documentSaleItem.findUniqueOrThrow({
+            where: { id: itemId },
+          });
+
+          await tx.documentSaleItem.delete({
+            where: { id: itemId },
+          });
+
+          totalSubtraction = totalSubtraction.add(item.total);
+
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentSale',
+            action: 'ITEM_REMOVED',
+            details: { productId: item.productId, quantity: item.quantity, total: item.total },
+          });
+        }
 
         await tx.documentSale.update({
           where: { id },
-          data: { total: { decrement: item.total } },
-        });
-
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentSale',
-          action: 'ITEM_REMOVED',
-          details: { productId: item.productId, quantity: item.quantity, total: item.total },
+          data: { total: { decrement: totalSubtraction } },
         });
 
         return tx.documentSale.findUniqueOrThrow({

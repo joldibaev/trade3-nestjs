@@ -306,7 +306,7 @@ export class DocumentPurchaseService {
               }
             } else if (
               updatedDoc.generatedPriceChange.status === 'COMPLETED' &&
-              newPriceChangeStatus !== 'COMPLETED'
+              newPriceChangeStatus === 'DRAFT'
             ) {
               // Revert
               const pcItems = await tx.documentPriceChangeItem.findMany({
@@ -368,7 +368,7 @@ export class DocumentPurchaseService {
     return updatedPurchase;
   }
 
-  async addItem(id: string, itemDto: CreateDocumentPurchaseItemDto) {
+  async addItems(id: string, itemsDto: CreateDocumentPurchaseItemDto[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentPurchase.findUniqueOrThrow({
@@ -378,42 +378,51 @@ export class DocumentPurchaseService {
 
         this.baseService.ensureDraft(doc.status);
 
-        // Calculate and Create Item
-        const quantity = new Decimal(itemDto.quantity);
-        const price = new Decimal(itemDto.price);
-        const total = quantity.mul(price);
+        let totalAddition = new Decimal(0);
 
-        await tx.documentPurchaseItem.create({
-          data: {
-            purchaseId: id,
-            productId: itemDto.productId,
-            quantity,
-            price,
-            total,
-          },
-        });
+        for (const itemDto of itemsDto) {
+          const quantity = new Decimal(itemDto.quantity);
+          const price = new Decimal(itemDto.price);
+          const total = quantity.mul(price);
+          totalAddition = totalAddition.add(total);
+
+          await tx.documentPurchaseItem.create({
+            data: {
+              purchaseId: id,
+              productId: itemDto.productId,
+              quantity,
+              price,
+              total,
+            },
+          });
+
+          // Log Action
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentPurchase',
+            action: 'ITEM_ADDED',
+            details: {
+              productId: itemDto.productId,
+              quantity,
+              price,
+              total,
+            },
+          });
+        }
 
         // Update Document Total
-        const newTotal = new Decimal(doc.total).add(total);
+        const newTotal = new Decimal(doc.total).add(totalAddition);
         await tx.documentPurchase.update({
           where: { id },
           data: { total: newTotal },
         });
 
-        // Log Action
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentPurchase',
-          action: 'ITEM_ADDED',
-          details: {
-            productId: itemDto.productId,
-            quantity,
-            price,
-            total,
-          },
+        // Fetch freshly created items to ensure we have correct state for sync
+        const currentItems = await tx.documentPurchaseItem.findMany({
+          where: { purchaseId: id },
         });
 
-        // Sync Price Changes with ALL items (including the new one)
+        // Sync Price Changes with ALL items
         // Load existing DocumentPriceChange to preserve newPrices from previous items
         const existingPriceChange = await tx.documentPriceChange.findUnique({
           where: { documentPurchaseId: id },
@@ -434,24 +443,23 @@ export class DocumentPurchaseService {
           }
         }
 
-        // Map existing items to PreparedPurchaseItem format with preserved newPrices
-        const allItems = [
-          ...doc.items.map((i) => ({
-            productId: i.productId,
-            quantity: i.quantity,
-            price: i.price,
-            total: i.total,
-            newPrices: existingNewPricesMap.get(i.productId) || [],
-          })),
-          {
-            productId: itemDto.productId,
-            quantity,
-            price,
-            total,
-            newPrices: itemDto.newPrices || [],
-          },
-        ];
-        await this.syncPriceChanges(tx, doc, allItems);
+        // Overlay new prices from the current DTOs
+        for (const dto of itemsDto) {
+          if (dto.newPrices) {
+            existingNewPricesMap.set(dto.productId, dto.newPrices);
+          }
+        }
+
+        // Map items to PreparedPurchaseItem format
+        const allItemsPrepared = currentItems.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          price: i.price,
+          total: i.total,
+          newPrices: existingNewPricesMap.get(i.productId) || [],
+        }));
+
+        await this.syncPriceChanges(tx, doc, allItemsPrepared);
 
         return tx.documentPurchase.findUniqueOrThrow({
           where: { id },
@@ -590,7 +598,7 @@ export class DocumentPurchaseService {
     );
   }
 
-  async removeItem(id: string, itemId: string) {
+  async removeItems(id: string, productIds: string[]) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentPurchase.findUniqueOrThrow({
@@ -600,36 +608,41 @@ export class DocumentPurchaseService {
 
         this.baseService.ensureDraft(doc.status);
 
-        const existingItem = doc.items.find((i) => i.productId === itemId);
-        if (!existingItem) {
-          // Idempotent success or throw? Throw is better for UI feedback.
-          throw new BadRequestException('Товар не найден в документе');
+        let totalSubtraction = new Decimal(0);
+
+        for (const productId of productIds) {
+          const existingItem = doc.items.find((i) => i.productId === productId);
+          if (!existingItem) {
+            throw new BadRequestException(`Товар с ID ${productId} не найден в документе`);
+          }
+
+          await tx.documentPurchaseItem.delete({
+            where: { id: existingItem.id },
+          });
+
+          totalSubtraction = totalSubtraction.add(existingItem.total);
+
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentPurchase',
+            action: 'ITEM_REMOVED',
+            details: {
+              productId,
+              quantity: existingItem.quantity,
+              price: existingItem.price,
+              total: existingItem.total,
+            },
+          });
         }
 
-        await tx.documentPurchaseItem.delete({
-          where: { id: existingItem.id },
-        });
-
-        const newTotal = new Decimal(doc.total).sub(existingItem.total);
+        const newTotal = new Decimal(doc.total).sub(totalSubtraction);
         await tx.documentPurchase.update({
           where: { id },
           data: { total: newTotal },
         });
 
-        await this.ledgerService.logAction(tx, {
-          documentId: id,
-          documentType: 'documentPurchase',
-          action: 'ITEM_REMOVED',
-          details: {
-            productId: itemId,
-            quantity: existingItem.quantity,
-            price: existingItem.price,
-            total: existingItem.total,
-          },
-        });
-
         // Sync Price Changes
-        const updatedItems = doc.items.filter((i) => i.productId !== itemId);
+        const updatedItems = doc.items.filter((i) => !productIds.includes(i.productId));
         await this.syncPriceChanges(tx, doc, updatedItems);
 
         return tx.documentPurchase.findUniqueOrThrow({

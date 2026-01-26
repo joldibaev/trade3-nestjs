@@ -3,6 +3,8 @@ import { DocumentAdjustmentService } from './document-adjustment.service';
 import {
   CreateDocumentAdjustmentDto,
   CreateDocumentAdjustmentItemDto,
+  CreateDocumentAdjustmentItemsDto,
+  RemoveDocumentAdjustmentItemsDto,
 } from './dto/create-document-adjustment.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
@@ -38,8 +40,8 @@ export class DocumentAdjustmentController {
   }
 
   @Post(':id/items')
-  addItem(@Param('id') id: string, @Body() dto: CreateDocumentAdjustmentItemDto) {
-    return this.documentAdjustmentService.addItem(id, dto);
+  addItems(@Param('id') id: string, @Body() dto: CreateDocumentAdjustmentItemsDto) {
+    return this.documentAdjustmentService.addItems(id, dto.items);
   }
 
   @Patch(':id/items/:itemId')
@@ -51,8 +53,8 @@ export class DocumentAdjustmentController {
     return this.documentAdjustmentService.updateItem(id, itemId, dto);
   }
 
-  @Delete(':id/items/:itemId')
-  removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.documentAdjustmentService.removeItem(id, itemId);
+  @Delete(':id/items')
+  removeItems(@Param('id') id: string, @Body() dto: RemoveDocumentAdjustmentItemsDto) {
+    return this.documentAdjustmentService.removeItems(id, dto.itemIds);
   }
 }

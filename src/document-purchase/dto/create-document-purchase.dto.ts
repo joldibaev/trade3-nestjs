@@ -86,3 +86,24 @@ export class CreateDocumentPurchaseDto {
   @IsOptional()
   notes?: string;
 }
+
+export class CreateDocumentPurchaseItemsDto {
+  @ApiProperty({
+    description: 'List of items to add to the purchase',
+    type: [CreateDocumentPurchaseItemDto],
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateDocumentPurchaseItemDto)
+  items: CreateDocumentPurchaseItemDto[];
+}
+
+export class RemoveDocumentPurchaseItemsDto {
+  @ApiProperty({
+    description: 'List of product IDs to remove from the purchase',
+    example: ['uuid-product-id-1', 'uuid-product-id-2'],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  productIds: string[];
+}

@@ -99,7 +99,7 @@ describe('Product Last Purchase Price (e2e)', () => {
 
     await request(app.getHttpServer())
       .post(`/document-purchases/${purchaseId}/items`)
-      .send({ productId, quantity: 10, price, newPrices: [] })
+      .send({ items: [{ productId, quantity: 10, price, newPrices: [] }] })
       .expect(201);
 
     return purchaseId;

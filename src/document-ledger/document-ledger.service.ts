@@ -41,7 +41,7 @@ export class DocumentLedgerService {
 
     const data: Prisma.DocumentLedgerUncheckedCreateInput = {
       action,
-      details: details || Prisma.JsonNull,
+      details: (details as Prisma.InputJsonValue) || Prisma.JsonNull,
       documentPurchaseId: documentType === 'documentPurchase' ? documentId : null,
       documentSaleId: documentType === 'documentSale' ? documentId : null,
       documentReturnId: documentType === 'documentReturn' ? documentId : null,

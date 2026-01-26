@@ -77,7 +77,7 @@ export class TestHelper {
 
     await request(this.app.getHttpServer())
       .post(`/document-purchases/${purchaseId}/items`)
-      .send(itemPayload)
+      .send({ items: [itemPayload] })
       .expect(201);
 
     // 3. Update Status if needed
@@ -125,10 +125,10 @@ export class TestHelper {
             .send(itemDto)
             .expect(200);
         } else {
-          // Add new item
+          // Add new items
           await request(this.app.getHttpServer())
             .post(`/document-purchases/${id}/items`)
-            .send(itemDto)
+            .send({ items: [itemDto] })
             .expect(201);
         }
       }
@@ -433,7 +433,7 @@ export class TestHelper {
     try {
       await request(this.app.getHttpServer())
         .post(`/document-sales/${saleId}/items`)
-        .send({ productId, quantity, price })
+        .send({ items: [{ productId, quantity, price }] })
         .expect(201);
     } catch (error) {
       // If expectedStatus is not 201, this might be the expected failure
@@ -502,7 +502,7 @@ export class TestHelper {
     // Add item
     await request(this.app.getHttpServer())
       .post(`/document-returns/${docId}/items`)
-      .send({ productId, quantity, price })
+      .send({ items: [{ productId, quantity, price }] })
       .expect(201);
 
     if (status === 'COMPLETED') {
@@ -543,7 +543,7 @@ export class TestHelper {
     // Add item
     await request(this.app.getHttpServer())
       .post(`/document-adjustments/${docId}/items`)
-      .send({ productId, quantity: quantityDelta })
+      .send({ items: [{ productId, quantity: quantityDelta }] })
       .expect(201);
 
     if (status === 'COMPLETED') {
@@ -582,7 +582,7 @@ export class TestHelper {
     // Add item
     await request(this.app.getHttpServer())
       .post(`/document-transfers/${docId}/items`)
-      .send({ productId, quantity })
+      .send({ items: [{ productId, quantity }] })
       .expect(201);
 
     if (status === 'COMPLETED') {

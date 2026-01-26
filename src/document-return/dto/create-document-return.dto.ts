@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsDateString,
   IsEnum,
   IsNumber,
@@ -6,6 +7,7 @@ import {
   IsPositive,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { DocumentStatus } from '../../generated/prisma/enums';
 import { Type } from 'class-transformer';
@@ -59,4 +61,25 @@ export class CreateDocumentReturnDto {
   @IsString()
   @IsOptional()
   notes?: string;
+}
+
+export class CreateDocumentReturnItemsDto {
+  @ApiProperty({
+    description: 'List of items to add to the return',
+    type: [CreateDocumentReturnItemDto],
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateDocumentReturnItemDto)
+  items: CreateDocumentReturnItemDto[];
+}
+
+export class RemoveDocumentReturnItemsDto {
+  @ApiProperty({
+    description: 'List of item IDs to remove from the return',
+    example: ['uuid-item-id-1', 'uuid-item-id-2'],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  itemIds: string[];
 }

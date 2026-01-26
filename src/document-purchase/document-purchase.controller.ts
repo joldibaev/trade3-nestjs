@@ -3,6 +3,8 @@ import { DocumentPurchaseService } from './document-purchase.service';
 import {
   CreateDocumentPurchaseDto,
   CreateDocumentPurchaseItemDto,
+  CreateDocumentPurchaseItemsDto,
+  RemoveDocumentPurchaseItemsDto,
 } from './dto/create-document-purchase.dto';
 import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
@@ -44,8 +46,8 @@ export class DocumentPurchaseController {
   }
 
   @Post(':id/items')
-  addItem(@Param('id') id: string, @Body() item: CreateDocumentPurchaseItemDto) {
-    return this.documentPurchaseService.addItem(id, item);
+  addItems(@Param('id') id: string, @Body() dto: CreateDocumentPurchaseItemsDto) {
+    return this.documentPurchaseService.addItems(id, dto.items);
   }
 
   @Patch(':id/items/:itemId')
@@ -57,8 +59,8 @@ export class DocumentPurchaseController {
     return this.documentPurchaseService.updateItem(id, itemId, item);
   }
 
-  @Delete(':id/items/:itemId')
-  removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.documentPurchaseService.removeItem(id, itemId);
+  @Delete(':id/items')
+  removeItems(@Param('id') id: string, @Body() dto: RemoveDocumentPurchaseItemsDto) {
+    return this.documentPurchaseService.removeItems(id, dto.productIds);
   }
 }

@@ -64,7 +64,7 @@ describe('Document CRUD (e2e)', () => {
       // 2. Add Item
       const itemRes = await request(app.getHttpServer())
         .post(`/document-purchases/${purchaseId}/items`)
-        .send({ productId, quantity: 10, price: 100 })
+        .send({ items: [{ productId, quantity: 10, price: 100 }] })
         .expect(201);
 
       // Verify header returned from findOne (or addItem return)
@@ -114,7 +114,7 @@ describe('Document CRUD (e2e)', () => {
 
       await request(app.getHttpServer())
         .post(`/document-purchases/${purchaseId}/items`)
-        .send({ productId, quantity: 5, price: 50 })
+        .send({ items: [{ productId, quantity: 5, price: 50 }] })
         .expect(400);
     });
 
@@ -170,7 +170,7 @@ describe('Document CRUD (e2e)', () => {
       // Add item
       const itemRes = await request(app.getHttpServer())
         .post(`/document-sales/${saleId}/items`)
-        .send({ productId, quantity: 5, price: 100 })
+        .send({ items: [{ productId, quantity: 5, price: 100 }] })
         .expect(201);
 
       expect(itemRes.body.items).toHaveLength(1);
@@ -264,7 +264,7 @@ describe('Document CRUD (e2e)', () => {
       // Add item
       const itemRes = await request(app.getHttpServer())
         .post(`/document-returns/${returnId}/items`)
-        .send({ productId, quantity: 2, price: 50 })
+        .send({ items: [{ productId, quantity: 2, price: 50 }] })
         .expect(201);
 
       expect(itemRes.body.items).toHaveLength(1);
