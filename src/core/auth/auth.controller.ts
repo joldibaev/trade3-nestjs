@@ -15,7 +15,7 @@ export class AuthController {
     private authService: AuthService,
     private usersService: UsersService,
     private hashingService: HashingService,
-  ) { }
+  ) {}
 
   @Public()
   @UseGuards(LocalAuthGuard)

@@ -88,7 +88,7 @@ describe('User Tracking (authorId) E2E', () => {
   afterAll(async () => {
     // Cleanup test user
     if (userId) {
-      await prisma.user.delete({ where: { id: userId } }).catch(() => { });
+      await prisma.user.delete({ where: { id: userId } }).catch(() => {});
     }
     await helper.cleanup();
     await app.close();
