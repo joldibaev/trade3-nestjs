@@ -15,7 +15,7 @@ export class AuthController {
     private authService: AuthService,
     private usersService: UsersService,
     private hashingService: HashingService,
-  ) {}
+  ) { }
 
   @Public()
   @UseGuards(LocalAuthGuard)
@@ -48,8 +48,8 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Req() req: express.Request, @Res({ passthrough: true }) res: express.Response) {
-    const user = req.user as { sub: string };
-    await this.authService.logout(user.sub);
+    const user = req.user as { id: string };
+    await this.authService.logout(user.id);
     res.clearCookie('refreshToken');
     return { message: 'Logged out' };
   }
@@ -59,8 +59,8 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(@Req() req: express.Request, @Res({ passthrough: true }) res: express.Response) {
-    const user = req.user as { sub: string; refreshToken: string };
-    const tokens = await this.authService.refreshTokens(user.sub, user.refreshToken);
+    const user = req.user as { id: string; refreshToken: string };
+    const tokens = await this.authService.refreshTokens(user.id, user.refreshToken);
 
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,

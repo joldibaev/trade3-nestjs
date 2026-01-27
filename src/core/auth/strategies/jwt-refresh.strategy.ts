@@ -22,11 +22,11 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
   validate(
     req: express.Request,
     payload: { sub: string; email: string; role: string },
-  ): { sub: string; email: string; role: string; refreshToken: string } {
+  ): { id: string; email: string; role: string; refreshToken: string } {
     const refreshToken = (req.cookies as Record<string, string>)?.refreshToken;
 
     return {
-      sub: payload.sub,
+      id: payload.sub,
       email: payload.email,
       role: payload.role,
       refreshToken: refreshToken,

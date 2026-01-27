@@ -41,7 +41,7 @@ export class DocumentPurchaseService {
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
-  async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto) {
+  async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto, userId?: string) {
     const { storeId, vendorId, date, status, notes } = createDocumentPurchaseDto;
 
     let targetStatus = status || 'DRAFT';
@@ -73,6 +73,7 @@ export class DocumentPurchaseService {
             status: targetStatus,
             notes,
             total: new Decimal(0),
+            authorId: userId || null,
           },
           include: { items: true },
         });
@@ -82,6 +83,7 @@ export class DocumentPurchaseService {
           documentType: 'documentPurchase',
           action: 'CREATED',
           details: { status: targetStatus, total: 0, notes },
+          authorId: userId,
         });
 
         // 3. Apply Inventory Movements (Only if COMPLETED)
@@ -102,7 +104,7 @@ export class DocumentPurchaseService {
     return result.doc;
   }
 
-  async updateStatus(id: string, newStatus: DocumentStatus) {
+  async updateStatus(id: string, newStatus: DocumentStatus, userId?: string) {
     let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
@@ -207,6 +209,7 @@ export class DocumentPurchaseService {
           documentType: 'documentPurchase',
           action: 'STATUS_CHANGED',
           details: { from: oldStatus, to: newStatus },
+          authorId: userId,
         });
 
         // --- Cascade Status to Linked Price Change ---
@@ -368,7 +371,7 @@ export class DocumentPurchaseService {
     return updatedPurchase;
   }
 
-  async addItems(id: string, itemsDto: CreateDocumentPurchaseItemDto[]) {
+  async addItems(id: string, itemsDto: CreateDocumentPurchaseItemDto[], userId?: string) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentPurchase.findUniqueOrThrow({
@@ -407,6 +410,7 @@ export class DocumentPurchaseService {
               price,
               total,
             },
+            authorId: userId,
           });
         }
 
@@ -491,7 +495,12 @@ export class DocumentPurchaseService {
     );
   }
 
-  async updateItem(id: string, itemId: string, itemDto: CreateDocumentPurchaseItemDto) {
+  async updateItem(
+    id: string,
+    itemId: string,
+    itemDto: CreateDocumentPurchaseItemDto,
+    userId?: string,
+  ) {
     // Note: itemId is productId in the current DTO design, but usually it's a unique ID.
     // However, Prisma doesn't always expose IDs in DTOs easily if not asked.
     // Assuming itemId passed from FE is productId as per route param usage, OR it's a unique ID.
@@ -546,7 +555,7 @@ export class DocumentPurchaseService {
         // Log Diff
         await this.ledgerService.logDiff(
           tx,
-          { documentId: id, documentType: 'documentPurchase' },
+          { documentId: id, documentType: 'documentPurchase', authorId: userId },
           [
             {
               productId: existingItem.productId,
@@ -598,7 +607,7 @@ export class DocumentPurchaseService {
     );
   }
 
-  async removeItems(id: string, productIds: string[]) {
+  async removeItems(id: string, productIds: string[], userId?: string) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentPurchase.findUniqueOrThrow({
@@ -632,6 +641,7 @@ export class DocumentPurchaseService {
               price: existingItem.price,
               total: existingItem.total,
             },
+            authorId: userId,
           });
         }
 

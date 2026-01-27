@@ -22,6 +22,7 @@ interface LogActionParams {
     | 'documentPriceChange';
   action: LedgerActionType;
   details?: Record<string, unknown>;
+  authorId?: string;
 }
 
 type PrismaTransaction = Omit<
@@ -37,7 +38,7 @@ export class DocumentHistoryService {
    * Log a generic action for a document.
    */
   async logAction(tx: PrismaTransaction, params: LogActionParams) {
-    const { documentId, documentType, action, details } = params;
+    const { documentId, documentType, action, details, authorId } = params;
 
     const data: Prisma.DocumentHistoryUncheckedCreateInput = {
       action,
@@ -48,6 +49,7 @@ export class DocumentHistoryService {
       documentAdjustmentId: documentType === 'documentAdjustment' ? documentId : null,
       documentTransferId: documentType === 'documentTransfer' ? documentId : null,
       documentPriceChangeId: documentType === 'documentPriceChange' ? documentId : null,
+      authorId: authorId || null,
     };
 
     await tx.documentHistory.create({
@@ -72,7 +74,7 @@ export class DocumentHistoryService {
     newItems: T[],
     compareFields: (keyof T)[],
   ) {
-    const { documentId, documentType } = baseParams;
+    const { documentId, documentType, authorId } = baseParams;
 
     const oldMap = new Map(oldItems.map((i) => [i.productId, i]));
     const newMap = new Map(newItems.map((i) => [i.productId, i]));
@@ -85,6 +87,7 @@ export class DocumentHistoryService {
           documentType,
           action: 'ITEM_ADDED',
           details: newItem,
+          authorId,
         });
       }
     }
@@ -97,6 +100,7 @@ export class DocumentHistoryService {
           documentType,
           action: 'ITEM_REMOVED',
           details: oldItem,
+          authorId,
         });
       }
     }
@@ -130,6 +134,7 @@ export class DocumentHistoryService {
               productId: newItem.productId,
               changes,
             },
+            authorId,
           });
         }
       }

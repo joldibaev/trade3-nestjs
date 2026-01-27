@@ -37,6 +37,15 @@ model User {
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  // Relations to Documents (as author)
+  createdSales        DocumentSale[]
+  createdPurchases    DocumentPurchase[]
+  createdReturns      DocumentReturn[]
+  createdAdjustments  DocumentAdjustment[]
+  createdTransfers    DocumentTransfer[]
+  createdPriceChanges DocumentPriceChange[]
+  createdHistory      DocumentHistory[]
 }
 
 // Store
@@ -256,6 +265,9 @@ model DocumentSale {
   stockLedger            StockLedger[]
   documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
 }
 
 model DocumentSaleItem {
@@ -292,6 +304,9 @@ model DocumentPurchase {
 
   // Optional: Link to a price change document generated from this purchase
   generatedPriceChange DocumentPriceChange? @relation("PurchaseToPriceChange")
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
 }
 
 model DocumentPurchaseItem {
@@ -325,6 +340,9 @@ model DocumentReturn {
   stockLedger            StockLedger[]
   documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
 }
 
 model DocumentReturnItem {
@@ -354,6 +372,9 @@ model DocumentAdjustment {
   stockLedger            StockLedger[]
   documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
 }
 
 model DocumentAdjustmentItem {
@@ -385,6 +406,9 @@ model DocumentTransfer {
   stockLedger            StockLedger[]
   documentHistory        DocumentHistory[]
   inventoryReprocessings InventoryReprocessing[]
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
 }
 
 model DocumentTransferItem {
@@ -417,6 +441,9 @@ model DocumentPriceChange {
   // Relation to the purchase that generated this price change
   documentPurchase   DocumentPurchase? @relation("PurchaseToPriceChange", fields: [documentPurchaseId], references: [id])
   documentPurchaseId String?           @unique
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
 }
 
 model DocumentPriceChangeItem {
@@ -568,6 +595,9 @@ model DocumentHistory {
   date      DateTime @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
+  author   User?   @relation(fields: [authorId], references: [id])
+  authorId String?
 
   @@index([documentPurchaseId])
   @@index([documentSaleId])
