@@ -37,6 +37,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = exception.getStatus();
       const response = exception.getResponse();
 
+      if (statusCode === HttpStatus.BAD_REQUEST || statusCode === HttpStatus.NOT_FOUND) {
+        this.logger.debug(`Error (${statusCode}): ${JSON.stringify(response, null, 2)}`);
+      }
+
       if (typeof response === 'object' && response !== null) {
         const resObj = response as Record<string, unknown>;
         title = (resObj.error as string) || 'Error';

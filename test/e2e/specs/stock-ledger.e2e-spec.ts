@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyCookie from '@fastify/cookie';
+import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 
 describe('Stock Ledger Audit Flow (E2E)', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let prismaService: PrismaService;
   let helper: TestHelper;
 
@@ -14,8 +16,11 @@ describe('Stock Ledger Audit Flow (E2E)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyCookie);
+    app.useGlobalPipes(new ZodValidationPipe());
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
 
     prismaService = app.get<PrismaService>(PrismaService);
     const prisma = app.get(PrismaService);
@@ -23,7 +28,7 @@ describe('Stock Ledger Audit Flow (E2E)', () => {
   });
 
   afterEach(async () => {
-    await helper.cleanup();
+    await helper?.cleanup();
   });
 
   afterAll(async () => {

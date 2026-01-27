@@ -1,4 +1,4 @@
-import * as express from 'express';
+import { FastifyRequest } from 'fastify';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Injectable } from '@nestjs/common';
@@ -9,8 +9,8 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
   constructor(private configService: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (req: express.Request): string | null => {
-          return (req.cookies as Record<string, string>)?.refreshToken || null;
+        (req: FastifyRequest): string | null => {
+          return req.cookies?.refreshToken || null;
         },
       ]),
       ignoreExpiration: false,
@@ -20,10 +20,10 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
   }
 
   validate(
-    req: express.Request,
+    req: FastifyRequest,
     payload: { sub: string; email: string; role: string },
   ): { id: string; email: string; role: string; refreshToken: string } {
-    const refreshToken = (req.cookies as Record<string, string>)?.refreshToken;
+    const refreshToken = req.cookies?.refreshToken as string;
 
     return {
       id: payload.sub,

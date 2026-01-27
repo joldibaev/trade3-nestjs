@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyCookie from '@fastify/cookie';
+import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 import { SchedulerService } from '../../../src/core/scheduler/scheduler.service';
 
 describe('Scheduler & Future Documents (e2e)', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let helper: TestHelper;
   let schedulerService: SchedulerService;
   let prisma: PrismaService;
@@ -16,8 +18,11 @@ describe('Scheduler & Future Documents (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyCookie);
+    app.useGlobalPipes(new ZodValidationPipe());
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
 
     prisma = app.get(PrismaService);
     schedulerService = app.get(SchedulerService);
@@ -25,7 +30,7 @@ describe('Scheduler & Future Documents (e2e)', () => {
   });
 
   afterAll(async () => {
-    await helper.cleanup();
+    await helper?.cleanup();
     await app.close();
   });
 
@@ -97,7 +102,12 @@ describe('Scheduler & Future Documents (e2e)', () => {
     const product = await helper.createProduct(category.id);
 
     // Seed stock first
-    await helper.createPurchase(store.id, null, product.id, 20, 100, 'COMPLETED');
+    const vendor = await helper.createVendor();
+    await helper.createPurchase(store.id, vendor.id, product.id, 20, 100, 'COMPLETED');
+
+    // 1. Create Sale in Future
+    const cashbox = await helper.createCashbox(store.id);
+    const { retail } = await helper.createPriceTypes();
 
     // 1. Create Sale in Future
     const futureDate = new Date();
@@ -105,8 +115,8 @@ describe('Scheduler & Future Documents (e2e)', () => {
 
     const sale = await helper.createSale(
       store.id,
-      null as any, // cashboxId
-      null as any, // priceTypeId
+      cashbox.id, // valid cashboxId
+      retail.id, // valid priceTypeId
       product.id,
       5,
       200,

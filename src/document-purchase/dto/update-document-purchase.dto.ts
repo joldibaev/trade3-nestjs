@@ -1,4 +1,6 @@
-import { PartialType } from '@nestjs/swagger';
-import { CreateDocumentPurchaseDto } from './create-document-purchase.dto';
+import { createZodDto } from 'nestjs-zod';
+import { CreateDocumentPurchaseSchema } from './create-document-purchase.dto';
 
-export class UpdateDocumentPurchaseDto extends PartialType(CreateDocumentPurchaseDto) {}
+export class UpdateDocumentPurchaseDto extends createZodDto(
+  CreateDocumentPurchaseSchema.partial(),
+) {}

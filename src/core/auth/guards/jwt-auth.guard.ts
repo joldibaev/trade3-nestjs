@@ -2,7 +2,7 @@ import { ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
-import * as express from 'express';
+import { FastifyRequest } from 'fastify';
 import { IS_PUBLIC_KEY } from '../../../common/decorators/public.decorator';
 
 @Injectable()
@@ -28,7 +28,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const isTest = process.env.NODE_ENV === 'test' || this.configService.get('NODE_ENV') === 'test';
 
     if (isTest) {
-      const request = context.switchToHttp().getRequest<express.Request>();
+      const request = context.switchToHttp().getRequest<FastifyRequest>();
       // If we explicitly want to test 401 in E2E, we can send this header
       if (request.headers['x-test-force-auth']) {
         return super.canActivate(context);

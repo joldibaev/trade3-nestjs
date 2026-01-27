@@ -1,11 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { DocumentReturnService } from './document-return.service';
-import {
-  CreateDocumentReturnDto,
-  CreateDocumentReturnItemDto,
-  CreateDocumentReturnItemsDto,
-  RemoveDocumentReturnItemsDto,
-} from './dto/create-document-return.dto';
+import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
+import { CreateDocumentReturnItemsDto } from './dto/create-document-return-items.dto';
+import { RemoveDocumentReturnItemsDto } from './dto/remove-document-return-items.dto';
+import { UpdateDocumentReturnItemDto } from './dto/update-document-return-item.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
 
@@ -48,7 +46,7 @@ export class DocumentReturnController {
   updateItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
-    @Body() dto: CreateDocumentReturnItemDto,
+    @Body() dto: UpdateDocumentReturnItemDto,
   ) {
     return this.documentReturnService.updateItem(id, itemId, dto);
   }

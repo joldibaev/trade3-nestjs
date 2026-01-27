@@ -1,17 +1,17 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
-import type { Request } from 'express';
+import { FastifyRequest } from 'fastify';
 import { DocumentPurchaseService } from './document-purchase.service';
+import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import {
-  CreateDocumentPurchaseDto,
-  CreateDocumentPurchaseItemDto,
   CreateDocumentPurchaseItemsDto,
   RemoveDocumentPurchaseItemsDto,
-} from './dto/create-document-purchase.dto';
+} from './dto/document-purchase-bulk.dto';
+import { UpdateDocumentPurchaseItemDto } from './dto/update-document-purchase-item.dto';
 import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
 import { ApiTags } from '@nestjs/swagger';
 
-interface AuthenticatedRequest extends Request {
+interface AuthenticatedRequest extends FastifyRequest {
   user?: {
     id: string;
   };
@@ -76,7 +76,7 @@ export class DocumentPurchaseController {
   updateItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
-    @Body() item: CreateDocumentPurchaseItemDto,
+    @Body() item: UpdateDocumentPurchaseItemDto,
     @Req() req: AuthenticatedRequest,
   ) {
     return this.documentPurchaseService.updateItem(id, itemId, item, req.user?.id);

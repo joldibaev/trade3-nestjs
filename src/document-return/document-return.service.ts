@@ -6,6 +6,7 @@ import { DocumentStatus } from '../generated/prisma/enums';
 import {
   CreateDocumentReturnDto,
   CreateDocumentReturnItemDto,
+  UpdateDocumentReturnItemDto,
 } from './dto/create-document-return.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
@@ -150,7 +151,7 @@ export class DocumentReturnService {
           await tx.documentReturnItem.create({
             data: {
               returnId: id,
-              productId: productId!,
+              productId: productId,
               quantity: qDelta,
               price: pVal,
               total: itemTotal,
@@ -186,7 +187,7 @@ export class DocumentReturnService {
     );
   }
 
-  async updateItem(id: string, itemId: string, dto: CreateDocumentReturnItemDto) {
+  async updateItem(id: string, itemId: string, dto: UpdateDocumentReturnItemDto) {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
@@ -200,8 +201,8 @@ export class DocumentReturnService {
         });
 
         const { quantity, price } = dto;
-        const qDelta = new Decimal(quantity);
-        const pVal = new Decimal(price || 0);
+        const qDelta = quantity !== undefined ? new Decimal(quantity) : item.quantity;
+        const pVal = price !== undefined ? new Decimal(price) : item.price;
         const newTotal = qDelta.mul(pVal);
         const amountDiff = newTotal.sub(item.total);
 
@@ -400,7 +401,7 @@ export class DocumentReturnService {
         });
       },
       {
-        isolationLevel: 'Serializable',
+        isolationLevel: 'ReadCommitted',
       },
     );
 

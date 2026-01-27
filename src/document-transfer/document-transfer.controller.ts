@@ -1,11 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { DocumentTransferService } from './document-transfer.service';
-import {
-  CreateDocumentTransferDto,
-  CreateDocumentTransferItemDto,
-  CreateDocumentTransferItemsDto,
-  RemoveDocumentTransferItemsDto,
-} from './dto/create-document-transfer.dto';
+import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
+import { CreateDocumentTransferItemDto } from './dto/create-document-transfer-item.dto';
+import { CreateDocumentTransferItemsDto } from './dto/create-document-transfer-items.dto';
+import { RemoveDocumentTransferItemsDto } from './dto/remove-document-transfer-items.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
 

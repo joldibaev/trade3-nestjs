@@ -340,7 +340,7 @@ describe('Resource Generator', () => {
   });
 
   describe('generateCreateDtoContent', () => {
-    it('should generate DTO with validation decorators and Decimal import', () => {
+    it('should generate DTO with Zod schema', () => {
       const model: Model = {
         name: 'Stock',
         singular: 'stock',
@@ -353,6 +353,7 @@ describe('Resource Generator', () => {
             isRelation: false,
             isSystem: false,
             isEnum: false,
+            hasDefault: false,
           },
           {
             name: 'productId',
@@ -368,10 +369,12 @@ describe('Resource Generator', () => {
       };
 
       const content = generateCreateDtoContent(model);
-      expect(content).toContain('@IsNumber()');
-      expect(content).toContain('@IsUUID(7)');
-      expect(content).toContain("import { Decimal } from '../../prisma/internal/prismaNamespace';");
-      expect(content).toContain('export class CreateStockDto {');
+      expect(content).toContain('quantity: z.number()');
+      expect(content).toContain('productId: z.uuid()');
+      expect(content).toContain("import { createZodDto } from 'nestjs-zod';");
+      expect(content).toContain(
+        'export class CreateStockDto extends createZodDto(CreateStockSchema) {',
+      );
     });
   });
 
@@ -450,8 +453,7 @@ describe('Resource Generator', () => {
 
     it('should be optional in backend DTO', () => {
       const content = generateCreateDtoContent(model);
-      expect(content).toContain('@IsOptional()');
-      expect(content).toContain('status?: string;');
+      expect(content).toContain('status: z.string().optional()');
     });
 
     it('should be optional in frontend DTO', () => {
@@ -636,6 +638,20 @@ describe('Resource Generator', () => {
       // Should rename usage of NestedDto to NestedInput based on map
       expect(output).toContain('nested: NestedInput;');
       expect(output).not.toContain('nested: NestedDto;');
+    });
+
+    it('should strip Zod imports and schemas', () => {
+      const input = `
+        import { createZodDto } from 'nestjs-zod';
+        import { z } from 'zod';
+        export const CreateUserSchema = z.object({ email: z.string() });
+        export class CreateUserDto extends createZodDto(CreateUserSchema) {}
+      `;
+      const output = stripDecorators(input);
+      expect(output).not.toContain('import { z }');
+      expect(output).not.toContain('z.object');
+      expect(output).toContain('export interface CreateUserDto');
+      expect(output).toContain('email: string;');
     });
   });
 });

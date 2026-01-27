@@ -90,7 +90,7 @@ export class DocumentTransferService {
         return doc;
       },
       {
-        isolationLevel: 'Serializable',
+        isolationLevel: 'ReadCommitted',
       },
     );
 
@@ -166,7 +166,7 @@ export class DocumentTransferService {
           await tx.documentTransferItem.create({
             data: {
               transferId: id,
-              productId: productId!,
+              productId: productId,
               quantity: qVal,
             },
           });
@@ -175,7 +175,7 @@ export class DocumentTransferService {
             documentId: id,
             documentType: 'documentTransfer',
             action: 'ITEM_ADDED',
-            details: { productId: productId!, quantity: qVal },
+            details: { productId: productId, quantity: qVal },
           });
         }
 
@@ -191,7 +191,7 @@ export class DocumentTransferService {
           },
         });
       },
-      { isolationLevel: 'Serializable' },
+      { isolationLevel: 'ReadCommitted' },
     );
   }
 
@@ -241,7 +241,7 @@ export class DocumentTransferService {
           },
         });
       },
-      { isolationLevel: 'Serializable' },
+      { isolationLevel: 'ReadCommitted' },
     );
   }
 
@@ -283,7 +283,7 @@ export class DocumentTransferService {
           },
         });
       },
-      { isolationLevel: 'Serializable' },
+      { isolationLevel: 'ReadCommitted' },
     );
   }
 
@@ -505,7 +505,7 @@ export class DocumentTransferService {
         return updatedDoc;
       },
       {
-        isolationLevel: 'Serializable',
+        isolationLevel: 'ReadCommitted',
       },
     );
 

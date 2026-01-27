@@ -200,74 +200,67 @@ export function generateEntityContent(model: Model, allModels: Models): string {
 }
 
 /**
- * Generates Create DTO content
+ * Generates Create DTO content using Zod
  */
 export function generateCreateDtoContent(model: Model): string {
-  const validatorImports = new Set<string>();
-  const customImports = new Set<string>();
-  let fieldsContent = '';
   const filteredFields = model.fields.filter((f) => !f.isSystem && !f.isRelation && !f.isArray);
+  const enumFields = model.fields.filter(
+    (f) => f.isEnum && !f.isSystem && !f.isRelation && !f.isArray,
+  );
 
-  filteredFields.forEach((f, index) => {
-    fieldsContent += `  @ApiProperty({ required: ${!f.isOptional} })\n`;
+  let schemaFields = '';
+  filteredFields.forEach((f) => {
+    let zodType = '';
+
+    if (f.isEnum) {
+      zodType = `z.enum(${f.type})`;
+    } else if (f.name.endsWith('Id')) {
+      zodType = 'z.uuid()';
+    } else {
+      switch (f.type) {
+        case 'String':
+          zodType = 'z.string()';
+          break;
+        case 'Int':
+          zodType = 'z.number().int()';
+          break;
+        case 'Float':
+        case 'Decimal':
+          zodType = 'z.number()';
+          break;
+        case 'Boolean':
+          zodType = 'z.boolean()';
+          break;
+        case 'DateTime':
+          zodType = 'z.iso.datetime()';
+          break;
+        case 'Json':
+          zodType = 'z.any()';
+          break;
+        default:
+          zodType = 'z.unknown()';
+      }
+    }
 
     const isActuallyOptional = f.isOptional || f.hasDefault;
     if (isActuallyOptional) {
-      fieldsContent += '  @IsOptional()\n';
-      validatorImports.add('IsOptional');
-    } else {
-      fieldsContent += '  @IsNotEmpty()\n';
-      validatorImports.add('IsNotEmpty');
+      zodType += '.optional()';
     }
 
-    if (f.name.endsWith('Id')) {
-      fieldsContent += '  @IsUUID(7)\n';
-      validatorImports.add('IsUUID');
-    } else if (mapType(f.type) === 'string') {
-      fieldsContent += '  @IsString()\n';
-      validatorImports.add('IsString');
-    } else if (f.type === 'Decimal') {
-      fieldsContent += '  @IsNumber()\n';
-      validatorImports.add('IsNumber');
-    } else if (f.type === 'Json') {
-      fieldsContent += '  @IsObject()\n';
-      validatorImports.add('IsObject');
-    }
-
-    if (f.isEnum) {
-      customImports.add(`import { ${f.type} } from '../../prisma/enums';`);
-      fieldsContent += `  @IsEnum(${f.type})\n`;
-      validatorImports.add('IsEnum');
-    }
-
-    const tsType = f.type === 'Decimal' ? 'Decimal' : mapType(f.type);
-    fieldsContent += `  ${f.name}${isActuallyOptional ? '?' : ''}: ${tsType};\n`;
-    if (index < filteredFields.length - 1) {
-      fieldsContent += '\n';
-    }
+    schemaFields += `  ${f.name}: ${zodType},\n`;
   });
 
-  let createContent = '';
-  if (filteredFields.length > 0) {
-    createContent += "import { ApiProperty } from '@nestjs/swagger';\n";
+  let imports = "import { createZodDto } from 'nestjs-zod';\nimport { z } from 'zod';\n";
+  if (enumFields.length > 0) {
+    const enums = [...new Set(enumFields.map((f) => f.type))].sort();
+    imports += `import { ${enums.join(', ')} } from '../../prisma/enums';\n`;
   }
-  if (validatorImports.size > 0) {
-    createContent += `import { ${Array.from(validatorImports).sort().join(', ')} } from 'class-validator';\n`;
-  }
-  if (
-    model.fields.some((f) => f.type === 'Decimal' && !f.isArray && !f.isSystem && !f.isRelation)
-  ) {
-    createContent += "import { Decimal } from '../../prisma/internal/prismaNamespace';\n";
-  }
-  if (customImports.size > 0) {
-    createContent += Array.from(customImports).sort().join('\n') + '\n';
-  }
-  if (createContent) createContent += '\n';
 
-  createContent += `export class Create${model.name}Dto {\n`;
-  createContent += fieldsContent;
-  createContent += `}\n`;
-  return createContent;
+  return `${imports}
+export const Create${model.name}Schema = z.object({\n${schemaFields}});
+
+export class Create${model.name}Dto extends createZodDto(Create${model.name}Schema) {}
+`;
 }
 
 /**
@@ -320,10 +313,61 @@ export function stripDecorators(
   content = content.replace(/import {[^}]*} from '@nestjs\/mapped-types';\n?/g, '');
   content = content.replace(/import {[^}]*} from 'class-validator';\n?/g, '');
   content = content.replace(/import {[^}]*} from 'class-transformer';\n?/g, '');
+  content = content.replace(/import {[^}]*} from 'nestjs-zod';\n?/g, '');
+  content = content.replace(/import {[^}]*} from 'zod';\n?/g, '');
   content = content.replace(/import .* from '@nestjs\/swagger';\n?/g, '');
   content = content.replace(
     /import { Decimal } from '..\/..\/prisma\/internal\/prismaNamespace';\n?/g,
     '',
+  );
+
+  // Convert Zod schemas to interfaces before removing them
+  content = content.replace(
+    /(?:export\s+)?const\s+(\w+Schema)\s*=\s*z\.object\({\s*([\s\S]*?)\s*}\);?/g,
+    (_, schemaName, body) => {
+      const interfaceName = schemaName.replace('Schema', 'Dto');
+      let fields = body
+        .split('\n')
+        .map((line: string) => {
+          let trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('//')) return null;
+
+          const match = trimmed.match(/^(\w+):\s*(.*),?$/);
+          if (!match) return null;
+
+          const name = match[1];
+          let typeDef = match[2];
+
+          let isOptional = typeDef.includes('.optional()') || typeDef.includes('.default(');
+          let type = 'any';
+
+          if (
+            typeDef.includes('.string()') ||
+            typeDef.includes('.iso.datetime()') ||
+            typeDef.includes('.uuid()')
+          ) {
+            type = 'string';
+          } else if (typeDef.includes('.number()')) {
+            type = 'number';
+          } else if (typeDef.includes('.boolean()')) {
+            type = 'boolean';
+          } else if (typeDef.includes('z.any()')) {
+            type = 'any';
+          } else if (typeDef.includes('.enum(')) {
+            const enumMatch = typeDef.match(/\.enum\((\w+)\)/);
+            type = enumMatch ? enumMatch[1] : 'any';
+          } else if (typeDef.includes('.array(')) {
+            const arrayMatch = typeDef.match(/\.array\((\w+)(?:Schema)?\)/);
+            type = arrayMatch ? `${arrayMatch[1].replace('Schema', 'Dto')}[]` : 'any[]';
+          }
+
+          return `  ${name}${isOptional ? '?' : ''}: ${type};`;
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      return `export interface ${interfaceName} {\n${fields}\n}`;
+    },
   );
 
   // Redirect enum imports to frontend constants
@@ -358,6 +402,21 @@ export function stripDecorators(
   content = content.replace(
     /export (?:class|interface) (\w+) extends PartialType\((\w+)\)\s*{\s*}/g,
     'export type $1 = Partial<$2>;',
+  );
+
+  // Handle nestjs-zod DTO extensions
+  // Matches: export class CreateUserDto extends createZodDto(CreateUserSchema) {}
+  // If we already turned Schema into DTO interface above, we don't need the class at all
+  // unless the class has a DIFFERENT name than schema.
+  content = content.replace(
+    /export class (\w+) extends createZodDto\((\w+)\)\s*{\s*}/g,
+    (_, className, schemaName) => {
+      const expectedInterfaceName = schemaName.replace('Schema', 'Dto');
+      if (className === expectedInterfaceName) {
+        return ''; // Schema already converted to this name
+      }
+      return `export type ${className} = ${expectedInterfaceName};`;
+    },
   );
 
   // Replace empty extension with type alias (supertype)
@@ -500,6 +559,9 @@ export function generateFrontendCreateDtoContent(model: Model): string {
  * Main execution logic
  */
 function run(): void {
+  const args = process.argv.slice(2);
+  const forceDto = args.includes('--force');
+
   const schemaPath = path.join(process.cwd(), 'prisma', 'schema.prisma');
   if (!fs.existsSync(schemaPath)) return;
   const schema = fs.readFileSync(schemaPath, 'utf8');
@@ -601,20 +663,34 @@ function run(): void {
     );
 
     // DTOs
-    const singularDir = path.join(process.cwd(), 'src', model.singular);
+    let singularDir = path.join(process.cwd(), 'src', model.singular);
+    if (!fs.existsSync(singularDir) && model.singular.endsWith('-item')) {
+      const parentName = model.singular.replace('-item', '');
+      const parentDir = path.join(process.cwd(), 'src', parentName);
+      if (fs.existsSync(parentDir)) {
+        singularDir = parentDir;
+      }
+    }
+
     const customDtoPath = path.join(singularDir, 'dto', `create-${model.singular}.dto.ts`);
 
     const frontendDtoDir = dirs.frontendDtos;
     const createDtoContent = generateCreateDtoContent(model);
     const updateDtoContent =
-      "import { PartialType } from '@nestjs/swagger';\n" +
-      `import { Create${model.name}Dto } from './create-${model.singular}.dto';\n\n` +
-      `export class Update${model.name}Dto extends PartialType(Create${model.name}Dto) {}\n`;
+      "import { createZodDto } from 'nestjs-zod';\n" +
+      `import { Create${model.name}Schema } from './create-${model.singular}.dto';\n\n` +
+      `export const Update${model.name}Schema = Create${model.name}Schema.partial();\n\n` +
+      `export class Update${model.name}Dto extends createZodDto(Update${model.name}Schema) {}\n`;
 
     const modelFrontendDtoDir = path.join(frontendDtoDir, model.singular);
     if (!fs.existsSync(modelFrontendDtoDir)) fs.mkdirSync(modelFrontendDtoDir, { recursive: true });
 
-    if (!fs.existsSync(customDtoPath)) {
+    if (!fs.existsSync(customDtoPath) || forceDto) {
+      if (forceDto && fs.existsSync(customDtoPath)) {
+        console.log(
+          `⚠️ Forcing Backend DTOs for ${model.name} (Custom exists but --force is used)`,
+        );
+      }
       // Logic A: Standard Generation
 
       // 1. Backend Generated DTOs

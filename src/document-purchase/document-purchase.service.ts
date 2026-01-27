@@ -5,6 +5,7 @@ import { Prisma } from '../generated/prisma/client';
 import {
   CreateDocumentPurchaseDto,
   CreateDocumentPurchaseItemDto,
+  UpdateDocumentPurchaseItemDto,
   UpdateProductPriceDto,
 } from './dto/create-document-purchase.dto';
 import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
@@ -97,7 +98,7 @@ export class DocumentPurchaseService {
         return { doc, reprocessingId };
       },
       {
-        isolationLevel: 'Serializable',
+        isolationLevel: 'ReadCommitted',
       },
     );
 
@@ -351,7 +352,7 @@ export class DocumentPurchaseService {
         return updatedDoc;
       },
       {
-        isolationLevel: 'Serializable',
+        isolationLevel: 'ReadCommitted',
       },
     );
 
@@ -498,7 +499,7 @@ export class DocumentPurchaseService {
   async updateItem(
     id: string,
     itemId: string,
-    itemDto: CreateDocumentPurchaseItemDto,
+    itemDto: UpdateDocumentPurchaseItemDto,
     userId?: string,
   ) {
     // Note: itemId is productId in the current DTO design, but usually it's a unique ID.
@@ -530,8 +531,9 @@ export class DocumentPurchaseService {
           throw new BadRequestException('Товар не найден в документе');
         }
 
-        const quantity = new Decimal(itemDto.quantity);
-        const price = new Decimal(itemDto.price);
+        const quantity =
+          itemDto.quantity !== undefined ? new Decimal(itemDto.quantity) : existingItem.quantity;
+        const price = itemDto.price !== undefined ? new Decimal(itemDto.price) : existingItem.price;
         const total = quantity.mul(price);
 
         // Update Item
@@ -563,7 +565,7 @@ export class DocumentPurchaseService {
               price: existingItem.price,
             },
           ],
-          [{ productId: itemDto.productId, quantity, price }],
+          [{ productId: itemDto.productId || existingItem.productId, quantity, price }],
           ['quantity', 'price'],
         );
 

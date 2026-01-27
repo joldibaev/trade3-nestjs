@@ -1,11 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { DocumentAdjustmentService } from './document-adjustment.service';
-import {
-  CreateDocumentAdjustmentDto,
-  CreateDocumentAdjustmentItemDto,
-  CreateDocumentAdjustmentItemsDto,
-  RemoveDocumentAdjustmentItemsDto,
-} from './dto/create-document-adjustment.dto';
+import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
+import { CreateDocumentAdjustmentItemDto } from './dto/create-document-adjustment-item.dto';
+import { CreateDocumentAdjustmentItemsDto } from './dto/create-document-adjustment-items.dto';
+import { RemoveDocumentAdjustmentItemsDto } from './dto/remove-document-adjustment-items.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
 

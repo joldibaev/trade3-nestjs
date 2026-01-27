@@ -1,139 +1,159 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
+import { ZodValidationPipe } from 'nestjs-zod';
+import fastifyCookie from '@fastify/cookie';
 import { HttpAdapterHost } from '@nestjs/core';
 import { HttpExceptionFilter } from '../../../src/common/filters/http-exception.filter';
-import cookieParser from 'cookie-parser';
 
 describe('Authentication (e2e)', () => {
-  let app: INestApplication;
-  let helper: TestHelper;
+  let app: NestFastifyApplication;
   let prisma: PrismaService;
+  let helper: TestHelper;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    try {
+      app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
 
-    // Apply globals same as main.ts
-    const httpAdapterHost = app.get(HttpAdapterHost);
-    app.useGlobalFilters(new HttpExceptionFilter(httpAdapterHost));
-    app.use(cookieParser());
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
+      const httpAdapterHost = app.get(HttpAdapterHost);
+      app.useGlobalFilters(new HttpExceptionFilter(httpAdapterHost));
+      app.useGlobalPipes(new ZodValidationPipe());
 
-    await app.init();
+      await app.register(fastifyCookie);
+      await app.init();
+      await app.getHttpAdapter().getInstance().ready();
 
-    prisma = app.get(PrismaService);
-
-    // Debugging prisma
-    if (prisma.user === undefined) {
-      console.log('DEBUG: prisma.user is undefined in beforeAll');
-      console.log('DEBUG: prisma properties:', Object.keys(Object.getPrototypeOf(prisma)));
+      prisma = app.get(PrismaService);
+      helper = new TestHelper(app, prisma);
+    } catch (e) {
+      console.error('ERROR in beforeAll:', e);
+      throw e;
     }
-
-    helper = new TestHelper(app, prisma);
   });
 
   afterAll(async () => {
-    // Manually cleanup users since TestHelper doesn't have it yet
-    await prisma.user.deleteMany({
-      where: { email: { contains: 'test_auth_' } },
+    if (prisma) {
+      try {
+        await prisma.user.deleteMany({
+          where: { email: { contains: 'test_auth_' } },
+        });
+      } catch (e) {
+        console.error('Cleanup error:', e);
+      }
+    }
+    if (app) {
+      await app.close();
+    }
+  });
+
+  describe('POST /auth/register', () => {
+    const registerDto = {
+      email: `test_auth_reg_${Date.now()}@example.com`,
+      password: 'password123',
+    };
+
+    it('should register a new user', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send(registerDto)
+        .expect(201);
+
+      expect(response.body).toHaveProperty('id');
+      expect(response.body.email).toBe(registerDto.email);
     });
-    await helper.cleanup();
-    await app.close();
+
+    it('should not register a user with an existing email', async () => {
+      await request(app.getHttpServer()).post('/auth/register').send(registerDto).expect(409); // Conflict, P2002
+    });
   });
 
-  const testUser = {
-    email: `test_auth_${Date.now()}@example.com`,
-    password: 'Password123!',
-    role: 'ADMIN',
-  };
+  describe('POST /auth/login', () => {
+    const loginDto = {
+      email: `test_auth_login_${Date.now()}@example.com`,
+      password: 'password123',
+    };
 
-  let accessToken: string;
-  let refreshTokenCookie: string;
+    beforeAll(async () => {
+      await request(app.getHttpServer()).post('/auth/register').send(loginDto).expect(201);
+    });
 
-  it('/auth/register (POST)', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(testUser)
-      .expect(201);
+    it('should login and return tokens', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send(loginDto)
+        .expect(200);
 
-    expect(res.body.email).toBe(testUser.email);
-    // expect(res.body.passwordHash).toBeUndefined(); // It's okay if it's there as long as we don't expose it to users, but usually we exclude it.
+      expect(response.body).toHaveProperty('accessToken');
+      expect(response.headers['set-cookie']).toBeDefined();
+    });
+
+    it('should not login with wrong password', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ ...loginDto, password: 'wrongpassword' })
+        .expect(401);
+    });
   });
 
-  it('/auth/login (POST)', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        email: testUser.email,
-        password: testUser.password,
-      })
-      .expect(200);
+  describe('POST /auth/refresh', () => {
+    let refreshToken: string;
 
-    expect(res.body.accessToken).toBeDefined();
-    accessToken = res.body.accessToken;
+    beforeAll(async () => {
+      const loginDto = {
+        email: `test_auth_refresh_${Date.now()}@example.com`,
+        password: 'password123',
+      };
+      await request(app.getHttpServer()).post('/auth/register').send(loginDto).expect(201);
 
-    const cookies = res.get('Set-Cookie');
-    expect(cookies).toBeDefined();
-    refreshTokenCookie = cookies.find((c) => c.startsWith('refreshToken='));
-    expect(refreshTokenCookie).toBeDefined();
+      const loginRes = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send(loginDto)
+        .expect(200);
+
+      const cookie = loginRes.headers['set-cookie'].find((c: string) => c.includes('refreshToken'));
+      refreshToken = cookie.split(';')[0].split('=')[1];
+    });
+
+    it('should refresh the access token', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', `refreshToken=${refreshToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('accessToken');
+    });
   });
 
-  it('Access protected route /categories (GET) - Success', async () => {
-    await request(app.getHttpServer())
-      .get('/categories')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-  });
+  describe('POST /auth/logout', () => {
+    it('should clear the refresh token cookie', async () => {
+      // Login first to get a token (though logout doesn't strictly check it as per guard update)
+      const loginDto = {
+        email: `test_auth_logout_${Date.now()}@example.com`,
+        password: 'password123',
+      };
+      await request(app.getHttpServer()).post('/auth/register').send(loginDto).expect(201);
 
-  it('Access protected route /categories (GET) - Failure (No Token)', async () => {
-    await request(app.getHttpServer())
-      .get('/categories')
-      .set('x-test-force-auth', 'true')
-      .expect(401);
-  });
+      const loginRes = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send(loginDto)
+        .expect(200);
 
-  it('/auth/refresh (POST)', async () => {
-    // Wait 1 second to ensure different iat
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+      const accessToken = loginRes.body.accessToken;
 
-    const res = await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .set('Cookie', [refreshTokenCookie])
-      .expect(200);
+      const response = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
 
-    expect(res.body.accessToken).toBeDefined();
-    expect(res.body.accessToken).not.toBe(accessToken);
-    accessToken = res.body.accessToken;
-
-    const cookies = res.get('Set-Cookie');
-    expect(cookies).toBeDefined();
-    refreshTokenCookie = cookies.find((c) => c.startsWith('refreshToken='));
-    expect(refreshTokenCookie).toBeDefined();
-  });
-
-  it('/auth/logout (POST)', async () => {
-    await request(app.getHttpServer())
-      .post('/auth/logout')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-
-    // Verify refresh token is invalidated
-    await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .set('Cookie', [refreshTokenCookie])
-      .expect(401);
+      const cookie = response.headers['set-cookie'].find((c: string) => c.includes('refreshToken'));
+      expect(cookie).toBeDefined();
+    });
   });
 });

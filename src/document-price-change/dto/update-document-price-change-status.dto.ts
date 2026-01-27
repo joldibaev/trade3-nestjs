@@ -1,14 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
 import { DocumentStatus } from '../../generated/prisma/enums';
 
-export class UpdateDocumentPriceChangeStatusDto {
-  @ApiProperty({
-    enum: DocumentStatus,
-    description: 'Новый статус документа',
-    example: DocumentStatus.COMPLETED,
-  })
-  @IsEnum(DocumentStatus)
-  @IsNotEmpty()
-  status: DocumentStatus;
-}
+export const UpdateDocumentPriceChangeStatusSchema = z.object({
+  status: z.enum(DocumentStatus),
+});
+
+export class UpdateDocumentPriceChangeStatusDto extends createZodDto(
+  UpdateDocumentPriceChangeStatusSchema,
+) {}

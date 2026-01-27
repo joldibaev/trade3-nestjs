@@ -1,4 +1,6 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyCookie from '@fastify/cookie';
+import { ZodValidationPipe } from 'nestjs-zod';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
@@ -6,10 +8,9 @@ import { TestHelper } from '../helpers/test-helper';
 import request from 'supertest';
 import { HttpAdapterHost } from '@nestjs/core';
 import { HttpExceptionFilter } from '../../../src/common/filters/http-exception.filter';
-import cookieParser from 'cookie-parser';
 
 describe('User Tracking (authorId) E2E', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let helper: TestHelper;
   let prisma: PrismaService;
   let storeId: string;
@@ -24,21 +25,16 @@ describe('User Tracking (authorId) E2E', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyCookie);
+    app.useGlobalPipes(new ZodValidationPipe());
 
     // Apply globals same as main.ts
     const httpAdapterHost = app.get(HttpAdapterHost);
     app.useGlobalFilters(new HttpExceptionFilter(httpAdapterHost));
-    app.use(cookieParser());
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
 
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
 
     prisma = app.get(PrismaService);
     helper = new TestHelper(app, prisma);
@@ -90,7 +86,7 @@ describe('User Tracking (authorId) E2E', () => {
     if (userId) {
       await prisma.user.delete({ where: { id: userId } }).catch(() => {});
     }
-    await helper.cleanup();
+    await helper?.cleanup();
     await app.close();
   });
 

@@ -3,7 +3,11 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
-import { CreateDocumentSaleDto, CreateDocumentSaleItemDto } from './dto/create-document-sale.dto';
+import {
+  CreateDocumentSaleDto,
+  CreateDocumentSaleItemDto,
+  UpdateDocumentSaleItemDto,
+} from './dto/create-document-sale.dto';
 import { StoreService } from '../store/store.service';
 import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';
@@ -235,7 +239,7 @@ export class DocumentSaleService {
     );
   }
 
-  async updateItem(id: string, itemId: string, dto: CreateDocumentSaleItemDto) {
+  async updateItem(id: string, itemId: string, dto: UpdateDocumentSaleItemDto) {
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
@@ -249,7 +253,7 @@ export class DocumentSaleService {
         });
 
         const { quantity, price } = dto;
-        const qVal = new Decimal(quantity);
+        const qVal = quantity !== undefined ? new Decimal(quantity) : item.quantity;
         const pVal = price !== undefined ? new Decimal(price) : item.price;
         const newTotal = qVal.mul(pVal);
         const amountDiff = newTotal.sub(item.total);
@@ -459,7 +463,7 @@ export class DocumentSaleService {
         return updatedDoc;
       },
       {
-        isolationLevel: 'Serializable',
+        isolationLevel: 'ReadCommitted',
       },
     );
 
