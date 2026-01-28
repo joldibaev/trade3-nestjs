@@ -115,7 +115,7 @@ flowchart TD
     Next -- Yes --> Loop
     Next -- No --> Repro{"Date < Now?"}
     
-    Repro -- Yes --> Job[**Create Reprocessing Job**]
+    Repro -- Yes --> Job[**Trigger Reprocessing**]
     Repro -- No --> Commit
     
     Job --> Commit[Commit Transaction]

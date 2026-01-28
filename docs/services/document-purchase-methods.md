@@ -139,7 +139,7 @@ flowchart TD
     
     subgraph "Rollback"
         Loop --> Decr[**Decrease Stock**]
-        Decr --> Ledger["**INSERT StockLedger**<br/>Type: PURCHASE (Inverse)"]
+        Decr --> Ledger["**INSERT StockLedger**<br/>Type: PURCHASE (Inverse)<br/>Reason: REVERSAL"]
         Ledger --> RevPC["**Revert PriceChange**<br/>(If linked)"]
     end
     

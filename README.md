@@ -23,6 +23,7 @@ This system is built with a **Vertical Slice Architecture**, ensuring that featu
 The project strictly follows the **Vertical Slice** pattern. Instead of grouping files by technical type (controllers, services), we group them by **Business Feature**.
 
 ### Core Modules
+
 - **`src/core/`**: Infrastructure and shared services (Auth, Inventory, Config).
 - **`src/<feature>/`**: Self-contained feature modules (e.g., `src/document-purchase`, `src/product`).
 - **`src/common/`**: Truly global utilities and decorators.
@@ -32,23 +33,25 @@ The project strictly follows the **Vertical Slice** pattern. Instead of grouping
 ## 📚 Documentation Hub
 
 ### 🔧 Engineering Standards
-| Document | Description |
-| :--- | :--- |
-| [**Tech Stack & Rules**](docs/tech-stack.md) | Defines the "Rules of Engagement": Zod-only, Vertical Slices, Testing strategy. |
-| [**System Entities**](docs/entities.md) | Database schema deep-dive, relations, and typical usage patterns. |
-| [**Visual Architecture**](docs/visual-architecture.md) | 🎨 **NEW!** Diagrams of algorithms, flows, and vertical slices. |
-| [**Visual Workflows**](docs/visual-document-workflows.md) | 📊 **NEW!** Flowcharts for `create`, `addItems`, and `updateStatus`. |
-| [**Detailed Methods**](docs/services/) | 🛠 **NEW!** Deep-dive text breakdown of all methods per service. |
-| [**Resource Generator**](docs/resource-generator.md) | Guide to the custom `prisma-to-zod-to-ts` code generation pipeline. |
-| [**Concurrency Control**](docs/concurrency.md) | How we handle race conditions using Advisory Locks and ACID transactions. |
+
+| Document                                               | Description                                                                     |
+| :----------------------------------------------------- | :------------------------------------------------------------------------------ |
+| [**Tech Stack & Rules**](docs/tech-stack.md)           | Defines the "Rules of Engagement": Zod-only, Vertical Slices, Testing strategy. |
+| [**System Entities**](docs/entities.md)                | Database schema deep-dive, relations, and typical usage patterns.               |
+| [**Visual Architecture**](docs/visual-architecture.md) | 🎨 Diagrams of algorithms, flows, and vertical slices.                          |
+| [**Detailed Methods**](docs/services/)                 | 🛠 Deep-dive text breakdown of all methods per service.                         |
+| [**Resource Generator**](docs/resource-generator.md)   | Guide to the custom `prisma-to-zod-to-ts` code generation pipeline.             |
+| [**Concurrency Control**](docs/concurrency.md)         | How we handle race conditions using Advisory Locks and ACID transactions.       |
 
 ### 🔐 Security & Access
-| Document | Description |
-| :--- | :--- |
-| [**Authentication Flow**](docs/auth.md) | JWT Dual-Token strategy (Access/Refresh), Guards, and Roles. |
-| [**Document History**](docs/document-history.md) | Immutable audit logs for all WMS operations. |
+
+| Document                                         | Description                                                  |
+| :----------------------------------------------- | :----------------------------------------------------------- |
+| [**Authentication Flow**](docs/auth.md)          | JWT Dual-Token strategy (Access/Refresh), Guards, and Roles. |
+| [**Document History**](docs/document-history.md) | Immutable audit logs for all WMS operations.                 |
 
 ### 📦 Business Domains (Services)
+
 Detailed breakdown of business logic for each document type:
 
 - 📥 [**Purchase (Закупки)**](docs/services/document-purchase.md) - WAP calculation, Stock increments.
@@ -87,4 +90,5 @@ npm run test        # Run unit tests
 ```
 
 ---
+
 _Trade3 Engineering Team — 2026_

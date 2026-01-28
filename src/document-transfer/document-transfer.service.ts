@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
-import { DocumentStatus } from '../generated/prisma/enums';
+import { DocumentStatus, LedgerReason } from '../generated/prisma/enums';
 import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
 import { CreateDocumentTransferItemDto } from './dto/create-document-transfer-item.dto';
 import { StoreService } from '../store/store.service';
@@ -11,18 +11,6 @@ import { DocumentHistoryService } from '../document-history/document-history.ser
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
-
-interface PreparedTransferItem {
-  productId: string;
-  quantity: Decimal;
-}
-
-interface TransferContext {
-  id?: string;
-  sourceStoreId: string;
-  destinationStoreId: string;
-  date?: Date;
-}
 
 @Injectable()
 export class DocumentTransferService {
@@ -60,7 +48,7 @@ export class DocumentTransferService {
       }),
     ]);
 
-    const result = await this.prisma.$transaction(
+    return this.prisma.$transaction(
       async (tx) => {
         // Generate Code
         const code = await this.codeGenerator.getNextTransferCode();
@@ -91,8 +79,6 @@ export class DocumentTransferService {
         isolationLevel: 'ReadCommitted',
       },
     );
-
-    return result;
   }
 
   async update(id: string, updateDto: CreateDocumentTransferDto) {
@@ -209,7 +195,7 @@ export class DocumentTransferService {
         const { quantity } = dto;
         const qVal = new Decimal(quantity);
 
-        const _updatedItem = await tx.documentTransferItem.update({
+        await tx.documentTransferItem.update({
           where: { id: itemId },
           data: {
             quantity: qVal,
@@ -286,7 +272,6 @@ export class DocumentTransferService {
   }
 
   async updateStatus(id: string, newStatus: DocumentStatus) {
-    let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
     const updatedDoc = await this.prisma.$transaction(
@@ -322,40 +307,10 @@ export class DocumentTransferService {
           (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
           actualNewStatus === 'COMPLETED'
         ) {
-          await this.applyInventoryMovements(tx, doc, items);
+          await this.applyInventoryMovements(tx, doc, items, 'INITIAL');
 
           // Check if we need reprocessing (Backdated)
-          const hasSourceHistory = await tx.stockLedger
-            .count({
-              where: {
-                storeId: doc.sourceStoreId,
-                productId: { in: productIds },
-                date: { gt: doc.date },
-              },
-            })
-            .then((c) => c > 0);
-
-          const hasDestHistory = await tx.stockLedger
-            .count({
-              where: {
-                storeId: doc.destinationStoreId,
-                productId: { in: productIds },
-                date: { gt: doc.date },
-              },
-            })
-            .then((c) => c > 0);
-
-          if (hasSourceHistory || hasDestHistory) {
-            const reprocessing = await tx.inventoryReprocessing.create({
-              data: {
-                status: 'PENDING',
-                documentTransferId: doc.id,
-                date: doc.date,
-              },
-            });
-            reprocessingId = reprocessing.id;
-            productsToReprocess = productIds;
-          }
+          productsToReprocess = productIds;
         }
 
         // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
@@ -365,125 +320,7 @@ export class DocumentTransferService {
             actualNewStatus === 'CANCELLED' ||
             actualNewStatus === 'SCHEDULED')
         ) {
-          // Revert movements (INVERSE)
-          // Transfer Out (Source) -> Revert: Increase Source Stock
-          // Transfer In (Dest) -> Revert: Decrease Dest Stock
-
-          // We can achieve this by swapping source/dest in the context passed to applyInventoryMovements?
-          // No, applyInventoryMovements uses doc.sourceStoreId.
-
-          // Let's implement revert logic explicitly or modify applyInventoryMovements to handle direction.
-          // applyInventoryMovements is complex (WAP calc).
-
-          // Revert logic:
-          // 1. Dest Store: Remove items (Decrease Qty).
-          // 2. Source Store: Add items back (Increase Qty). return WAP?
-          //    When adding back to source, we should ideally use the COST PRICE at which it left?
-          //    But we didn't store the exact cost price at moment of transfer in the item line (we only used sourceWap).
-          //    However, `applyInventoryMovements` calculated `averagePurchasePrice` for Dest (inherited from Source).
-
-          // Simpler approach for Revert:
-          // Just doing the opposite of applyInventoryMovements.
-
-          const { sourceStoreId, destinationStoreId } = doc;
-
-          // 3. Batch Fetch Destination Stocks
-          const destStocks = await tx.stock.findMany({
-            where: {
-              storeId: destinationStoreId,
-              productId: { in: productIds },
-            },
-          });
-          const destStockMap = new Map(destStocks.map((s) => [s.productId, s]));
-
-          for (const item of items) {
-            // REVERT DEST (Remove Qty)
-            const destStock = destStockMap.get(item.productId);
-            const destQty = destStock ? destStock.quantity : new Decimal(0);
-
-            if (destQty.lessThan(item.quantity)) {
-              throw new BadRequestException(
-                `Недостаточно остатка товара ${item.productId} на складе получателя для отмены перемещения`,
-              );
-            }
-
-            await tx.stock.update({
-              where: {
-                productId_storeId: {
-                  productId: item.productId,
-                  storeId: destinationStoreId,
-                },
-              },
-              data: {
-                quantity: { decrement: item.quantity },
-              },
-            });
-
-            // Audit: Log REVERT DEST (Removal)
-            await this.stockLedgerService.create(tx, {
-              type: 'TRANSFER_OUT',
-              storeId: destinationStoreId,
-              productId: item.productId,
-              quantity: item.quantity.negated(),
-              date: doc.date ?? new Date(),
-              documentId: doc.id ?? '',
-              quantityBefore: destQty,
-              quantityAfter: destQty.sub(item.quantity),
-              averagePurchasePrice: destStock?.averagePurchasePrice ?? new Decimal(0),
-              transactionAmount: item.quantity.mul(destStock?.averagePurchasePrice ?? 0).negated(),
-              batchId: doc.id,
-            });
-
-            // REVERT SOURCE (Add Qty)
-            const sourceStocks = await tx.stock.findMany({
-              where: { storeId: sourceStoreId, productId: item.productId },
-            });
-            const sourceStock = sourceStocks[0];
-            const sourceQtyBefore = sourceStock ? sourceStock.quantity : new Decimal(0);
-
-            await tx.stock.upsert({
-              where: {
-                productId_storeId: {
-                  productId: item.productId,
-                  storeId: sourceStoreId,
-                },
-              },
-              create: {
-                productId: item.productId,
-                storeId: sourceStoreId,
-                quantity: item.quantity,
-                averagePurchasePrice: new Decimal(0), // If it didn't exist, we don't know price.
-              },
-              update: {
-                quantity: { increment: item.quantity },
-              },
-            });
-
-            // Audit: Log REVERT SOURCE (Addition)
-            await this.stockLedgerService.create(tx, {
-              type: 'TRANSFER_IN',
-              storeId: sourceStoreId,
-              productId: item.productId,
-              quantity: item.quantity,
-              date: doc.date ?? new Date(),
-              documentId: doc.id ?? '',
-              quantityBefore: sourceQtyBefore,
-              quantityAfter: sourceQtyBefore.add(item.quantity),
-              averagePurchasePrice: sourceStock?.averagePurchasePrice ?? new Decimal(0),
-              transactionAmount: item.quantity.mul(sourceStock?.averagePurchasePrice ?? 0),
-              batchId: doc.id,
-            });
-          }
-
-          // ALWAYS trigger reprocessing for REVERT
-          const reprocessing = await tx.inventoryReprocessing.create({
-            data: {
-              status: 'PENDING',
-              documentTransferId: doc.id,
-              date: doc.date,
-            },
-          });
-          reprocessingId = reprocessing.id;
+          await this.applyInventoryMovements(tx, doc, items, 'REVERSAL');
           productsToReprocess = productIds;
         }
 
@@ -508,22 +345,21 @@ export class DocumentTransferService {
     );
 
     // POST-TRANSACTION: Reprocess History
-    if (reprocessingId && productsToReprocess.length > 0) {
+    if (productsToReprocess.length > 0) {
       for (const productId of productsToReprocess) {
         await this.inventoryService.reprocessProductHistory(
           updatedDoc.sourceStoreId,
           productId,
           updatedDoc.date,
-          reprocessingId,
+          id, // use document ID as causationId
         );
         await this.inventoryService.reprocessProductHistory(
           updatedDoc.destinationStoreId,
           productId,
           updatedDoc.date,
-          reprocessingId,
+          id, // use document ID as causationId
         );
       }
-      await this.inventoryService.completeReprocessing(reprocessingId);
     }
 
     return updatedDoc;
@@ -531,137 +367,66 @@ export class DocumentTransferService {
 
   private async applyInventoryMovements(
     tx: Prisma.TransactionClient,
-    doc: TransferContext,
-    items: PreparedTransferItem[],
+    doc: { id: string; sourceStoreId: string; destinationStoreId: string; date: Date },
+    items: { productId: string; quantity: Decimal }[],
+    reason: LedgerReason = 'INITIAL',
   ) {
-    const { sourceStoreId, destinationStoreId } = doc;
-    const productIds = items.map((i) => i.productId);
+    const { sourceStoreId, destinationStoreId, date, id } = doc;
 
-    // 2. Batch Fetch Source Stocks
+    // 1. Fetch Source Stocks for WAP inheritance
     const sourceStocks = await tx.stock.findMany({
       where: {
         storeId: sourceStoreId,
-        productId: { in: productIds },
+        productId: { in: items.map((i) => i.productId) },
       },
     });
     const sourceStockMap = new Map(sourceStocks.map((s) => [s.productId, s]));
 
-    // 3. Batch Fetch Destination Stocks
-    const destStocks = await tx.stock.findMany({
-      where: {
-        storeId: destinationStoreId,
-        productId: { in: productIds },
-      },
+    // 2. Transfer OUT from Source
+    const outMovements = items.map((item) => {
+      const stock = sourceStockMap.get(item.productId);
+      return {
+        productId: item.productId,
+        quantity: reason === 'REVERSAL' ? item.quantity.negated() : item.quantity,
+        price: stock?.averagePurchasePrice || new Decimal(0),
+      };
     });
-    const destStockMap = new Map(destStocks.map((s) => [s.productId, s]));
 
-    for (const item of items) {
-      const sourceStock = sourceStockMap.get(item.productId);
-      const sourceQty = sourceStock ? sourceStock.quantity : new Decimal(0);
-
-      // Validate Stock Availability
-      if (sourceQty.lessThan(item.quantity)) {
-        throw new BadRequestException(
-          `Недостаточно остатка товара ${item.productId} на складе отправителя`,
-        );
-      }
-
-      // --- Update Source Store ---
-      await tx.stock.update({
-        where: {
-          productId_storeId: {
-            productId: item.productId,
-            storeId: sourceStoreId,
-          },
-        },
-        data: {
-          quantity: { decrement: item.quantity },
-        },
-      });
-
-      // --- Update Destination Store ---
-      const destStock = destStockMap.get(item.productId);
-      const destQty = destStock ? destStock.quantity : new Decimal(0);
-      const destWap = destStock ? destStock.averagePurchasePrice : new Decimal(0);
-
-      const sourceWap = sourceStock ? sourceStock.averagePurchasePrice : new Decimal(0);
-
-      const newDestQty = destQty.add(item.quantity);
-
-      // Calculate New Destination WAP using helper
-      // We treat transfer in as a "purchase" from the source store at sourceWap cost
-      const newDestWap = this.inventoryService.calculateNewWap(
-        destQty,
-        destWap,
-        item.quantity,
-        sourceWap,
-      );
-
-      await tx.stock.upsert({
-        where: {
-          productId_storeId: {
-            productId: item.productId,
-            storeId: destinationStoreId,
-          },
-        },
-        create: {
-          productId: item.productId,
-          storeId: destinationStoreId,
-          quantity: item.quantity,
-          averagePurchasePrice: sourceWap, // Inherit cost from source
-        },
-        update: {
-          quantity: newDestQty,
-          averagePurchasePrice: newDestWap,
-        },
-      });
-
-      // Fetch updated source stock for snapshot
-      const updatedSourceStock = await tx.stock.findUniqueOrThrow({
-        where: {
-          productId_storeId: {
-            productId: item.productId,
-            storeId: sourceStoreId,
-          },
-        },
-      });
-
-      // Audit: Log TRANSFER_OUT
-      await this.stockLedgerService.create(tx, {
-        type: 'TRANSFER_OUT',
+    await this.inventoryService.applyMovements(
+      tx,
+      {
         storeId: sourceStoreId,
+        type: 'TRANSFER_OUT',
+        date,
+        documentId: id,
+        reason,
+      },
+      outMovements,
+      'OUT',
+    );
+
+    // 3. Transfer IN to Destination
+    const inMovements = items.map((item) => {
+      const stock = sourceStockMap.get(item.productId);
+      return {
         productId: item.productId,
-        quantity: item.quantity.negated(),
-        date: doc.date ?? new Date(),
-        documentId: doc.id ?? '',
+        quantity: reason === 'REVERSAL' ? item.quantity.negated() : item.quantity,
+        price: stock?.averagePurchasePrice || new Decimal(0),
+      };
+    });
 
-        quantityBefore: updatedSourceStock.quantity.add(item.quantity),
-        quantityAfter: updatedSourceStock.quantity,
-
-        averagePurchasePrice: updatedSourceStock.averagePurchasePrice,
-        transactionAmount: item.quantity.mul(updatedSourceStock.averagePurchasePrice).negated(),
-
-        batchId: doc.id,
-      });
-
-      // Audit: Log TRANSFER_IN
-      await this.stockLedgerService.create(tx, {
-        type: 'TRANSFER_IN',
+    await this.inventoryService.applyMovements(
+      tx,
+      {
         storeId: destinationStoreId,
-        productId: item.productId,
-        quantity: item.quantity,
-        date: doc.date ?? new Date(),
-        documentId: doc.id ?? '',
-
-        quantityBefore: destQty,
-        quantityAfter: newDestQty,
-
-        averagePurchasePrice: newDestWap,
-        transactionAmount: item.quantity.mul(sourceWap), // Value coming IN is derived from Source WAP
-
-        batchId: doc.id,
-      });
-    }
+        type: 'TRANSFER_IN',
+        date,
+        documentId: id,
+        reason,
+      },
+      inMovements,
+      'IN',
+    );
   }
 
   findAll(include?: Record<string, boolean>) {

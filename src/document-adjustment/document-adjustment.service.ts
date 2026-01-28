@@ -6,24 +6,10 @@ import { InventoryService } from '../core/inventory/inventory.service';
 import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
 import { CreateDocumentAdjustmentItemDto } from './dto/create-document-adjustment-item.dto';
 import { StoreService } from '../store/store.service';
-import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
-
-interface PreparedAdjustmentItem {
-  productId: string;
-  quantityRelative: Decimal;
-  quantityBefore: Decimal;
-  quantityAfter: Decimal;
-}
-
-interface AdjustmentContext {
-  id?: string;
-  storeId: string;
-  date?: Date;
-}
 
 @Injectable()
 export class DocumentAdjustmentService {
@@ -31,7 +17,6 @@ export class DocumentAdjustmentService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentHistoryService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
@@ -50,7 +35,7 @@ export class DocumentAdjustmentService {
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
-    const doc = await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       // Generate Code
       const code = await this.codeGenerator.getNextAdjustmentCode();
 
@@ -74,8 +59,6 @@ export class DocumentAdjustmentService {
 
       return newDoc;
     });
-
-    return doc;
   }
 
   async update(id: string, updateDto: CreateDocumentAdjustmentDto) {
@@ -196,7 +179,7 @@ export class DocumentAdjustmentService {
         // Recalculate snapshots based on original quantityBefore
         const quantityAfter = item.quantityBefore.add(qDelta);
 
-        const _updatedItem = await tx.documentAdjustmentItem.update({
+        await tx.documentAdjustmentItem.update({
           where: { id: itemId },
           data: {
             quantity: qDelta,
@@ -272,7 +255,6 @@ export class DocumentAdjustmentService {
   }
 
   async updateStatus(id: string, newStatus: DocumentStatus) {
-    let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
     const updatedDoc = await this.prisma.$transaction(
@@ -300,50 +282,27 @@ export class DocumentAdjustmentService {
           (doc.status === 'DRAFT' || doc.status === 'SCHEDULED') &&
           actualNewStatus === 'COMPLETED'
         ) {
-          const existingStocks = await tx.stock.findMany({
-            where: {
+          const movements = doc.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            price: fallbackWapMap.get(item.productId) || new Decimal(0),
+          }));
+
+          await this.inventoryService.applyMovements(
+            tx,
+            {
               storeId: doc.storeId,
-              productId: { in: productIds },
+              type: 'ADJUSTMENT',
+              date: doc.date ?? new Date(),
+              documentId: doc.id ?? '',
+              reason: 'INITIAL',
             },
-          });
-          const stockMap = new Map(existingStocks.map((s) => [s.productId, s]));
-
-          const preparedItems: PreparedAdjustmentItem[] = [];
-          for (const item of doc.items) {
-            const stock = stockMap.get(item.productId);
-            const quantity = item.quantity;
-            const oldQty = stock ? stock.quantity : new Decimal(0);
-            const newQty = oldQty.add(quantity);
-
-            await tx.documentAdjustmentItem.update({
-              where: { id: item.id },
-              data: {
-                quantityBefore: oldQty,
-                quantityAfter: newQty,
-              },
-            });
-
-            preparedItems.push({
-              productId: item.productId,
-              quantityRelative: quantity,
-              quantityBefore: oldQty,
-              quantityAfter: newQty,
-            });
-          }
-
-          await this.applyInventoryMovements(tx, doc, preparedItems, fallbackWapMap);
+            movements,
+            'IN',
+          );
 
           // Check for backdated reprocessing
-          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
-            storeId: doc.storeId,
-            productId: productIds,
-            date: doc.date,
-            documentId: doc.id,
-            documentType: 'documentAdjustment',
-          });
-          if (reprocessingId) {
-            productsToReprocess = productIds;
-          }
+          productsToReprocess = productIds;
         }
 
         // COMPLETED -> DRAFT/CANCELLED/SCHEDULED
@@ -353,40 +312,26 @@ export class DocumentAdjustmentService {
             actualNewStatus === 'CANCELLED' ||
             actualNewStatus === 'SCHEDULED')
         ) {
-          const existingStocks = await tx.stock.findMany({
-            where: {
+          const revertMovements = doc.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity.negated(),
+            price: fallbackWapMap.get(item.productId) || new Decimal(0),
+          }));
+
+          await this.inventoryService.applyMovements(
+            tx,
+            {
               storeId: doc.storeId,
-              productId: { in: productIds },
+              type: 'ADJUSTMENT',
+              date: doc.date ?? new Date(),
+              documentId: doc.id ?? '',
+              reason: 'REVERSAL',
             },
-          });
-          const stockMap = new Map(existingStocks.map((s) => [s.productId, s]));
-
-          const revertItems: PreparedAdjustmentItem[] = [];
-          for (const item of doc.items) {
-            const stock = stockMap.get(item.productId);
-            const currentQty = stock ? stock.quantity : new Decimal(0);
-            const delta = item.quantity;
-            const revertedQty = currentQty.sub(delta);
-
-            revertItems.push({
-              productId: item.productId,
-              quantityRelative: delta.negated(),
-              quantityBefore: currentQty,
-              quantityAfter: revertedQty,
-            });
-          }
-
-          await this.applyInventoryMovements(tx, doc, revertItems, fallbackWapMap);
+            revertMovements,
+            'IN',
+          );
 
           // ALWAYS trigger reprocessing for REVERT
-          const reprocessing = await tx.inventoryReprocessing.create({
-            data: {
-              status: 'PENDING',
-              documentAdjustmentId: doc.id,
-              date: doc.date,
-            },
-          });
-          reprocessingId = reprocessing.id;
           productsToReprocess = productIds;
         }
 
@@ -409,79 +354,18 @@ export class DocumentAdjustmentService {
     );
 
     // POST-TRANSACTION: Reprocess History
-    if (reprocessingId && productsToReprocess.length > 0) {
+    if (productsToReprocess.length > 0) {
       for (const pid of productsToReprocess) {
         await this.inventoryService.reprocessProductHistory(
           updatedDoc.storeId,
           pid,
           updatedDoc.date,
-          reprocessingId,
+          id, // use document ID as causationId
         );
       }
-      await this.inventoryService.completeReprocessing(reprocessingId);
     }
 
     return updatedDoc;
-  }
-
-  private async applyInventoryMovements(
-    tx: Prisma.TransactionClient,
-    doc: AdjustmentContext,
-    items: PreparedAdjustmentItem[],
-    fallbackWapMap: Map<string, Decimal>,
-  ) {
-    const storeId = doc.storeId;
-
-    // Fetch stocks again if needed, but here we can just do upserts
-    for (const item of items) {
-      // Find current WAP
-      const stock = await tx.stock.findUnique({
-        where: { productId_storeId: { productId: item.productId, storeId } },
-      });
-
-      let currentWap = new Decimal(0);
-      if (stock) {
-        currentWap = stock.averagePurchasePrice;
-      } else {
-        currentWap = fallbackWapMap.get(item.productId) || new Decimal(0);
-      }
-
-      const qAfter = item.quantityAfter;
-      const qDelta = item.quantityRelative;
-
-      await tx.stock.upsert({
-        where: {
-          productId_storeId: { productId: item.productId, storeId },
-        },
-        create: {
-          productId: item.productId,
-          storeId,
-          quantity: qAfter,
-          averagePurchasePrice: currentWap,
-        },
-        update: {
-          quantity: qAfter,
-        },
-      });
-
-      // Audit: Log Stock Movement
-      await this.stockLedgerService.create(tx, {
-        type: 'ADJUSTMENT',
-        storeId,
-        productId: item.productId,
-        quantity: qDelta,
-        date: doc.date ?? new Date(),
-        documentId: doc.id ?? '',
-
-        quantityBefore: item.quantityBefore, // Passed from preparation logic
-        quantityAfter: qAfter,
-
-        averagePurchasePrice: currentWap,
-        transactionAmount: qDelta.mul(currentWap),
-
-        batchId: doc.id,
-      });
-    }
   }
 
   findAll(include?: Record<string, boolean>) {

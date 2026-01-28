@@ -7,23 +7,11 @@ import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { CreateDocumentReturnItemDto } from './dto/create-document-return-item.dto';
 import { UpdateDocumentReturnItemDto } from './dto/update-document-return-item.dto';
 import { StoreService } from '../store/store.service';
-import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
+
 import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
-
-interface PreparedReturnItem {
-  productId: string;
-  quantity: Decimal;
-  fallbackWap: Decimal;
-}
-
-interface ReturnContext {
-  id?: string;
-  storeId: string;
-  date?: Date;
-}
 
 @Injectable()
 export class DocumentReturnService {
@@ -31,7 +19,6 @@ export class DocumentReturnService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockLedgerService: StockLedgerService,
     private readonly ledgerService: DocumentHistoryService,
     private readonly baseService: BaseDocumentService,
     private readonly codeGenerator: CodeGeneratorService,
@@ -50,7 +37,7 @@ export class DocumentReturnService {
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
-    const doc = await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       // Generate Code
       const code = await this.codeGenerator.getNextReturnCode();
 
@@ -76,8 +63,6 @@ export class DocumentReturnService {
 
       return newDoc;
     });
-
-    return doc;
   }
 
   async update(id: string, updateDto: CreateDocumentReturnDto) {
@@ -204,7 +189,7 @@ export class DocumentReturnService {
         const newTotal = qDelta.mul(pVal);
         const amountDiff = newTotal.sub(item.total);
 
-        const _updatedItem = await tx.documentReturnItem.update({
+        await tx.documentReturnItem.update({
           where: { id: itemId },
           data: {
             quantity: qDelta,
@@ -299,7 +284,6 @@ export class DocumentReturnService {
   }
 
   async updateStatus(id: string, newStatus: DocumentStatus) {
-    let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
     const updatedDoc = await this.prisma.$transaction(
@@ -338,19 +322,25 @@ export class DocumentReturnService {
           (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
           actualNewStatus === 'COMPLETED'
         ) {
-          await this.applyInventoryMovements(tx, doc, items);
+          await this.inventoryService.applyMovements(
+            tx,
+            {
+              storeId: doc.storeId,
+              type: 'RETURN',
+              date: doc.date ?? new Date(),
+              documentId: doc.id ?? '',
+              reason: 'INITIAL',
+            },
+            items.map((i) => ({
+              productId: i.productId,
+              quantity: i.quantity,
+              price: i.fallbackWap,
+            })),
+            'IN',
+          );
 
           // Check for backdated reprocessing
-          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
-            storeId: doc.storeId,
-            productId: productIds,
-            date: doc.date,
-            documentId: doc.id,
-            documentType: 'documentReturn',
-          });
-          if (reprocessingId) {
-            productsToReprocess = productIds;
-          }
+          productsToReprocess = productIds;
         }
 
         // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
@@ -360,28 +350,27 @@ export class DocumentReturnService {
             actualNewStatus === 'CANCELLED' ||
             actualNewStatus === 'SCHEDULED')
         ) {
-          // Revert stock (Decrease Stock)
-
-          // 1. Validate Stock Availability (Must have enough to remove)
-          await this.validateStockForRevert(tx, doc.storeId, items);
-
-          // 2. Apply revert (negative quantity)
+          // Revert stock (Decrease Stock) - use negative qty with reason REVERSAL
           const revertItems = items.map((i) => ({
-            ...i,
+            productId: i.productId,
             quantity: i.quantity.negated(),
+            price: i.fallbackWap,
           }));
 
-          await this.applyInventoryMovements(tx, doc, revertItems);
+          await this.inventoryService.applyMovements(
+            tx,
+            {
+              storeId: doc.storeId,
+              type: 'RETURN',
+              date: doc.date ?? new Date(),
+              documentId: doc.id ?? '',
+              reason: 'REVERSAL',
+            },
+            revertItems,
+            'IN',
+          );
 
           // ALWAYS trigger reprocessing for REVERT
-          const reprocessing = await tx.inventoryReprocessing.create({
-            data: {
-              status: 'PENDING',
-              documentReturnId: doc.id,
-              date: doc.date,
-            },
-          });
-          reprocessingId = reprocessing.id;
           productsToReprocess = productIds;
         }
 
@@ -404,97 +393,18 @@ export class DocumentReturnService {
     );
 
     // POST-TRANSACTION: Reprocess History
-    if (reprocessingId && productsToReprocess.length > 0) {
+    if (productsToReprocess.length > 0) {
       for (const pid of productsToReprocess) {
         await this.inventoryService.reprocessProductHistory(
           updatedDoc.storeId,
           pid,
           updatedDoc.date,
-          reprocessingId,
+          id, // use document ID as causationId
         );
       }
-      await this.inventoryService.completeReprocessing(reprocessingId);
     }
 
     return updatedDoc;
-  }
-
-  private async validateStockForRevert(
-    tx: Prisma.TransactionClient,
-    storeId: string,
-    items: PreparedReturnItem[],
-  ) {
-    // To revert a return, we remove items from stock.
-    // We must ensure stock >= items.quantity
-    const productIds = items.map((i) => i.productId);
-    const stocks = await tx.stock.findMany({
-      where: { storeId, productId: { in: productIds } },
-    });
-    const stockMap = new Map(stocks.map((s) => [s.productId, s.quantity]));
-
-    for (const item of items) {
-      const currentQty = stockMap.get(item.productId) || new Decimal(0);
-
-      if (currentQty.lessThan(item.quantity)) {
-        throw new BadRequestException(
-          `Недостаточно остатка товара ${item.productId} для отмены возврата (товар уже продан или перемещен)`,
-        );
-      }
-    }
-  }
-
-  private async applyInventoryMovements(
-    tx: Prisma.TransactionClient,
-    doc: ReturnContext,
-    items: PreparedReturnItem[],
-  ) {
-    const storeId = doc.storeId;
-
-    for (const item of items) {
-      // Use atomic increment for concurrency safety
-      // Upsert handles both "creation of new stock" and "update of existing"
-      await tx.stock.upsert({
-        where: {
-          productId_storeId: { productId: item.productId, storeId },
-        },
-        create: {
-          productId: item.productId,
-          storeId,
-          quantity: item.quantity,
-          averagePurchasePrice: item.fallbackWap, // Use fetched fallback instead of 0
-        },
-        update: {
-          quantity: { increment: item.quantity },
-          // Note: We deliberately do NOT update WAP on return (as agreed),
-          // assuming the returned item has the same cost structure or is negligible.
-        },
-      });
-
-      // Fetch updated stock for accurate snapshot
-      const updatedStock = await tx.stock.findUniqueOrThrow({
-        where: {
-          productId_storeId: { productId: item.productId, storeId },
-        },
-      });
-
-      // Audit: Log Stock Movement
-      await this.stockLedgerService.create(tx, {
-        type: 'RETURN',
-        storeId,
-        productId: item.productId,
-        quantity: item.quantity,
-        date: doc.date ?? new Date(),
-        documentId: doc.id ?? '',
-
-        quantityBefore: updatedStock.quantity.sub(item.quantity), // Derived
-        quantityAfter: updatedStock.quantity,
-
-        averagePurchasePrice: updatedStock.averagePurchasePrice,
-        transactionAmount: item.quantity.mul(updatedStock.averagePurchasePrice), // Value at current WAP or created WAP
-
-        batchId: doc.id,
-      });
-    }
   }
 
   findAll(include?: Record<string, boolean>) {

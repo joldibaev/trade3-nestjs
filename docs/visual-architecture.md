@@ -100,7 +100,6 @@ sequenceDiagram
     actor User
     participant Service as PurchaseService
     participant Inv as InventoryService
-    participant Repo as InventoryReprocessing
     participant DB
     
     User->>Service: Update Price (Date: 01.01.2025)
@@ -111,7 +110,6 @@ sequenceDiagram
     Inv->>DB: Check for FUTURE movements (Sales/Transfers > 01.01.2025)
     
     opt Future Movements Exist
-        Inv->>Repo: Create Reprocessing Job (Status: PENDING)
         Service->>DB: Commit Transaction
         
         Note right of Inv: Async / Post-Transaction
@@ -119,10 +117,8 @@ sequenceDiagram
         loop For Each Affected Product
             Inv->>DB: Fetch All Movements chronologically
             Inv->>Inv: Re-calculate WAP & Stock step-by-step
-            Inv->>DB: Update StockLedger & DocumentSaleItems
+            Inv->>DB: Heal StockLedger (Add CORRECTIONs)
         end
-        
-        Inv->>Repo: Mark Job COMPLETED
     end
 ```
 

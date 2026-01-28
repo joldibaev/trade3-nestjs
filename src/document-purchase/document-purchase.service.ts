@@ -86,14 +86,13 @@ export class DocumentPurchaseService {
         });
 
         // 3. Apply Inventory Movements (Only if COMPLETED)
-        const reprocessingId: string | null = null;
         if (targetStatus === 'COMPLETED') {
           // Logic for empty completed document?
           // Usually irrelevant as it has 0 items.
           // But if we allow completing empty docs, we do nothing inventory-wise.
         }
 
-        return { doc, reprocessingId };
+        return { doc };
       },
       {
         isolationLevel: 'ReadCommitted',
@@ -104,7 +103,6 @@ export class DocumentPurchaseService {
   }
 
   async updateStatus(id: string, newStatus: DocumentStatus, userId?: string) {
-    let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
     const updatedPurchase = await this.prisma.$transaction(
@@ -151,17 +149,9 @@ export class DocumentPurchaseService {
           await this.applyInventoryMovements(tx, purchase, items);
 
           // 2. Check if we need reprocessing (Backdated)
-          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
-            storeId: purchase.storeId,
-            productId: items.map((i) => i.productId),
-            date: purchase.date,
-            documentId: purchase.id,
-            documentType: 'documentPurchase',
-          });
-
-          if (reprocessingId) {
-            productsToReprocess = items.map((i) => i.productId);
-          }
+          // For now, we always trigger reprocessing for the affected products
+          // to ensure the ledger remains consistent if this was a backdated entry.
+          productsToReprocess = items.map((i) => i.productId);
         }
 
         // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
@@ -182,17 +172,20 @@ export class DocumentPurchaseService {
             total: i.total.negated(),
           }));
 
-          await this.applyInventoryMovements(tx, purchase, revertItems);
+          await this.inventoryService.applyMovements(
+            tx,
+            {
+              storeId: purchase.storeId,
+              type: 'PURCHASE',
+              date: purchase.date ?? new Date(),
+              documentId: purchase.id ?? '',
+              reason: 'REVERSAL',
+            },
+            revertItems,
+            'IN',
+          );
 
           // ALWAYS trigger reprocessing for REVERT because it changes historical state
-          const reprocessing = await tx.inventoryReprocessing.create({
-            data: {
-              status: 'PENDING',
-              documentPurchaseId: purchase.id,
-              date: purchase.date,
-            },
-          });
-          reprocessingId = reprocessing.id;
           productsToReprocess = items.map((i) => i.productId);
         }
 
@@ -355,16 +348,15 @@ export class DocumentPurchaseService {
     );
 
     // POST-TRANSACTION: Reprocess History
-    if (reprocessingId && productsToReprocess.length > 0) {
+    if (productsToReprocess.length > 0) {
       for (const productId of productsToReprocess) {
         await this.inventoryService.reprocessProductHistory(
           updatedPurchase.storeId,
           productId,
           updatedPurchase.date,
-          reprocessingId,
+          id, // use document ID as causationId
         );
       }
-      await this.inventoryService.completeReprocessing(reprocessingId);
     }
 
     return updatedPurchase;

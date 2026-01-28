@@ -4,6 +4,7 @@ import fastifyCookie from '@fastify/cookie';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from '../../../src/app.module';
 import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { InventoryService } from '../../../src/core/inventory/inventory.service';
 import { TestHelper } from '../helpers/test-helper';
 
 describe('Stock Ledger Audit Flow (E2E)', () => {
@@ -94,15 +95,8 @@ describe('Stock Ledger Audit Flow (E2E)', () => {
     const category = await helper.createCategory();
     const product = await helper.createProduct(category.id);
 
-    // Assume prior stock 5, WAP 100 (Created manually)
-    await prismaService.stock.create({
-      data: {
-        storeId: store.id,
-        productId: product.id,
-        quantity: 5,
-        averagePurchasePrice: 100,
-      },
-    });
+    // Initial Stock: 5, WAP: 100
+    await helper.addStock(store.id, product.id, 5, 100);
 
     const returnDoc = await helper.createReturn(
       store.id,
@@ -133,14 +127,7 @@ describe('Stock Ledger Audit Flow (E2E)', () => {
     const product = await helper.createProduct(category.id);
 
     // Initial Stock: 10, WAP: 50
-    await prismaService.stock.create({
-      data: {
-        storeId: store.id,
-        productId: product.id,
-        quantity: 10,
-        averagePurchasePrice: 50,
-      },
-    });
+    await helper.addStock(store.id, product.id, 10, 50);
 
     // Adjustment: -3 (Loss/Shortage)
     const adj = await helper.createAdjustment(store.id, product.id, -3, 'COMPLETED');
@@ -165,14 +152,7 @@ describe('Stock Ledger Audit Flow (E2E)', () => {
     const product = await helper.createProduct(category.id);
 
     // Initial Stock in Source: 20, WAP: 10
-    await prismaService.stock.create({
-      data: {
-        storeId: sourceStore.id,
-        productId: product.id,
-        quantity: 20,
-        averagePurchasePrice: 10,
-      },
-    });
+    await helper.addStock(sourceStore.id, product.id, 20, 10);
 
     // Transfer 5 from Source to Dest
     const transfer = await helper.createTransfer(
@@ -205,5 +185,104 @@ describe('Stock Ledger Audit Flow (E2E)', () => {
     expect(inMov.quantity.toString()).toBe('5');
     expect(inMov.quantityAfter.toString()).toBe('5'); // 0 + 5
     expect(inMov.averagePurchasePrice.toString()).toBe('10'); // Inherited cost
+  });
+
+  it('should handle backdated reprocessing via Strict Storno (REVERSAL + CORRECTION)', async () => {
+    const store = await helper.createStore();
+    const vendor = await helper.createVendor();
+    const category = await helper.createCategory();
+    const product = await helper.createProduct(category.id);
+    const cashbox = await helper.createCashbox(store.id);
+    const { retail } = await helper.createPriceTypes();
+
+    // 1. First Purchase: 10 units at 100$ (Date: today - 2 days)
+    const date1 = new Date();
+    date1.setDate(date1.getDate() - 2);
+    const p1 = await helper.createPurchase(
+      store.id,
+      vendor.id,
+      product.id,
+      10,
+      100,
+      'COMPLETED',
+      undefined,
+      201,
+      date1,
+    );
+
+    // 2. A Sale: 5 units (Date: today - 1 day). WAP should be 100$.
+    const date2 = new Date();
+    date2.setDate(date2.getDate() - 1);
+    await helper.createSale(
+      store.id,
+      cashbox.id,
+      retail.id,
+      product.id,
+      5,
+      200,
+      undefined,
+      'COMPLETED',
+      201,
+      date2,
+    );
+
+    // 3. Update the first Purchase (Date: today - 2 days) -> change price to 120$
+    // We update the item price in the DB directly for this test
+    await prismaService.documentPurchaseItem.updateMany({
+      where: { purchaseId: p1.id, productId: product.id },
+      data: { price: 120, total: 10 * 120 },
+    });
+    // And recalculate document total
+    await prismaService.documentPurchase.update({
+      where: { id: p1.id },
+      data: { total: 1200 },
+    });
+
+    const inventoryService = app.get(InventoryService);
+    await inventoryService.reprocessProductHistory(
+      store.id,
+      product.id,
+      date1,
+      'reprocess-test-causation',
+    );
+
+    // 4. VERIFY LEDGER (Strict Storno)
+    const ledger = await prismaService.stockLedger.findMany({
+      where: { productId: product.id, storeId: store.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Expected sequence:
+    // 0: PURCHASE (10, 100) - Initial
+    // 1: SALE (-5, 100) - Initial
+    // 2: REVERSAL of SALE snapshots (recalculating the same values because price didn't change for sale, but snapshots might have shifted if purchase qty changed. In this case, only purchase PRICE changed).
+    // Actually, sale snapshots depend on purchase WAP.
+    // If Purchase was (10, 100) -> WAP 100. Sale (-5) -> Snap: Q5, WAP 100.
+    // After reprocess: Purchase is still (10, 100) in ledger record, but reprocess logic finds it...
+    // Wait, the test helper doesn't actually trigger reprocess on "Update" automatically yet unless I call it.
+
+    // Total count should have increased
+    expect(ledger.length).toBeGreaterThan(2);
+
+    // Filter for CORRECTION and REVERSAL
+    const corrections = ledger.filter((l) => l.reason === 'CORRECTION');
+    const reversals = ledger.filter((l) => l.reason === 'REVERSAL');
+    const initials = ledger.filter((l) => l.reason === 'INITIAL');
+
+    expect(initials.length).toBe(2); // P1 + S1
+    // At least one reversal/correction pair should exist for the Sale if its snapshot (WAP) was corrected.
+    expect(reversals.length).toBeGreaterThanOrEqual(1);
+    expect(corrections.length).toBeGreaterThanOrEqual(1);
+
+    // Verify parent links
+    const correction = corrections[0];
+    expect(correction.parentLedgerId).toBeDefined();
+    expect(correction.causationId).toBe('reprocess-test-causation');
+
+    // Verify final stock state
+    const stock = await prismaService.stock.findUnique({
+      where: { productId_storeId: { productId: product.id, storeId: store.id } },
+    });
+    expect(stock?.quantity.toString()).toBe('5');
   });
 });

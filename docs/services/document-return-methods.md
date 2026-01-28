@@ -82,9 +82,9 @@ flowchart TD
         
         GetWap --> Incr["**Increase Stock**<br/>Stock.quantity += Qty"]
         
-        Incr --> Note["**Note on WAP**<br/>Usually Returns do NOT change WAP<br/>(keep existing WAP)"]
+        Incr --> Calc["**Recalculate WAP**<br/>Using Return Price as cost"]
         
-        Note --> Log["**INSERT StockLedger**<br/>Type: RETURN"]
+        Calc --> Log["**INSERT StockLedger**<br/>Type: RETURN"]
     end
     
     Log --> Commit

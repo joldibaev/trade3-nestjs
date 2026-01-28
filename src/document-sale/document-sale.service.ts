@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
-import { DocumentStatus } from '../generated/prisma/enums';
+import { DocumentStatus, LedgerReason } from '../generated/prisma/enums';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { CreateDocumentSaleItemDto } from './dto/create-document-sale-item.dto';
 import { UpdateDocumentSaleItemDto } from './dto/update-document-sale-item.dto';
@@ -55,7 +55,8 @@ export class DocumentSaleService {
     await this.storeService.validateStore(storeId);
 
     // 2. Execute Transaction
-    const result = await this.prisma.$transaction(
+
+    return this.prisma.$transaction(
       async (tx) => {
         // Generate Code
         const code = await this.codeGenerator.getNextSaleCode();
@@ -88,8 +89,6 @@ export class DocumentSaleService {
         isolationLevel: 'ReadCommitted',
       },
     );
-
-    return result;
   }
 
   async update(id: string, updateDto: CreateDocumentSaleDto) {
@@ -355,7 +354,6 @@ export class DocumentSaleService {
   }
 
   async updateStatus(id: string, newStatus: DocumentStatus) {
-    let reprocessingId: string | null = null;
     let productsToReprocess: string[] = [];
 
     const updatedSale = await this.prisma.$transaction(
@@ -402,19 +400,10 @@ export class DocumentSaleService {
           await this.updateItemCostPrices(tx, sale);
 
           // 2. Apply stock movements (Decrease Stock)
-          await this.applyInventoryMovements(tx, sale, items);
+          await this.applyInventoryMovements(tx, sale, items, 'INITIAL');
 
           // 3. Check for backdated reprocessing
-          reprocessingId = await this.inventoryService.triggerReprocessingIfNeeded(tx, {
-            storeId: sale.storeId,
-            productId: productIds,
-            date: sale.date,
-            documentId: sale.id,
-            documentType: 'documentSale',
-          });
-          if (reprocessingId) {
-            productsToReprocess = productIds;
-          }
+          productsToReprocess = productIds;
         }
 
         // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
@@ -430,17 +419,9 @@ export class DocumentSaleService {
             quantity: i.quantity.negated(),
           }));
 
-          await this.applyInventoryMovements(tx, sale, revertItems);
+          await this.applyInventoryMovements(tx, sale, revertItems, 'REVERSAL');
 
           // ALWAYS trigger reprocessing for REVERT
-          const reprocessing = await tx.inventoryReprocessing.create({
-            data: {
-              status: 'PENDING',
-              documentSaleId: sale.id,
-              date: sale.date,
-            },
-          });
-          reprocessingId = reprocessing.id;
           productsToReprocess = productIds;
         }
 
@@ -466,16 +447,15 @@ export class DocumentSaleService {
     );
 
     // POST-TRANSACTION: Reprocess History
-    if (reprocessingId && productsToReprocess.length > 0) {
+    if (productsToReprocess.length > 0) {
       for (const pid of productsToReprocess) {
         await this.inventoryService.reprocessProductHistory(
           updatedSale.storeId,
           pid,
           updatedSale.date,
-          reprocessingId,
+          id, // use document ID as causationId
         );
       }
-      await this.inventoryService.completeReprocessing(reprocessingId);
     }
 
     return updatedSale;
@@ -554,6 +534,7 @@ export class DocumentSaleService {
     tx: Prisma.TransactionClient,
     sale: SaleMinimal,
     items: PreparedSaleItem[],
+    reason: LedgerReason = 'INITIAL',
   ) {
     await this.inventoryService.applyMovements(
       tx,
@@ -562,6 +543,7 @@ export class DocumentSaleService {
         type: 'SALE',
         date: sale.date ?? new Date(),
         documentId: sale.id ?? '',
+        reason,
       },
       items,
       'OUT',

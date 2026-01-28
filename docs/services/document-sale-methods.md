@@ -109,7 +109,7 @@ flowchart TD
     
     subgraph "Restocking"
         Loop --> Incr["**Increase Stock**<br/>Stock.quantity += Qty"]
-        Incr --> Ledger["**INSERT StockLedger**<br/>Type: SALE (Inverse)"]
+        Incr --> Ledger["**INSERT StockLedger**<br/>Type: SALE (Inverse)<br/>Reason: REVERSAL"]
     end
     
     Ledger --> Job[**ALWAYS** Trigger Reprocessing]

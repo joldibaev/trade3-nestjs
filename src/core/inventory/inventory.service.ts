@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
-import { StockMovementType } from '../../generated/prisma/enums';
+import { StockMovementType, LedgerReason } from '../../generated/prisma/enums';
 import Decimal = Prisma.Decimal;
 
 export type MovementDirection = 'IN' | 'OUT';
@@ -11,6 +11,8 @@ export interface MovementContext {
   type: StockMovementType;
   date: Date;
   documentId: string;
+  reason?: LedgerReason;
+  causationId?: string;
 }
 
 export interface MovementItem {
@@ -36,7 +38,7 @@ export class InventoryService {
     const totalQty = currentQty.add(incomingQty);
 
     if (totalQty.isZero()) {
-      return new Decimal(0);
+      return currentWap;
     }
 
     const currentVal = currentQty.mul(currentWap);
@@ -91,22 +93,21 @@ export class InventoryService {
     storeId: string,
     productId: string,
     fromDate: Date,
-    reprocessingId?: string,
+    causationId: string,
   ): Promise<void> {
-    return this.prisma.$transaction(
-      async (tx) => {
-        // 0. ACQUIRE LOCK (Critical for Concurrency Safety)
-        await this.lockProduct(tx, storeId, productId);
+    return this.prisma.$transaction(async (tx) => {
+      // 0. ACQUIRE LOCK (Critical for Concurrency Safety)
+      await this.lockProduct(tx, storeId, productId);
 
-        // Capture state BEFORE recalculation (but AFTER initial conduct)
-        const stockBefore = await tx.stock.findUnique({
-          where: { productId_storeId: { productId, storeId } },
-        });
-        const oldQty = stockBefore?.quantity || new Decimal(0);
-        const oldWap = stockBefore?.averagePurchasePrice || new Decimal(0);
+      let iterations = 0;
+      const maxIterations = 5;
+      let repairsMade = true;
+
+      while (repairsMade && iterations < maxIterations) {
+        repairsMade = false;
+        iterations++;
 
         // 1. Get snapshot BEFORE fromDate (to establish initial state)
-        // We look for the Last movement before fromDate
         const lastMovement = await tx.stockLedger.findFirst({
           where: {
             storeId,
@@ -119,15 +120,13 @@ export class InventoryService {
         let currentQty = lastMovement ? lastMovement.quantityAfter : new Decimal(0);
         let currentWap = lastMovement ? lastMovement.averagePurchasePrice : new Decimal(0);
 
-        // 2. Fetch all movements AFTER (or equal) fromDate, ordered by Date
-        // Note: We need to include related documents to know prices
+        // 2. Fetch all movements AFTER (or equal) fromDate
         const movements = await tx.stockLedger.findMany({
           where: {
             storeId,
             productId,
             date: { gte: fromDate },
           },
-          orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
           include: {
             documentPurchase: { include: { items: true } },
             documentSale: { include: { items: true } },
@@ -137,203 +136,211 @@ export class InventoryService {
           },
         });
 
-        let affectedCount = 0;
+        // --- TOPOLOGICAL RE-ORDERING ---
+        // Group stornos with their root ancestors and sort based on root creation time.
+        const moveMap = new Map<string, (typeof movements)[0]>();
+        const parentMap = new Map<string, string>();
+        movements.forEach((m) => {
+          moveMap.set(m.id, m);
+          if (m.parentLedgerId) parentMap.set(m.id, m.parentLedgerId);
+        });
+
+        const getRoot = (id: string): (typeof movements)[0] => {
+          let currentId = id;
+          while (parentMap.has(currentId)) {
+            currentId = parentMap.get(currentId)!;
+          }
+          return moveMap.get(currentId) || moveMap.get(id)!;
+        };
+
+        movements.sort((a, b) => {
+          const dateA = a.date.getTime();
+          const dateB = b.date.getTime();
+          if (dateA !== dateB) return dateA - dateB;
+
+          const rootA = getRoot(a.id);
+          const rootB = getRoot(b.id);
+
+          if (rootA.id !== rootB.id) {
+            const rootCreatedAtDiff = rootA.createdAt.getTime() - rootB.createdAt.getTime();
+            if (rootCreatedAtDiff !== 0) return rootCreatedAtDiff;
+            return rootA.id.localeCompare(rootB.id); // Ultimate tie-break
+          }
+
+          return a.createdAt.getTime() - b.createdAt.getTime();
+        });
+
+        // Pre-scan for existing reversals to avoid double-storno
+        const existingReversalIds = new Set(
+          movements.filter((m) => m.parentLedgerId).map((m) => m.parentLedgerId),
+        );
+
         for (const move of movements) {
-          // 2.1. Guard check: Only process movements from COMPLETED (conducted) documents
-          // This ensures that DRAFT, SCHEDULED, or CANCELLED documents don't affect.documentHistory.
-          // Note: When a document is CANCELLED, its original movements are still in the ledger,
-          // but they should no longer affect the recalculation.
           const isPurchaseCompleted = move.documentPurchase?.status === 'COMPLETED';
           const isSaleCompleted = move.documentSale?.status === 'COMPLETED';
           const isReturnCompleted = move.documentReturn?.status === 'COMPLETED';
           const isAdjustmentCompleted = move.documentAdjustment?.status === 'COMPLETED';
           const isTransferCompleted = move.documentTransfer?.status === 'COMPLETED';
 
-          if (
-            (move.documentPurchase && !isPurchaseCompleted) ||
-            (move.documentSale && !isSaleCompleted) ||
-            (move.documentReturn && !isReturnCompleted) ||
-            (move.documentAdjustment && !isAdjustmentCompleted) ||
-            (move.documentTransfer && !isTransferCompleted)
-          ) {
-            // Update the audit log to reflect that these movements are now orphaned/inactive in history
-            // We set them to match the CURRENT state (no change)
-            await tx.stockLedger.update({
-              where: { id: move.id },
+          const docIsStillValid =
+            (move.documentPurchase && isPurchaseCompleted) ||
+            (move.documentSale && isSaleCompleted) ||
+            (move.documentReturn && isReturnCompleted) ||
+            (move.documentAdjustment && isAdjustmentCompleted) ||
+            (move.documentTransfer && isTransferCompleted);
+
+          // PURE LEDGER RULE:
+          // We process every entry in the ledger to maintain mathematical consistency.
+          // Document status only determines if we need to "Heal" the ledger by adding
+          // missing reversals or corrections.
+
+          const qtyChange = move.quantity;
+          const nextQty = currentQty.add(qtyChange).toDP(3);
+          let newWap = currentWap;
+
+          // 1. Recovery: If a document is no longer valid but has an active INITIAL entry,
+          // neutralize it now by appending a REVERSAL to the ledger.
+          if (!docIsStillValid && move.reason === 'INITIAL' && !existingReversalIds.has(move.id)) {
+            await tx.stockLedger.create({
               data: {
+                type: move.type,
+                storeId: move.storeId,
+                productId: move.productId,
+                quantity: move.quantity.negated(),
+                quantityBefore: nextQty,
                 quantityAfter: currentQty,
                 averagePurchasePrice: currentWap,
+                transactionAmount: move.transactionAmount.negated(),
+                batchId: move.batchId,
+                date: move.date,
+                reason: 'REVERSAL',
+                parentLedgerId: move.id,
+                causationId: causationId,
+                documentPurchaseId: move.documentPurchaseId,
+                documentSaleId: move.documentSaleId,
+                documentReturnId: move.documentReturnId,
+                documentAdjustmentId: move.documentAdjustmentId,
+                documentTransferId: move.documentTransferId,
               },
             });
-            continue;
+            repairsMade = true;
+            break;
           }
 
-          // Logic mirrors the "Create" logic of each service
-          const qtyChange = move.quantity; // + or -
+          // 2. WAP Calculation:
+          // Always derive cost from the ledger entry's own transactionAmount.
+          const isWapAffecting = ['PURCHASE', 'TRANSFER_IN', 'ADJUSTMENT', 'RETURN'].includes(
+            move.type,
+          );
+          if (isWapAffecting) {
+            const absQty = move.quantity.abs();
+            let incomingPrice = !absQty.isZero()
+              ? move.transactionAmount.abs().div(absQty).toDP(2)
+              : currentWap;
 
-          // --- CASE 1: INCOMING (Purchase, Return, Adjustment+, TransferIn) ---
-          if (qtyChange.isPositive()) {
-            let incomingPrice = currentWap; // Default for things like Return (if no policy)
-
-            if (move.type === 'PURCHASE' && move.documentPurchase) {
-              // Find item for this product
-              const item = move.documentPurchase.items.find((i) => i.productId === productId);
-              if (item) incomingPrice = item.price;
-            } else if (move.type === 'ADJUSTMENT' && move.documentAdjustment) {
-              incomingPrice = currentWap;
-            } else if (move.type === 'RETURN') {
-              incomingPrice = currentWap;
-            } else if (move.type === 'TRANSFER_IN') {
-              incomingPrice = currentWap;
-            }
-
-            // Calculate NEW WAP
-            if (move.type === 'PURCHASE' && !currentQty.add(qtyChange).isZero()) {
-              const oldVal = currentQty.mul(currentWap);
-              const incomingVal = qtyChange.mul(incomingPrice);
-              currentWap = oldVal.add(incomingVal).div(currentQty.add(qtyChange));
-            }
-
-            currentQty = currentQty.add(qtyChange);
-          } else {
-            /*
-             * CASE 2: OUTGOING (Sale, TransferOut, Adjustment-, Return?)
-             */
-            // SPECIAL CASE: Negative PURCHASE (Revert/Cancellation)
-            // If we are reverting a purchase, we must REMOVE its weighted value contribution.
-            if (move.type === 'PURCHASE' && move.documentPurchase) {
-              const item = move.documentPurchase.items.find((i) => i.productId === productId);
-              if (item) {
-                const purchasePrice = item.price;
-                const removedQty = qtyChange.abs();
-
-                // Formula: (CurrentVal - RemovedVal) / (CurrentQty - RemovedQty)
-                const currentVal = currentQty.mul(currentWap);
-                const removedVal = removedQty.mul(purchasePrice);
-
-                // Avoid division by zero
-                const newQty = currentQty.sub(removedQty);
-                if (newQty.isZero()) {
-                  currentWap = new Decimal(0); // Reset if stock becomes 0
-                } else {
-                  currentWap = currentVal.sub(removedVal).div(newQty);
-                }
+            if (move.reason === 'INITIAL') {
+              if (move.type === 'PURCHASE' && move.documentPurchase) {
+                const item = move.documentPurchase.items.find((i) => i.productId === productId);
+                if (item) incomingPrice = item.price.toDP(2);
+              } else if (move.type === 'RETURN' && move.documentReturn) {
+                const item = move.documentReturn.items.find((i) => i.productId === productId);
+                if (item) incomingPrice = item.price.toDP(2);
               }
             }
 
-            // Sale/Out does NOT change WAP. It just consumes stock.
-            // BUT: We must update the "Cost Price" on the Sale Item to reflect the new history!
-            else if (move.type === 'SALE' && move.documentSale) {
-              // Find item
-              const item = move.documentSale.items.find((i) => i.productId === productId);
-              if (item) {
-                // UPDATE THE SALE ITEM COST PRICE
-                // This is the core "Business Value" of Reprocessing
-                await tx.documentSaleItem.update({
-                  where: { id: item.id },
-                  data: { costPrice: currentWap },
-                });
-              }
-            }
-
-            currentQty = currentQty.add(qtyChange); // qtyChange is negative
+            newWap = this.calculateNewWap(currentQty, currentWap, qtyChange, incomingPrice).toDP(2);
           }
 
-          // 3. Update the Audit Log Snapshot
-          await tx.stockLedger.update({
-            where: { id: move.id },
-            data: {
-              quantityAfter: currentQty,
-              averagePurchasePrice: currentWap,
-            },
-          });
-          affectedCount++;
+          // 3. Business Logic: Update document cost prices
+          if (move.type === 'SALE' && move.documentSale && docIsStillValid) {
+            const item = move.documentSale.items.find((i) => i.productId === productId);
+            if (item) {
+              await tx.documentSaleItem.update({
+                where: { id: item.id },
+                data: { costPrice: currentWap },
+              });
+            }
+          }
+
+          // 4. Snapshot Integrity: Compare calculated state with recorded state.
+          // Normalize to DB precision before comparison to prevent precision-noise loops.
+          const isREVERSAL = move.reason === 'REVERSAL';
+          const alreadyReversed = existingReversalIds.has(move.id);
+          const snapshotsChanged =
+            !move.quantityAfter.toDP(3).equals(nextQty) ||
+            !move.averagePurchasePrice.toDP(2).equals(newWap);
+
+          if (snapshotsChanged && docIsStillValid && !alreadyReversed && !isREVERSAL) {
+            // Handle snapshot correction via REVERSAL + CORRECTION
+            await tx.stockLedger.create({
+              data: {
+                type: move.type,
+                storeId: move.storeId,
+                productId: move.productId,
+                quantity: move.quantity.negated(),
+                quantityBefore: move.quantityAfter,
+                quantityAfter: move.quantityBefore,
+                averagePurchasePrice: move.averagePurchasePrice,
+                transactionAmount: move.transactionAmount.negated(),
+                batchId: move.batchId,
+                date: move.date,
+                reason: 'REVERSAL',
+                parentLedgerId: move.id,
+                causationId: causationId,
+                documentPurchaseId: move.documentPurchaseId,
+                documentSaleId: move.documentSaleId,
+                documentReturnId: move.documentReturnId,
+                documentAdjustmentId: move.documentAdjustmentId,
+                documentTransferId: move.documentTransferId,
+              },
+            });
+
+            // For the CORRECTION, we use the "latest" known price for this movement type
+            let correctionPrice = currentWap;
+            if (move.type === 'PURCHASE' && move.documentPurchase) {
+              const item = move.documentPurchase.items.find((i) => i.productId === productId);
+              if (item) correctionPrice = item.price;
+            }
+
+            await tx.stockLedger.create({
+              data: {
+                type: move.type,
+                storeId: move.storeId,
+                productId: move.productId,
+                quantity: move.quantity,
+                quantityBefore: currentQty,
+                quantityAfter: nextQty,
+                averagePurchasePrice: newWap,
+                transactionAmount: move.quantity.abs().mul(correctionPrice),
+                batchId: move.batchId,
+                date: move.date,
+                reason: 'CORRECTION',
+                parentLedgerId: move.id,
+                causationId: causationId,
+                documentPurchaseId: move.documentPurchaseId,
+                documentSaleId: move.documentSaleId,
+                documentReturnId: move.documentReturnId,
+                documentAdjustmentId: move.documentAdjustmentId,
+                documentTransferId: move.documentTransferId,
+              },
+            });
+            repairsMade = true;
+            break;
+          }
+
+          currentQty = nextQty;
+          currentWap = newWap;
         }
 
-        // 4. Finally, update the actual Stock table to match the end state
-        await tx.stock.update({
-          where: { productId_storeId: { productId, storeId } },
-          data: {
-            quantity: currentQty,
-            averagePurchasePrice: currentWap,
-          },
-        });
-
-        // 5. Audit Logging
-        if (reprocessingId) {
-          await tx.inventoryReprocessingItem.create({
-            data: {
-              reprocessingId,
-              productId,
-              storeId,
-              oldQuantity: oldQty,
-              newQuantity: currentQty,
-              oldAveragePurchasePrice: oldWap,
-              newAveragePurchasePrice: currentWap,
-              affectedLedgerCount: affectedCount,
-            },
+        if (!repairsMade) {
+          // 4. Update the actual Stock table
+          await tx.stock.upsert({
+            where: { productId_storeId: { productId, storeId } },
+            create: { productId, storeId, quantity: currentQty, averagePurchasePrice: currentWap },
+            update: { quantity: currentQty, averagePurchasePrice: currentWap },
           });
         }
-      },
-      {
-        isolationLevel: 'ReadCommitted', // Advisory locks handle strict concurrency
-        timeout: 20000, // Allow more time for reprocessing
-      },
-    );
-  }
-
-  /**
-   * Checks if a document is backdated and triggers reprocessing if needed.
-   * Returns the ID of the created InventoryReprocessing document, or null.
-   */
-  async triggerReprocessingIfNeeded(
-    tx: Prisma.TransactionClient,
-    params: {
-      storeId: string;
-      productId: string | string[];
-      date: Date;
-      documentId: string;
-      documentType:
-        | 'documentPurchase'
-        | 'documentSale'
-        | 'documentReturn'
-        | 'documentAdjustment'
-        | 'documentTransfer';
-    },
-  ): Promise<string | null> {
-    const productIds = Array.isArray(params.productId) ? params.productId : [params.productId];
-
-    // Check if there are ANY movements after this date for these products in this store
-    const laterMovementsCount = await tx.stockLedger.count({
-      where: {
-        storeId: params.storeId,
-        productId: { in: productIds },
-        date: { gt: params.date },
-      },
-    });
-
-    if (laterMovementsCount === 0) {
-      return null;
-    }
-
-    const reprocessing = await tx.inventoryReprocessing.create({
-      data: {
-        status: 'PENDING',
-        date: params.date,
-        [`${params.documentType}Id`]: params.documentId,
-      } as unknown as Prisma.InventoryReprocessingCreateInput,
-    });
-
-    return reprocessing.id;
-  }
-
-  /**
-   * Completes a reprocessing document if all its items are done.
-   */
-  async completeReprocessing(id: string) {
-    await this.prisma.inventoryReprocessing.update({
-      where: { id },
-      data: { status: 'COMPLETED' },
+      }
     });
   }
 
@@ -348,7 +355,42 @@ export class InventoryService {
     items: MovementItem[],
     direction: MovementDirection,
   ) {
-    const { storeId, type, date, documentId } = context;
+    const { storeId, type, date, documentId, reason = 'INITIAL', causationId } = context;
+
+    // Protection against double-initialization
+    // We only skip if the document item ALREADY has the intended net effect in the ledger.
+    // This allows re-completing a document that was previously reverted.
+    if (reason === 'INITIAL') {
+      const existingMoves = await tx.stockLedger.findMany({
+        where: {
+          OR: [
+            { documentPurchaseId: documentId },
+            { documentSaleId: documentId },
+            { documentReturnId: documentId },
+            { documentAdjustmentId: documentId },
+            { documentTransferId: documentId },
+          ],
+          productId: { in: items.map((i) => i.productId) },
+          storeId,
+          type,
+        },
+        select: { productId: true, quantity: true },
+      });
+
+      const netQuantities = new Map<string, Decimal>();
+      for (const m of existingMoves) {
+        const val = netQuantities.get(m.productId) || new Decimal(0);
+        netQuantities.set(m.productId, val.add(m.quantity));
+      }
+
+      items = items.filter((item) => {
+        const net = netQuantities.get(item.productId) || new Decimal(0);
+        const target = direction === 'IN' ? item.quantity : item.quantity.negated();
+        return !net.equals(target);
+      });
+
+      if (items.length === 0) return;
+    }
 
     for (const item of items) {
       const stock = await tx.stock.findUnique({
@@ -363,8 +405,10 @@ export class InventoryService {
 
       // For 'OUT', check if we have enough stock (already checked in services but keeping here for safety)
       const newQty = oldQty.add(qtyDelta);
-      if (direction === 'OUT' && newQty.lessThan(0)) {
-        throw new Error(`Insufficient stock for product ${item.productId} in store ${storeId}`);
+      if (newQty.lessThan(0)) {
+        throw new BadRequestException(
+          `Недостаточно остатка товара ${item.productId} на складе ${storeId} (остаток: ${oldQty.toString()}, требуется списать: ${qtyDelta.abs().toString()})`,
+        );
       }
 
       // Calculate NEW WAP for incoming movements
@@ -400,7 +444,31 @@ export class InventoryService {
         averagePurchasePrice: newWap,
         transactionAmount: qtyDelta.mul(direction === 'IN' ? item.price : oldWap),
         batchId: documentId,
+        reason,
+        causationId: causationId || documentId,
       };
+
+      // In Strict Storno, try to link REVERSALs to their parent INITIAL entry
+      if (reason === 'REVERSAL') {
+        const parent = await tx.stockLedger.findFirst({
+          where: {
+            OR: [
+              { documentPurchaseId: documentId },
+              { documentSaleId: documentId },
+              { documentReturnId: documentId },
+              { documentAdjustmentId: documentId },
+              { documentTransferId: documentId },
+            ],
+            reason: 'INITIAL',
+            productId: item.productId,
+            storeId,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (parent) {
+          ledgerData.parentLedgerId = parent.id;
+        }
+      }
 
       // Set document ID based on type
       switch (type) {

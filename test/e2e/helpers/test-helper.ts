@@ -178,11 +178,9 @@ export class TestHelper {
   }
 
   async cleanup() {
-    // 0. Cleanup DocumentHistory, Reprocessing Items, and Price Ledger
+    // 0. Cleanup DocumentHistory and Price Ledger
     // We do this first because they reference products/documents which we are about to delete
     await this.prismaService.documentHistory.deleteMany({});
-    await this.prismaService.inventoryReprocessingItem.deleteMany({});
-    await this.prismaService.inventoryReprocessing.deleteMany({});
     await this.prismaService.priceLedger.deleteMany({});
     await this.prismaService.stockLedger.deleteMany({});
 
