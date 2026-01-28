@@ -1,46 +1,102 @@
-# Tech Stack (Технологический стек)
+# 🛠 Tech Stack & Architecture Standards
 
-Этот документ описывает актуальный технологический стек и инструменты, используемые в проекте `trade3-nestjs`.
+> **Strict compliance required.** This document defines the non-negotiable architectural and technological standards for `trade3-nestjs`.
 
-## Core Framework
+---
 
-- **Framework:** [NestJS v11](https://nestjs.com/)
-- **Platform:** Fastify (`@nestjs/platform-fastify`) — выбран за высокую производительность по сравнению с Express.
-- **Language:** TypeScript 5.7+
+## 1. Core Architecture: Vertical Slices
 
-## Database & ORM
+We adhere strictly to the **Vertical Slice Architecture**. This means code is organized by **Feature**, not by **Layer**.
 
-- **Database:** PostgreSQL 16+
-- **ORM:** [Prisma v7+](https://www.prisma.io/)
-- **Migration Management:** Prisma Migrate (`prisma migrate dev`)
+### ✅ The Rule
+A folder in `src/` should represent a **Business Capability** (e.g., `product`, `order`, `auth`), NOT a technical layer.
 
-## Validation & DTOs
+**Structure Example:**
+```text
+src/
+  ├── product/              # <--- Feature Module
+  │   ├── dto/              # DTOs specific to Product
+  │   ├── product.controller.ts
+  │   ├── product.service.ts
+  │   └── product.module.ts
+  ├── common/               # <--- Only truly shared code
+  └── main.ts
+```
 
-- **Validation Library:** [Zod v4+](https://zod.dev/v4) via `nestjs-zod`.
-- **Strategy:** `ZodValidationPipe` используется глобально.
-- **DTOs:** Все DTO генерируются из Zod схем с помощью `createZodDto`. Используется новый синтаксис Zod v4 (напр. `z.uuid()` вместо `z.string().uuid()`). Мы полностью отказались от `class-validator` и `class-transformer` в пользу Zod для строгой типизации и производительности.
+- **Encapsulation**: Features should be self-contained. Export only what is needed (usually just the Module).
+- **Proximity**: "Things that change together, stay together."
 
-## Testing
+---
 
-- **Test Runner:** [Vitest](https://vitest.dev/) — используется вместо Jest для всех видов тестов (Unit, E2E).
-- **Environment:** `vitest-setup.ts` настраивает глобальное окружение для E2E тестов.
-- **Tools:**
-  - `supertest`: Для HTTP-запросов к API.
-  - `cross-env`: Для кросс-платформенной установки переменных окружения (`NODE_ENV=test`).
+## 2. Server Framework
 
-## Logging & Monitoring
+| Component | Choice | Rationale |
+| :--- | :--- | :--- |
+| **Framework** | **NestJS v11** | Robust Dependency Injection and modularity. |
+| **Adapter** | **Fastify** | Significantly higher throughput (req/sec) than Express. |
+| **Language** | **TypeScript 5.7+** | Strict typing enabled (`noImplicitAny`, `strictNullChecks`). |
 
-- **Logging:** Встроенный `Logger` NestJS (планируется миграция на Pino).
-- **Errors:** Глобальный `HttpExceptionFilter` для стандартизации ошибок.
+**Key Constraint**: Do not use Express-specific middleware. Use Fastify plugins or NestJS abstracted interfaces.
 
-## Other Key Libraries
+---
 
-- **Scheduler:** `@nestjs/schedule` (Cron jobs).
-- **Auth:** `@nestjs/passport`, `passport-jwt` (JWT Strategy).
-- **Cookies:** `@fastify/cookie` (для безопасной работы с куками в Fastify).
+## 3. Database Layer
 
-## Development Tools
+| Component | Choice | Rationale |
+| :--- | :--- | :--- |
+| **Database** | **PostgreSQL 16+** | Reliable, supports JSONB and heavy concurrency. |
+| **ORM** | **Prisma v7+** | Type-safe queries that match the schema. |
+| **Migration** | `prisma migrate` | Declarative schema management. |
 
-- **Linter:** ESLint (Flat Config).
-- **Formatter:** Prettier + `prettier-plugin-prisma`.
-- **Runtime:** Node.js 22+ (LTS).
+### Best Practices
+- **No Raw SQL** unless absolutely necessary for performance.
+- **Repository Pattern**: NOT enforced globally. Services can call Prisma directly if the logic is simple. For complex queries, create specialized repository classes within the Feature Slice.
+
+---
+
+## 4. Validation (The "Zero-Class-Validator" Policy)
+
+🚫 **BANNED**: `class-validator`, `class-transformer`.
+✅ **REQUIRED**: **Zod** (`nestjs-zod`).
+
+We use **Zod** for all validation to ensure runtime safety matches compile-time types.
+
+- **DTOs**: Must be defined using `createZodDto`.
+- **Global Pipe**: `ZodValidationPipe` is enabled globally in `main.ts`.
+- **Swagger**: `patchNestJsSwagger()` is used to automatically generate OpenAPI schemas from Zod definitions.
+
+```typescript
+// Example DTO
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+
+const CreateProductSchema = z.object({
+  name: z.string().min(3),
+  price: z.number().positive(),
+  tags: z.array(z.string()).optional()
+});
+
+export class CreateProductDto extends createZodDto(CreateProductSchema) {}
+```
+
+---
+
+## 5. Testing Strategy
+
+We use **Vitest** for a faster, modern testing experience.
+
+- **Unit Tests**: Co-located with files (`*.spec.ts`).
+- **E2E Tests**: Located in `test/e2e/`. Use `supertest` against the compiled NestJS instance.
+- **Mocks**: Use `vi.fn()` and `vi.mock()`.
+
+---
+
+## 6. Development Ecosystem
+
+- **Linter**: ESLint (Flat Config)
+- **Formatter**: Prettier
+- **Git Hooks**: Husky (Pre-commit linting)
+- **Package Manager**: npm
+
+---
+_Adhere to these standards to maintain system integrity and performance._

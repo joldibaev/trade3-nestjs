@@ -1,98 +1,90 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🚀 Trade3: High-Performance WMS Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+> **Next-Generation Warehouse Management System API**
+> Built for performance, scalability, and type safety.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)
+![Fastify](https://img.shields.io/badge/Fastify-000000?style=for-the-badge&logo=fastify&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
+![Zod](https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)
 
-## Description
+## 📖 Overview
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+**Trade3** is a monolithic backend service designed to handle complex inventory operations with strict data integrity and high throughput. It leverages **NestJS** with the **Fastify** adapter for maximum performance and **PostgreSQL** with **Prisma** for robust data management.
 
-## Project setup
+This system is built with a **Vertical Slice Architecture**, ensuring that features are encapsulated, maintainable, and loosely coupled.
 
-```bash
-$ npm install
-```
+---
 
-## Compile and run the project
+## 🏗 System Architecture
 
-```bash
-# development
-$ npm run start
+The project strictly follows the **Vertical Slice** pattern. Instead of grouping files by technical type (controllers, services), we group them by **Business Feature**.
 
-# watch mode
-$ npm run start:dev
+### Core Modules
+- **`src/core/`**: Infrastructure and shared services (Auth, Inventory, Config).
+- **`src/<feature>/`**: Self-contained feature modules (e.g., `src/document-purchase`, `src/product`).
+- **`src/common/`**: Truly global utilities and decorators.
 
-# production mode
-$ npm run start:prod
-```
+---
 
-## Run tests
+## 📚 Documentation Hub
 
-```bash
-# unit tests
-$ npm run test
+### 🔧 Engineering Standards
+| Document | Description |
+| :--- | :--- |
+| [**Tech Stack & Rules**](docs/tech-stack.md) | Defines the "Rules of Engagement": Zod-only, Vertical Slices, Testing strategy. |
+| [**System Entities**](docs/entities.md) | Database schema deep-dive, relations, and typical usage patterns. |
+| [**Visual Architecture**](docs/visual-architecture.md) | 🎨 **NEW!** Diagrams of algorithms, flows, and vertical slices. |
+| [**Visual Workflows**](docs/visual-document-workflows.md) | 📊 **NEW!** Flowcharts for `create`, `addItems`, and `updateStatus`. |
+| [**Detailed Methods**](docs/services/) | 🛠 **NEW!** Deep-dive text breakdown of all methods per service. |
+| [**Resource Generator**](docs/resource-generator.md) | Guide to the custom `prisma-to-zod-to-ts` code generation pipeline. |
+| [**Concurrency Control**](docs/concurrency.md) | How we handle race conditions using Advisory Locks and ACID transactions. |
 
-# e2e tests
-$ npm run test:e2e
+### 🔐 Security & Access
+| Document | Description |
+| :--- | :--- |
+| [**Authentication Flow**](docs/auth.md) | JWT Dual-Token strategy (Access/Refresh), Guards, and Roles. |
+| [**Document History**](docs/document-history.md) | Immutable audit logs for all WMS operations. |
 
-# test coverage
-$ npm run test:cov
-```
+### 📦 Business Domains (Services)
+Detailed breakdown of business logic for each document type:
 
-## Deployment
+- 📥 [**Purchase (Закупки)**](docs/services/document-purchase.md) - WAP calculation, Stock increments.
+- 📤 [**Sale (Продажи)**](docs/services/document-sale.md) - FIFO/LIFO logic, Profit calculation.
+- ↩️ [**Return (Возвраты)**](docs/services/document-return.md) - Client returns handling.
+- ⚖️ [**Adjustment (Инвентаризация)**](docs/services/document-adjustment.md) - Stock corrections.
+- 🚚 [**Transfer (Перемещения)**](docs/services/document-transfer.md) - Inter-warehouse movements.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+---
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## ⚡ Quick Start
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# 1. Install Dependencies
+npm install
+
+# 2. Database Setup
+# Ensure PostgreSQL is running and .env is configured
+npm run prisma:generate
+npm run prisma:migrate
+
+# 3. Seed Data (Optional)
+npm run seed
+
+# 4. Start Development Server
+npm run start:dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## 🧪 Testing
 
-## Resources
+We use **Vitest** for a unified testing experience.
 
-Check out a few resources that may come in handy when working with NestJS:
+```bash
+npm run test:e2e    # Run end-to-end integration tests
+npm run test        # Run unit tests
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+---
+_Trade3 Engineering Team — 2026_
