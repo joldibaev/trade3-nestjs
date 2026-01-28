@@ -1,10 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ProductService } from './product.service';
-import { CreateProductDto } from '../generated/dto/product/create-product.dto';
-import { UpdateProductDto } from '../generated/dto/product/update-product.dto';
+import { CreateProductDto } from '../generated/types/backend/dto/product/create-product.dto';
+import { UpdateProductDto } from '../generated/types/backend/dto/product/update-product.dto';
 import { parseInclude } from '../common/utils/prisma-helpers';
-import { ProductRelations } from '../generated/relations/product-relations.enum';
+import { ProductRelations } from '../generated/types/backend/relations/product-relations.enum';
 import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 
 @ApiTags('products')

@@ -2,13 +2,6 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
-import {
-  CreateDocumentPurchaseDto,
-  CreateDocumentPurchaseItemDto,
-  UpdateDocumentPurchaseItemDto,
-  UpdateProductPriceDto,
-} from './dto/create-document-purchase.dto';
-import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { StoreService } from '../store/store.service';
 import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';
@@ -16,6 +9,11 @@ import { CodeGeneratorService } from '../core/code-generator/code-generator.serv
 import { DocumentStatus } from '../generated/prisma/enums';
 
 import Decimal = Prisma.Decimal;
+import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
+import { CreateDocumentPurchaseItemDto } from './dto/create-document-purchase-item.dto';
+import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
+import { UpdateDocumentPurchaseItemDto } from './dto/update-document-purchase-item.dto';
+import { UpdateProductPriceDto } from './dto/update-product-price.dto';
 
 interface PreparedPurchaseItem {
   productId: string;

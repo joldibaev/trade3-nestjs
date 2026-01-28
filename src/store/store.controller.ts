@@ -1,10 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { StoreService } from './store.service';
-import { CreateStoreDto } from '../generated/dto/store/create-store.dto';
-import { UpdateStoreDto } from '../generated/dto/store/update-store.dto';
+import { CreateStoreDto } from '../generated/types/backend/dto/store/create-store.dto';
+import { UpdateStoreDto } from '../generated/types/backend/dto/store/update-store.dto';
 import { parseInclude } from '../common/utils/prisma-helpers';
-import { StoreRelations } from '../generated/relations/store-relations.enum';
+import { StoreRelations } from '../generated/types/backend/relations/store-relations.enum';
 import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 
 @ApiTags('stores')

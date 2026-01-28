@@ -3,10 +3,8 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
-import {
-  CreateDocumentTransferDto,
-  CreateDocumentTransferItemDto,
-} from './dto/create-document-transfer.dto';
+import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
+import { CreateDocumentTransferItemDto } from './dto/create-document-transfer-item.dto';
 import { StoreService } from '../store/store.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 import { DocumentHistoryService } from '../document-history/document-history.service';

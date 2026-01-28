@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { CreateVendorDto } from '../generated/dto/vendor/create-vendor.dto';
-import { UpdateVendorDto } from '../generated/dto/vendor/update-vendor.dto';
+import { CreateVendorDto } from '../generated/types/backend/dto/vendor/create-vendor.dto';
+import { UpdateVendorDto } from '../generated/types/backend/dto/vendor/update-vendor.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
 
 @Injectable()

@@ -2,7 +2,7 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { StockLedgerService } from './stock-ledger.service';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { parseInclude } from '../common/utils/prisma-helpers';
-// import { StockLedgerRelations } from '../generated/relations/stock-ledger-relations.enum'; // Assume this might be generated later or I skip it for now
+// import { StockLedgerRelations } from '../generated/types/backend/relations/stock-ledger-relations.enum'; // Assume this might be generated later or I skip it for now
 import { StockMovementType } from '../generated/prisma/enums';
 
 @ApiTags('stock-ledgers')

@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ClientService } from './client.service';
-import { CreateClientDto } from '../generated/dto/client/create-client.dto';
-import { UpdateClientDto } from '../generated/dto/client/update-client.dto';
+import { UpdateClientDto } from '../generated/types/backend/dto/client/update-client.dto';
+import { CreateClientDto } from '../generated/types/backend/dto/client/create-client.dto';
 
 @ApiTags('clients')
 @Controller('clients')

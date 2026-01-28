@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { CreateCashboxDto } from '../generated/dto/cashbox/create-cashbox.dto';
-import { UpdateCashboxDto } from '../generated/dto/cashbox/update-cashbox.dto';
+import { CreateCashboxDto } from '../generated/types/backend/dto/cashbox/create-cashbox.dto';
+import { UpdateCashboxDto } from '../generated/types/backend/dto/cashbox/update-cashbox.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
 
 @Injectable()

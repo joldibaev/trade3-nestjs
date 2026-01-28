@@ -1,10 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PriceService } from './price.service';
-import { CreatePriceDto } from '../generated/dto/price/create-price.dto';
-import { UpdatePriceDto } from '../generated/dto/price/update-price.dto';
+import { CreatePriceDto } from '../generated/types/backend/dto/price/create-price.dto';
+import { UpdatePriceDto } from '../generated/types/backend/dto/price/update-price.dto';
 import { parseInclude } from '../common/utils/prisma-helpers';
-import { PriceRelations } from '../generated/relations/price-relations.enum';
+import { PriceRelations } from '../generated/types/backend/relations/price-relations.enum';
 import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 
 @ApiTags('prices')

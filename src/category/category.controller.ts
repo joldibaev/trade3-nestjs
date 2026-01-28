@@ -1,10 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CategoryService } from './category.service';
-import { CreateCategoryDto } from '../generated/dto/category/create-category.dto';
-import { UpdateCategoryDto } from '../generated/dto/category/update-category.dto';
+import { CreateCategoryDto } from '../generated/types/backend/dto/category/create-category.dto';
+import { UpdateCategoryDto } from '../generated/types/backend/dto/category/update-category.dto';
 import { parseInclude } from '../common/utils/prisma-helpers';
-import { CategoryRelations } from '../generated/relations/category-relations.enum';
+import { CategoryRelations } from '../generated/types/backend/relations/category-relations.enum';
 import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 import { Prisma } from '../generated/prisma/client';
 

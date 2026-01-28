@@ -1,10 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CashboxService } from './cashbox.service';
-import { CreateCashboxDto } from '../generated/dto/cashbox/create-cashbox.dto';
-import { UpdateCashboxDto } from '../generated/dto/cashbox/update-cashbox.dto';
+import { CreateCashboxDto } from '../generated/types/backend/dto/cashbox/create-cashbox.dto';
+import { UpdateCashboxDto } from '../generated/types/backend/dto/cashbox/update-cashbox.dto';
 import { parseInclude } from '../common/utils/prisma-helpers';
-import { CashboxRelations } from '../generated/relations/cashbox-relations.enum';
+import { CashboxRelations } from '../generated/types/backend/relations/cashbox-relations.enum';
 import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 
 @ApiTags('cashboxes')

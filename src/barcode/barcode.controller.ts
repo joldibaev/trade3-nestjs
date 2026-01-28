@@ -4,7 +4,7 @@ import { BarcodeService } from './barcode.service';
 import { CreateBarcodeDto } from './dto/create-barcode.dto';
 import { UpdateBarcodeDto } from './dto/update-barcode.dto';
 import { parseInclude } from '../common/utils/prisma-helpers';
-import { BarcodeRelations } from '../generated/relations/barcode-relations.enum';
+import { BarcodeRelations } from '../generated/types/backend/relations/barcode-relations.enum';
 import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 
 @ApiTags('barcodes')

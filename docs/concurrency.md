@@ -10,9 +10,9 @@
 
 Изначально использовался уровень `Serializable`, который гарантирует строгую целостность "из коробки". Однако он имеет существенный недостаток при высокой конкуренции:
 
-*   **Serialization Failures:** При конфликте транзакций база данных прерывает одну из них, выбрасывая ошибку.
-*   **Сложность для клиента:** Это требует реализации сложной логики `Retry` (автоматического повтора) на стороне клиента или контроллера.
-*   **UX:** Пользователи могут получать случайные ошибки при активной работе.
+- **Serialization Failures:** При конфликте транзакций база данных прерывает одну из них, выбрасывая ошибку.
+- **Сложность для клиента:** Это требует реализации сложной логики `Retry` (автоматического повтора) на стороне клиента или контроллера.
+- **UX:** Пользователи могут получать случайные ошибки при активной работе.
 
 ### Текущее решение: `ReadCommitted` + `pg_advisory_xact_lock`
 
@@ -46,19 +46,22 @@ async lockProduct(tx: Prisma.TransactionClient, storeId: string, productId: stri
 
 ```typescript
 // src/document-sale/document-sale.service.ts
-await this.prisma.$transaction(async (tx) => {
-  // 1. Сортируем ID во избежание Deadlocks (важно!)
-  const sortedProductIds = sortUnique(items.map(i => i.productId));
-  
-  // 2. Блокируем все товары, участвующие в продаже
-  for (const pid of sortedProductIds) {
-    await this.inventoryService.lockProduct(tx, storeId, pid);
-  }
+await this.prisma.$transaction(
+  async (tx) => {
+    // 1. Сортируем ID во избежание Deadlocks (важно!)
+    const sortedProductIds = sortUnique(items.map((i) => i.productId));
 
-  // 3. Читаем остатки (Stock) - теперь это безопасно
-  // 4. Вычисляем (Compute)
-  // 5. Обновляем (Update)
-}, { isolationLevel: 'ReadCommitted' });
+    // 2. Блокируем все товары, участвующие в продаже
+    for (const pid of sortedProductIds) {
+      await this.inventoryService.lockProduct(tx, storeId, pid);
+    }
+
+    // 3. Читаем остатки (Stock) - теперь это безопасно
+    // 4. Вычисляем (Compute)
+    // 5. Обновляем (Update)
+  },
+  { isolationLevel: 'ReadCommitted' },
+);
 ```
 
 ## Преимущества

@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PriceTypeService } from './pricetype.service';
-import { CreatePriceTypeDto } from '../generated/dto/price-type/create-price-type.dto';
-import { UpdatePriceTypeDto } from '../generated/dto/price-type/update-price-type.dto';
+import { CreatePriceTypeDto } from '../generated/types/backend/dto/price-type/create-price-type.dto';
+import { UpdatePriceTypeDto } from '../generated/types/backend/dto/price-type/update-price-type.dto';
 
 @ApiTags('price-types')
 @Controller('price-types')

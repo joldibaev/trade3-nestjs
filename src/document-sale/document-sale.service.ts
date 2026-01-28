@@ -3,11 +3,9 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { InventoryService } from '../core/inventory/inventory.service';
 import { Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
-import {
-  CreateDocumentSaleDto,
-  CreateDocumentSaleItemDto,
-  UpdateDocumentSaleItemDto,
-} from './dto/create-document-sale.dto';
+import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
+import { CreateDocumentSaleItemDto } from './dto/create-document-sale-item.dto';
+import { UpdateDocumentSaleItemDto } from './dto/update-document-sale-item.dto';
 import { StoreService } from '../store/store.service';
 import { DocumentHistoryService } from '../document-history/document-history.service';
 import { BaseDocumentService } from '../common/base-document.service';

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { CreateProductDto } from '../generated/dto/product/create-product.dto';
-import { UpdateProductDto } from '../generated/dto/product/update-product.dto';
+import { CreateProductDto } from '../generated/types/backend/dto/product/create-product.dto';
+import { UpdateProductDto } from '../generated/types/backend/dto/product/update-product.dto';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import { Prisma } from '../generated/prisma/client';
