@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { PriceTypeService } from './pricetype.service';
+
 import { PriceTypeController } from './pricetype.controller';
+import { PriceTypeService } from './pricetype.service';
 
 @Module({
   controllers: [PriceTypeController],

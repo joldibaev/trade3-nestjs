@@ -4,7 +4,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 import { HttpAdapterHost } from '@nestjs/core';
 import { HttpExceptionFilter } from '../../../src/common/filters/http-exception.filter';

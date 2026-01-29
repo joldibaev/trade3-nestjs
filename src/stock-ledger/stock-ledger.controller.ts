@@ -1,9 +1,10 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { StockLedgerService } from './stock-ledger.service';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
+
 import { parseInclude } from '../common/utils/prisma-helpers';
-// import { StockLedgerRelations } from '../generated/types/backend/relations/stock-ledger-relations.enum'; // Assume this might be generated later or I skip it for now
+import { StockLedger } from '../generated/prisma/client';
 import { StockMovementType } from '../generated/prisma/enums';
+import { StockLedgerService } from './stock-ledger.service';
 
 @ApiTags('stock-ledgers')
 @Controller('stock-ledgers')
@@ -24,7 +25,7 @@ export class StockLedgerController {
     @Query('type') type?: StockMovementType,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-  ) {
+  ): Promise<StockLedger[]> {
     return this.stockLedgerService.findAll(parseInclude(include), {
       productId,
       storeId,

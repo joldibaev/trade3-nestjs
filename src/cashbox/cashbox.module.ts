@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { CashboxService } from './cashbox.service';
+
 import { CashboxController } from './cashbox.controller';
+import { CashboxService } from './cashbox.service';
 
 @Module({
   controllers: [CashboxController],

@@ -4,7 +4,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 
 describe('Document Adjustment & Transfer (e2e)', () => {
@@ -108,7 +108,7 @@ describe('Document Adjustment & Transfer (e2e)', () => {
   // Option B: Manually push IDs to `helper.createdIds` after creation.
 
   // `TestHelper` doesn't expose `createdIds` publicly... wait, looks at `view_file` of `test-helper.ts`:
-  // `public createdIds = { ... }` -> It IS public.
+  // `createdIds = { ... }` -> It IS public.
 
   // So I can just push ids.
 

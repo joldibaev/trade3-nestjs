@@ -3,8 +3,8 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import fastifyCookie from '@fastify/cookie';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
-import { InventoryService } from '../../../src/core/inventory/inventory.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
+import { InventoryService } from '../../../src/inventory/inventory.service';
 import { TestHelper } from '../helpers/test-helper';
 
 describe('Stock Ledger Audit Flow (E2E)', () => {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
+
 import { Prisma } from '../generated/prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 export type LedgerActionType =
   | 'CREATED'
@@ -37,7 +38,7 @@ export class DocumentHistoryService {
   /**
    * Log a generic action for a document.
    */
-  async logAction(tx: PrismaTransaction, params: LogActionParams) {
+  async logAction(tx: PrismaTransaction, params: LogActionParams): Promise<void> {
     const { documentId, documentType, action, details, authorId } = params;
 
     const data: Prisma.DocumentHistoryUncheckedCreateInput = {
@@ -73,7 +74,7 @@ export class DocumentHistoryService {
     oldItems: T[],
     newItems: T[],
     compareFields: (keyof T)[],
-  ) {
+  ): Promise<void> {
     const { documentId, documentType, authorId } = baseParams;
 
     const oldMap = new Map(oldItems.map((i) => [i.productId, i]));

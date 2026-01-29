@@ -1,15 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { InventoryService } from '../core/inventory/inventory.service';
-import { Prisma } from '../generated/prisma/client';
+
+import { CodeGeneratorService } from '../code-generator/code-generator.service';
+import { BaseDocumentService } from '../common/base-document.service';
+import { DocumentSummary } from '../common/interfaces/summary.interface';
+import { DocumentHistoryService } from '../document-history/document-history.service';
+import { DocumentSale, Prisma } from '../generated/prisma/client';
 import { DocumentStatus, LedgerReason } from '../generated/prisma/enums';
+import { InventoryService } from '../inventory/inventory.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StoreService } from '../store/store.service';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
 import { CreateDocumentSaleItemDto } from './dto/create-document-sale-item.dto';
 import { UpdateDocumentSaleItemDto } from './dto/update-document-sale-item.dto';
-import { StoreService } from '../store/store.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
-import { BaseDocumentService } from '../common/base-document.service';
-import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
 
 interface PreparedSaleItem {
@@ -39,7 +41,7 @@ export class DocumentSaleService {
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
-  async create(createDocumentSaleDto: CreateDocumentSaleDto) {
+  async create(createDocumentSaleDto: CreateDocumentSaleDto): Promise<DocumentSale> {
     const { storeId, cashboxId, clientId, date, status, priceTypeId, notes } =
       createDocumentSaleDto;
 
@@ -51,8 +53,20 @@ export class DocumentSaleService {
       targetStatus = 'SCHEDULED' as DocumentStatus;
     }
 
-    // 1. Validate Store
+    // 1. Validate Store and Cashbox
     await this.storeService.validateStore(storeId);
+
+    if (cashboxId) {
+      const cashbox = await this.prisma.cashbox.findUnique({
+        where: { id: cashboxId },
+      });
+      if (!cashbox) {
+        throw new BadRequestException('Касса не найдена');
+      }
+      if (cashbox.storeId !== storeId) {
+        throw new BadRequestException('Выбранная касса не принадлежит выбранному складу');
+      }
+    }
 
     // 2. Execute Transaction
 
@@ -91,7 +105,7 @@ export class DocumentSaleService {
     );
   }
 
-  async update(id: string, updateDto: CreateDocumentSaleDto) {
+  async update(id: string, updateDto: CreateDocumentSaleDto): Promise<DocumentSale> {
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
@@ -102,6 +116,22 @@ export class DocumentSaleService {
 
         const { storeId, cashboxId, clientId, date, priceTypeId, notes } = updateDto;
         const docDate = date ? new Date(date) : new Date();
+
+        if (storeId) {
+          await this.storeService.validateStore(storeId);
+        }
+
+        if (cashboxId) {
+          const cashbox = await tx.cashbox.findUnique({
+            where: { id: cashboxId },
+          });
+          if (!cashbox) {
+            throw new BadRequestException('Касса не найдена');
+          }
+          if (cashbox.storeId !== (storeId || sale.storeId)) {
+            throw new BadRequestException('Выбранная касса не принадлежит выбранному складу');
+          }
+        }
 
         const updatedSale = await tx.documentSale.update({
           where: { id },
@@ -150,7 +180,7 @@ export class DocumentSaleService {
     );
   }
 
-  async addItems(id: string, itemsDto: CreateDocumentSaleItemDto[]) {
+  async addItems(id: string, itemsDto: CreateDocumentSaleItemDto[]): Promise<DocumentSale> {
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
@@ -160,6 +190,7 @@ export class DocumentSaleService {
         this.baseService.ensureDraft(sale.status);
 
         let totalAddition = new Decimal(0);
+        const addedQuantities = new Map<string, Decimal>();
 
         for (const dto of itemsDto) {
           const { productId, quantity } = dto;
@@ -167,11 +198,38 @@ export class DocumentSaleService {
             throw new BadRequestException('ID товара обязателен');
           }
 
+          const qVal = new Decimal(quantity);
+
+          // 1. Stock Validation
+          const stock = await tx.stock.findUnique({
+            where: { productId_storeId: { productId, storeId: sale.storeId } },
+          });
+          const availableQty = stock?.quantity || new Decimal(0);
+
+          // Sum existing in this doc
+          const existingInDoc = await tx.documentSaleItem.findMany({
+            where: { saleId: id, productId },
+          });
+          const existingQtySum = existingInDoc.reduce(
+            (sum, item) => sum.add(item.quantity),
+            new Decimal(0),
+          );
+
+          // Track what we added in THIS loop too (if batch adding same product)
+          const inThisBatch = addedQuantities.get(productId) || new Decimal(0);
+
+          if (existingQtySum.add(inThisBatch).add(qVal).gt(availableQty)) {
+            throw new BadRequestException(
+              `Недостаточно товара на складе. В наличии: ${availableQty.toString()}, в документе уже: ${existingQtySum.add(inThisBatch).toString()}, пытаетесь добавить: ${qVal.toString()}`,
+            );
+          }
+
+          addedQuantities.set(productId, inThisBatch.add(qVal));
+
           const product = await tx.product.findUniqueOrThrow({
             where: { id: productId },
             include: { prices: true },
           });
-
           let finalPrice = new Decimal(dto.price ?? 0);
           if (dto.price === undefined) {
             if (sale.priceTypeId) {
@@ -182,14 +240,10 @@ export class DocumentSaleService {
             }
           }
 
-          const qVal = new Decimal(quantity);
           const itemTotal = qVal.mul(finalPrice);
           totalAddition = totalAddition.add(itemTotal);
 
           // Fetch current cost price for snapshot
-          const stock = await tx.stock.findUnique({
-            where: { productId_storeId: { productId: productId, storeId: sale.storeId } },
-          });
           const costPrice = stock ? stock.averagePurchasePrice : new Decimal(0);
 
           await tx.documentSaleItem.create({
@@ -216,8 +270,6 @@ export class DocumentSaleService {
           data: { total: { increment: totalAddition } },
         });
 
-        // Use tx context for findOne if needed, but since it's read-only and transaction will commit,
-        // we can fetch it after or inside. Let's do it inside using tx.
         return tx.documentSale.findUniqueOrThrow({
           where: { id },
           include: {
@@ -236,7 +288,11 @@ export class DocumentSaleService {
     );
   }
 
-  async updateItem(id: string, itemId: string, dto: UpdateDocumentSaleItemDto) {
+  async updateItem(
+    id: string,
+    itemId: string,
+    dto: UpdateDocumentSaleItemDto,
+  ): Promise<DocumentSale> {
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
@@ -251,6 +307,28 @@ export class DocumentSaleService {
 
         const { quantity, price } = dto;
         const qVal = quantity !== undefined ? new Decimal(quantity) : item.quantity;
+
+        if (quantity !== undefined) {
+          const stock = await tx.stock.findUnique({
+            where: { productId_storeId: { productId: item.productId, storeId: sale.storeId } },
+          });
+          const availableQty = stock?.quantity || new Decimal(0);
+
+          const otherInDoc = await tx.documentSaleItem.findMany({
+            where: { saleId: id, productId: item.productId, NOT: { id: itemId } },
+          });
+          const otherQtySum = otherInDoc.reduce(
+            (sum, item) => sum.add(item.quantity),
+            new Decimal(0),
+          );
+
+          if (otherQtySum.add(qVal).gt(availableQty)) {
+            throw new BadRequestException(
+              `Недостаточно товара на складе. В наличии: ${availableQty.toString()}, другие позиции этого товара в документе: ${otherQtySum.toString()}, новая порция: ${qVal.toString()}`,
+            );
+          }
+        }
+
         const pVal = price !== undefined ? new Decimal(price) : item.price;
         const newTotal = qVal.mul(pVal);
         const amountDiff = newTotal.sub(item.total);
@@ -300,7 +378,7 @@ export class DocumentSaleService {
     );
   }
 
-  async removeItems(id: string, itemIds: string[]) {
+  async removeItems(id: string, itemIds: string[]): Promise<DocumentSale> {
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.documentSale.findUniqueOrThrow({
@@ -353,7 +431,7 @@ export class DocumentSaleService {
     );
   }
 
-  async updateStatus(id: string, newStatus: DocumentStatus) {
+  async updateStatus(id: string, newStatus: DocumentStatus): Promise<DocumentSale> {
     let productsToReprocess: string[] = [];
 
     const updatedSale = await this.prisma.$transaction(
@@ -461,7 +539,10 @@ export class DocumentSaleService {
     return updatedSale;
   }
 
-  private async updateItemCostPrices(tx: Prisma.TransactionClient, sale: SaleWithItems) {
+  private async updateItemCostPrices(
+    tx: Prisma.TransactionClient,
+    sale: SaleWithItems,
+  ): Promise<void> {
     const productIds = sale.items.map((i) => i.productId);
     const stocks = await tx.stock.findMany({
       where: {
@@ -482,14 +563,14 @@ export class DocumentSaleService {
     }
   }
 
-  findAll() {
+  findAll(): Promise<DocumentSale[]> {
     return this.prisma.documentSale.findMany({
       include: { store: true, client: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async getSummary() {
+  async getSummary(): Promise<DocumentSummary> {
     const where: Prisma.DocumentSaleWhereInput = {};
 
     const [aggregate, totalCount] = await Promise.all([
@@ -514,11 +595,13 @@ export class DocumentSaleService {
     };
   }
 
-  findOne(id: string) {
+  findOne(id: string): Promise<DocumentSale> {
     return this.prisma.documentSale.findUniqueOrThrow({
       where: { id },
       include: {
-        items: true,
+        items: {
+          include: { product: true },
+        },
         client: true,
         store: true,
         cashbox: true,
@@ -535,7 +618,7 @@ export class DocumentSaleService {
     sale: SaleMinimal,
     items: PreparedSaleItem[],
     reason: LedgerReason = 'INITIAL',
-  ) {
+  ): Promise<void> {
     await this.inventoryService.applyMovements(
       tx,
       {

@@ -23,7 +23,8 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "seed": "prisma db seed",
-    "postprisma:generate": "tsx scripts/resource-generator/index.ts"
+    "postprisma:generate": "tsx scripts/resource-generator/index.ts",
+    "prepare": "husky"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -41,6 +42,7 @@
     "@types/cron": "^2.0.1",
     "@willsoto/nestjs-prometheus": "^6.0.2",
     "bcrypt": "^6.0.0",
+    "date-fns": "^4.1.0",
     "nestjs-zod": "^5.1.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -69,8 +71,11 @@
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
     "eslint-plugin-unused-imports": "^4.3.0",
     "globals": "^16.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "prettier": "^3.4.2",
     "prettier-plugin-prisma": "^5.0.0",
     "prisma": "^7.2.0",
@@ -87,5 +92,13 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "lint-staged": {
+    "*.{ts,js,json,md}": [
+      "prettier --write"
+    ],
+    "*.ts": [
+      "eslint --fix"
+    ]
   }
 }

@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { InventoryService } from '../core/inventory/inventory.service';
-import { Prisma } from '../generated/prisma/client';
-import { StoreService } from '../store/store.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
+
+import { CodeGeneratorService } from '../code-generator/code-generator.service';
 import { BaseDocumentService } from '../common/base-document.service';
-import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
+import { DocumentSummary } from '../common/interfaces/summary.interface';
+import { DocumentHistoryService } from '../document-history/document-history.service';
+import { DocumentPurchase, Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
+import { InventoryService } from '../inventory/inventory.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StoreService } from '../store/store.service';
 
 import Decimal = Prisma.Decimal;
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
@@ -40,7 +42,10 @@ export class DocumentPurchaseService {
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
-  async create(createDocumentPurchaseDto: CreateDocumentPurchaseDto, userId?: string) {
+  async create(
+    createDocumentPurchaseDto: CreateDocumentPurchaseDto,
+    userId?: string,
+  ): Promise<DocumentPurchase> {
     const { storeId, vendorId, date, status, notes } = createDocumentPurchaseDto;
 
     let targetStatus = status || 'DRAFT';
@@ -102,7 +107,11 @@ export class DocumentPurchaseService {
     return result.doc;
   }
 
-  async updateStatus(id: string, newStatus: DocumentStatus, userId?: string) {
+  async updateStatus(
+    id: string,
+    newStatus: DocumentStatus,
+    userId?: string,
+  ): Promise<DocumentPurchase> {
     let productsToReprocess: string[] = [];
 
     const updatedPurchase = await this.prisma.$transaction(
@@ -362,7 +371,11 @@ export class DocumentPurchaseService {
     return updatedPurchase;
   }
 
-  async addItems(id: string, itemsDto: CreateDocumentPurchaseItemDto[], userId?: string) {
+  async addItems(
+    id: string,
+    itemsDto: CreateDocumentPurchaseItemDto[],
+    userId?: string,
+  ): Promise<DocumentPurchase> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentPurchase.findUniqueOrThrow({
@@ -491,7 +504,7 @@ export class DocumentPurchaseService {
     itemId: string,
     itemDto: UpdateDocumentPurchaseItemDto,
     userId?: string,
-  ) {
+  ): Promise<DocumentPurchase> {
     // Note: itemId is productId in the current DTO design, but usually it's a unique ID.
     // However, Prisma doesn't always expose IDs in DTOs easily if not asked.
     // Assuming itemId passed from FE is productId as per route param usage, OR it's a unique ID.
@@ -599,7 +612,7 @@ export class DocumentPurchaseService {
     );
   }
 
-  async removeItems(id: string, productIds: string[], userId?: string) {
+  async removeItems(id: string, productIds: string[], userId?: string): Promise<DocumentPurchase> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentPurchase.findUniqueOrThrow({
@@ -678,7 +691,7 @@ export class DocumentPurchaseService {
   }
 
   // Refactored monolithic update (kept for header updates)
-  async update(id: string, updateDto: UpdateDocumentPurchaseDto) {
+  async update(id: string, updateDto: UpdateDocumentPurchaseDto): Promise<DocumentPurchase> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentPurchase.findUniqueOrThrow({
@@ -753,7 +766,7 @@ export class DocumentPurchaseService {
       total: Decimal | number;
       newPrices?: UpdateProductPriceDto[];
     }[],
-  ) {
+  ): Promise<void> {
     // Reuse existing handlePriceChanges logic, but adapt it to be cleaner if needed.
     // For now, mapping to PreparedPurchaseItem structure.
     const prepared: PreparedPurchaseItem[] = items.map((i) => ({
@@ -766,7 +779,7 @@ export class DocumentPurchaseService {
     await this.handlePriceChanges(tx, purchase.id, purchase.code, purchase.date, prepared);
   }
 
-  findAll() {
+  findAll(): Promise<DocumentPurchase[]> {
     return this.prisma.documentPurchase.findMany({
       include: {
         store: true,
@@ -777,36 +790,29 @@ export class DocumentPurchaseService {
     });
   }
 
-  async getSummary() {
+  async getSummary(): Promise<DocumentSummary> {
     const where: Prisma.DocumentPurchaseWhereInput = {};
 
     const [aggregate, totalCount] = await Promise.all([
       this.prisma.documentPurchase.aggregate({
-        where,
+        where: { ...where, status: 'COMPLETED' },
         _sum: { total: true },
-        _count: {
-          id: true,
-          status: true,
-        },
       }),
       this.prisma.documentPurchase.count({ where }),
     ]);
 
     const completedCount = await this.prisma.documentPurchase.count({
-      where: {
-        ...where,
-        status: 'COMPLETED',
-      },
+      where: { ...where, status: 'COMPLETED' },
     });
 
     return {
-      totalAmount: aggregate._sum.total?.toNumber() || 0,
+      totalAmount: Number(aggregate._sum.total || 0),
       totalCount,
       completedCount,
     };
   }
 
-  findOne(id: string) {
+  findOne(id: string): Promise<DocumentPurchase> {
     return this.prisma.documentPurchase.findUniqueOrThrow({
       where: { id },
       include: {
@@ -838,7 +844,7 @@ export class DocumentPurchaseService {
     tx: Prisma.TransactionClient,
     purchase: PurchaseContext,
     items: PreparedPurchaseItem[],
-  ) {
+  ): Promise<void> {
     await this.inventoryService.applyMovements(
       tx,
       {
@@ -858,7 +864,7 @@ export class DocumentPurchaseService {
     purchaseCode: string,
     date: Date,
     items: PreparedPurchaseItem[],
-  ) {
+  ): Promise<void> {
     // Check for existing linked document
     const existing = await tx.documentPriceChange.findUnique({
       where: { documentPurchaseId: purchaseId },

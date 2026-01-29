@@ -3,9 +3,9 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import fastifyCookie from '@fastify/cookie';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { SchedulerService } from '../../../src/core/scheduler/scheduler.service';
+import { SchedulerService } from '../../../src/scheduler/scheduler.service';
 
 describe('Scheduler & Future Documents (e2e)', () => {
   let app: NestFastifyApplication;

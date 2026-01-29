@@ -1,12 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
-import { CategoryService } from './category.service';
+
+import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
+import { parseInclude } from '../common/utils/prisma-helpers';
+import { Prisma } from '../generated/prisma/client';
+import { Category } from '../generated/prisma/client';
 import { CreateCategoryDto } from '../generated/types/backend/dto/category/create-category.dto';
 import { UpdateCategoryDto } from '../generated/types/backend/dto/category/update-category.dto';
-import { parseInclude } from '../common/utils/prisma-helpers';
 import { CategoryRelations } from '../generated/types/backend/relations/category-relations.enum';
-import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
-import { Prisma } from '../generated/prisma/client';
+import { CategoryService } from './category.service';
 
 @ApiTags('categories')
 @Controller('categories')
@@ -14,7 +16,7 @@ export class CategoryController {
   constructor(private readonly categoriesService: CategoryService) {}
 
   @Post()
-  create(@Body() createCategoryDto: CreateCategoryDto) {
+  create(@Body() createCategoryDto: CreateCategoryDto): Promise<Category> {
     return this.categoriesService.create(createCategoryDto);
   }
 
@@ -26,7 +28,7 @@ export class CategoryController {
     @Query('include') include?: string | string[],
     @Query('parentId') parentId?: string,
     @Query('isActive') isActive?: string,
-  ) {
+  ): Promise<Category[]> {
     const where: Prisma.CategoryWhereInput = {};
     if (parentId) {
       where.parent = parentId === 'null' ? null : { id: parentId };
@@ -39,17 +41,17 @@ export class CategoryController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string): Promise<Category> {
     return this.categoriesService.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto) {
+  update(@Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto): Promise<Category> {
     return this.categoriesService.update(id, updateCategoryDto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string): Promise<Category> {
     return this.categoriesService.remove(id);
   }
 }

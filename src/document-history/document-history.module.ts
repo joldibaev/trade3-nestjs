@@ -1,6 +1,7 @@
-import { Module, Global } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+
+import { PrismaModule } from '../prisma/prisma.module';
 import { DocumentHistoryService } from './document-history.service';
-import { PrismaModule } from '../core/prisma/prisma.module';
 
 @Global()
 @Module({

@@ -67,6 +67,7 @@ export function generateCreateDtoContent(model: Model): string {
       }
     }
 
+    if (f.isOptional) zodType += '.nullable()';
     if (f.isOptional || f.hasDefault) zodType += '.optional()';
     schemaFields += `  ${f.name}: ${zodType},\n`;
   });

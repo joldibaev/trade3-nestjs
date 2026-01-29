@@ -34,14 +34,13 @@ The project strictly follows the **Vertical Slice** pattern. Instead of grouping
 
 ### 🔧 Engineering Standards
 
-| Document                                               | Description                                                                     |
-| :----------------------------------------------------- | :------------------------------------------------------------------------------ |
-| [**Tech Stack & Rules**](docs/tech-stack.md)           | Defines the "Rules of Engagement": Zod-only, Vertical Slices, Testing strategy. |
-| [**System Entities**](docs/entities.md)                | Database schema deep-dive, relations, and typical usage patterns.               |
-| [**Visual Architecture**](docs/visual-architecture.md) | 🎨 Diagrams of algorithms, flows, and vertical slices.                          |
-| [**Detailed Methods**](docs/services/)                 | 🛠 Deep-dive text breakdown of all methods per service.                         |
-| [**Resource Generator**](docs/resource-generator.md)   | Guide to the custom `prisma-to-zod-to-ts` code generation pipeline.             |
-| [**Concurrency Control**](docs/concurrency.md)         | How we handle race conditions using Advisory Locks and ACID transactions.       |
+| Document                                             | Description                                                                     |
+| :--------------------------------------------------- | :------------------------------------------------------------------------------ |
+| [**Tech Stack & Rules**](docs/tech-stack.md)         | Defines the "Rules of Engagement": Zod-only, Vertical Slices, Testing strategy. |
+| [**System Entities**](docs/entities.md)              | Database schema deep-dive, relations, and typical usage patterns.               |
+| [**Detailed Methods**](docs/services/)               | 🛠 Deep-dive text breakdown of all methods per service.                         |
+| [**Resource Generator**](docs/resource-generator.md) | Guide to the custom `prisma-to-zod-to-ts` code generation pipeline.             |
+| [**Concurrency Control**](docs/concurrency.md)       | How we handle race conditions using Advisory Locks and ACID transactions.       |
 
 ### 🔐 Security & Access
 

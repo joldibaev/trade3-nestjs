@@ -1,14 +1,15 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '../generated/prisma/client';
+import { BadRequestException, Injectable } from '@nestjs/common';
+
+import { CodeGeneratorService } from '../code-generator/code-generator.service';
+import { BaseDocumentService } from '../common/base-document.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
+import { DocumentAdjustment, Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { InventoryService } from '../core/inventory/inventory.service';
+import { InventoryService } from '../inventory/inventory.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StoreService } from '../store/store.service';
 import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
 import { CreateDocumentAdjustmentItemDto } from './dto/create-document-adjustment-item.dto';
-import { StoreService } from '../store/store.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
-import { BaseDocumentService } from '../common/base-document.service';
-import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
 
 @Injectable()
@@ -22,7 +23,9 @@ export class DocumentAdjustmentService {
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
-  async create(createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
+  async create(
+    createDocumentAdjustmentDto: CreateDocumentAdjustmentDto,
+  ): Promise<DocumentAdjustment> {
     const { storeId, date, status, notes } = createDocumentAdjustmentDto;
 
     let targetStatus = status || 'DRAFT';
@@ -61,7 +64,7 @@ export class DocumentAdjustmentService {
     });
   }
 
-  async update(id: string, updateDto: CreateDocumentAdjustmentDto) {
+  async update(id: string, updateDto: CreateDocumentAdjustmentDto): Promise<DocumentAdjustment> {
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.documentAdjustment.findUniqueOrThrow({
         where: { id },
@@ -105,7 +108,10 @@ export class DocumentAdjustmentService {
     });
   }
 
-  async addItems(id: string, itemsDto: CreateDocumentAdjustmentItemDto[]) {
+  async addItems(
+    id: string,
+    itemsDto: CreateDocumentAdjustmentItemDto[],
+  ): Promise<DocumentAdjustment> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
@@ -115,9 +121,41 @@ export class DocumentAdjustmentService {
 
         this.baseService.ensureDraft(doc.status);
 
+        const addedQuantities = new Map<string, Decimal>();
+
         for (const dto of itemsDto) {
           const { productId, quantity } = dto;
           const qDelta = new Decimal(quantity);
+
+          // 1. Stock Validation (Only if reducing stock)
+          if (qDelta.isNegative()) {
+            const stock = await tx.stock.findUnique({
+              where: { productId_storeId: { productId, storeId: doc.storeId } },
+            });
+            const availableQty = stock?.quantity || new Decimal(0);
+
+            const existingInDoc = await tx.documentAdjustmentItem.findMany({
+              where: { adjustmentId: id, productId },
+            });
+            const existingQtySum = existingInDoc.reduce(
+              (sum, item) => sum.add(item.quantity),
+              new Decimal(0),
+            );
+
+            const inThisBatch = addedQuantities.get(productId) || new Decimal(0);
+
+            const totalEffect = existingQtySum.add(inThisBatch).add(qDelta);
+            if (availableQty.add(totalEffect).isNegative()) {
+              throw new BadRequestException(
+                `Недостаточно товара на складе для списания. В наличии: ${availableQty.toString()}, текущее списание в документе: ${existingQtySum.add(inThisBatch).abs().toString()}, пытаетесь списать еще: ${qDelta.abs().toString()}`,
+              );
+            }
+          }
+
+          addedQuantities.set(
+            productId,
+            (addedQuantities.get(productId) || new Decimal(0)).add(qDelta),
+          );
 
           // Fetch current stock to calculate snapshots
           const stock = await tx.stock.findUnique({
@@ -160,7 +198,11 @@ export class DocumentAdjustmentService {
     );
   }
 
-  async updateItem(id: string, itemId: string, dto: CreateDocumentAdjustmentItemDto) {
+  async updateItem(
+    id: string,
+    itemId: string,
+    dto: CreateDocumentAdjustmentItemDto,
+  ): Promise<DocumentAdjustment> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
@@ -175,6 +217,25 @@ export class DocumentAdjustmentService {
 
         const { quantity } = dto;
         const qDelta = new Decimal(quantity);
+
+        // Stock Validation (Only if reducing stock)
+        if (qDelta.isNegative()) {
+          const stock = await tx.stock.findUnique({
+            where: { productId_storeId: { productId: item.productId, storeId: doc.storeId } },
+          });
+          const availableQty = stock?.quantity || new Decimal(0);
+
+          const otherInDoc = await tx.documentAdjustmentItem.findMany({
+            where: { adjustmentId: id, productId: item.productId, NOT: { id: itemId } },
+          });
+          const otherQtySum = otherInDoc.reduce((sum, i) => sum.add(i.quantity), new Decimal(0));
+
+          if (availableQty.add(otherQtySum).add(qDelta).isNegative()) {
+            throw new BadRequestException(
+              `Недостаточно товара на складе для списания. В наличии: ${availableQty.toString()}, другие списания в документе: ${otherQtySum.abs().toString()}, новая корректировка: ${qDelta.abs().toString()}`,
+            );
+          }
+        }
 
         // Recalculate snapshots based on original quantityBefore
         const quantityAfter = item.quantityBefore.add(qDelta);
@@ -213,7 +274,7 @@ export class DocumentAdjustmentService {
     );
   }
 
-  async removeItems(id: string, itemIds: string[]) {
+  async removeItems(id: string, itemIds: string[]): Promise<DocumentAdjustment> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentAdjustment.findUniqueOrThrow({
@@ -254,7 +315,7 @@ export class DocumentAdjustmentService {
     );
   }
 
-  async updateStatus(id: string, newStatus: DocumentStatus) {
+  async updateStatus(id: string, newStatus: DocumentStatus): Promise<DocumentAdjustment> {
     let productsToReprocess: string[] = [];
 
     const updatedDoc = await this.prisma.$transaction(
@@ -368,18 +429,20 @@ export class DocumentAdjustmentService {
     return updatedDoc;
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll(include?: Record<string, boolean>): Promise<DocumentAdjustment[]> {
     return this.prisma.documentAdjustment.findMany({
-      include,
+      include: include || { store: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  findOne(id: string) {
+  findOne(id: string): Promise<DocumentAdjustment> {
     return this.prisma.documentAdjustment.findUniqueOrThrow({
       where: { id },
       include: {
-        items: true,
+        items: {
+          include: { product: true },
+        },
         store: true,
         documentHistory: {
           orderBy: { createdAt: 'asc' },

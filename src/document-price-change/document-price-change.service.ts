@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
+
+import { CodeGeneratorService } from '../code-generator/code-generator.service';
+import { BaseDocumentService } from '../common/base-document.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
+import { DocumentPriceChange, Prisma } from '../generated/prisma/client';
+import { DocumentStatus } from '../generated/prisma/enums';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateDocumentPriceChangeDto } from './dto/create-document-price-change.dto';
 import { UpdateDocumentPriceChangeDto } from './dto/update-document-price-change.dto';
-import { DocumentHistoryService } from '../document-history/document-history.service';
-import { BaseDocumentService } from '../common/base-document.service';
-import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
-import { Prisma } from '../generated/prisma/client';
-import { DocumentStatus } from '../generated/prisma/enums';
+import { PriceChangeSummary } from './interfaces/price-change-summary.interface';
 import Decimal = Prisma.Decimal;
 
 @Injectable()
@@ -18,7 +20,7 @@ export class DocumentPriceChangeService {
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
-  async create(createDto: CreateDocumentPriceChangeDto) {
+  async create(createDto: CreateDocumentPriceChangeDto): Promise<DocumentPriceChange> {
     const { date, status, notes, items } = createDto;
     const targetStatus = status || 'DRAFT';
     const docDate = new Date(date);
@@ -88,7 +90,7 @@ export class DocumentPriceChangeService {
     });
   }
 
-  async update(id: string, updateDto: UpdateDocumentPriceChangeDto) {
+  async update(id: string, updateDto: UpdateDocumentPriceChangeDto): Promise<DocumentPriceChange> {
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.documentPriceChange.findUniqueOrThrow({
         where: { id },
@@ -156,7 +158,7 @@ export class DocumentPriceChangeService {
     });
   }
 
-  async updateStatus(id: string, newStatus: DocumentStatus) {
+  async updateStatus(id: string, newStatus: DocumentStatus): Promise<DocumentPriceChange> {
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.documentPriceChange.findUniqueOrThrow({
         where: { id },
@@ -188,14 +190,14 @@ export class DocumentPriceChangeService {
     });
   }
 
-  findAll() {
+  findAll(): Promise<DocumentPriceChange[]> {
     return this.prisma.documentPriceChange.findMany({
       include: { documentPurchase: true },
       orderBy: { date: 'desc' },
     });
   }
 
-  findOne(id: string) {
+  findOne(id: string): Promise<DocumentPriceChange> {
     return this.prisma.documentPriceChange.findUniqueOrThrow({
       where: { id },
       include: {
@@ -207,7 +209,7 @@ export class DocumentPriceChangeService {
     });
   }
 
-  async getSummary() {
+  async getSummary(): Promise<PriceChangeSummary> {
     const where: Prisma.DocumentPriceChangeWhereInput = {};
 
     const totalCount = await this.prisma.documentPriceChange.count({ where });
@@ -230,7 +232,7 @@ export class DocumentPriceChangeService {
     documentId: string,
     date: Date,
     items: { productId: string; priceTypeId: string; newValue: Decimal; oldValue: Decimal }[],
-  ) {
+  ): Promise<void> {
     for (const item of items) {
       // 1. Create Ledger Entry with snapshots and batchId
       await tx.priceLedger.create({
@@ -255,7 +257,7 @@ export class DocumentPriceChangeService {
     documentId: string,
     date: Date,
     items: { productId: string; priceTypeId: string; oldValue: Decimal; newValue: Decimal }[],
-  ) {
+  ): Promise<void> {
     // We do NOT delete or update old records.
     // Instead, we add NEW "reversing" records that restore the previous price.
     for (const item of items) {
@@ -282,7 +284,7 @@ export class DocumentPriceChangeService {
     tx: Prisma.TransactionClient,
     productId: string,
     priceTypeId: string,
-  ) {
+  ): Promise<void> {
     // Find the actual latest price based on effective date
     const latestEntry = await tx.priceLedger.findFirst({
       where: {

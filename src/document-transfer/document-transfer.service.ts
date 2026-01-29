@@ -1,15 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { InventoryService } from '../core/inventory/inventory.service';
-import { Prisma } from '../generated/prisma/client';
+
+import { CodeGeneratorService } from '../code-generator/code-generator.service';
+import { BaseDocumentService } from '../common/base-document.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
+import { DocumentTransfer, Prisma } from '../generated/prisma/client';
 import { DocumentStatus, LedgerReason } from '../generated/prisma/enums';
+import { InventoryService } from '../inventory/inventory.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
+import { StoreService } from '../store/store.service';
 import { CreateDocumentTransferDto } from './dto/create-document-transfer.dto';
 import { CreateDocumentTransferItemDto } from './dto/create-document-transfer-item.dto';
-import { StoreService } from '../store/store.service';
-import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
-import { DocumentHistoryService } from '../document-history/document-history.service';
-import { BaseDocumentService } from '../common/base-document.service';
-import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
 
 @Injectable()
@@ -24,7 +25,7 @@ export class DocumentTransferService {
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
-  async create(createDocumentTransferDto: CreateDocumentTransferDto) {
+  async create(createDocumentTransferDto: CreateDocumentTransferDto): Promise<DocumentTransfer> {
     const { sourceStoreId, destinationStoreId, date, status, notes } = createDocumentTransferDto;
 
     let targetStatus = status || 'DRAFT';
@@ -81,7 +82,7 @@ export class DocumentTransferService {
     );
   }
 
-  async update(id: string, updateDto: CreateDocumentTransferDto) {
+  async update(id: string, updateDto: CreateDocumentTransferDto): Promise<DocumentTransfer> {
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.documentTransfer.findUniqueOrThrow({
         where: { id },
@@ -134,7 +135,7 @@ export class DocumentTransferService {
     });
   }
 
-  async addItems(id: string, itemsDto: CreateDocumentTransferItemDto[]) {
+  async addItems(id: string, itemsDto: CreateDocumentTransferItemDto[]): Promise<DocumentTransfer> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentTransfer.findUniqueOrThrow({
@@ -143,9 +144,35 @@ export class DocumentTransferService {
 
         this.baseService.ensureDraft(doc.status);
 
+        const addedQuantities = new Map<string, Decimal>();
+
         for (const dto of itemsDto) {
           const { productId, quantity } = dto;
           const qVal = new Decimal(quantity);
+
+          // 1. Stock Validation (Check source store)
+          const stock = await tx.stock.findUnique({
+            where: { productId_storeId: { productId, storeId: doc.sourceStoreId } },
+          });
+          const availableQty = stock?.quantity || new Decimal(0);
+
+          const existingInDoc = await tx.documentTransferItem.findMany({
+            where: { transferId: id, productId },
+          });
+          const existingQtySum = existingInDoc.reduce(
+            (sum, item) => sum.add(item.quantity),
+            new Decimal(0),
+          );
+
+          const inThisBatch = addedQuantities.get(productId) || new Decimal(0);
+
+          if (existingQtySum.add(inThisBatch).add(qVal).gt(availableQty)) {
+            throw new BadRequestException(
+              `Недостаточно товара на складе отправителя. В наличии: ${availableQty.toString()}, в документе уже: ${existingQtySum.add(inThisBatch).toString()}, пытаетесь добавить: ${qVal.toString()}`,
+            );
+          }
+
+          addedQuantities.set(productId, inThisBatch.add(qVal));
 
           await tx.documentTransferItem.create({
             data: {
@@ -179,7 +206,11 @@ export class DocumentTransferService {
     );
   }
 
-  async updateItem(id: string, itemId: string, dto: CreateDocumentTransferItemDto) {
+  async updateItem(
+    id: string,
+    itemId: string,
+    dto: CreateDocumentTransferItemDto,
+  ): Promise<DocumentTransfer> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentTransfer.findUniqueOrThrow({
@@ -194,6 +225,26 @@ export class DocumentTransferService {
 
         const { quantity } = dto;
         const qVal = new Decimal(quantity);
+
+        // Stock Validation
+        const stock = await tx.stock.findUnique({
+          where: { productId_storeId: { productId: item.productId, storeId: doc.sourceStoreId } },
+        });
+        const availableQty = stock?.quantity || new Decimal(0);
+
+        const otherInDoc = await tx.documentTransferItem.findMany({
+          where: { transferId: id, productId: item.productId, NOT: { id: itemId } },
+        });
+        const otherQtySum = otherInDoc.reduce(
+          (sum, item) => sum.add(item.quantity),
+          new Decimal(0),
+        );
+
+        if (otherQtySum.add(qVal).gt(availableQty)) {
+          throw new BadRequestException(
+            `Недостаточно товара на складе отправителя. В наличии: ${availableQty.toString()}, другие позиции этого товара в документе: ${otherQtySum.toString()}, новая порция: ${qVal.toString()}`,
+          );
+        }
 
         await tx.documentTransferItem.update({
           where: { id: itemId },
@@ -229,7 +280,7 @@ export class DocumentTransferService {
     );
   }
 
-  async removeItems(id: string, itemIds: string[]) {
+  async removeItems(id: string, itemIds: string[]): Promise<DocumentTransfer> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentTransfer.findUniqueOrThrow({
@@ -271,7 +322,7 @@ export class DocumentTransferService {
     );
   }
 
-  async updateStatus(id: string, newStatus: DocumentStatus) {
+  async updateStatus(id: string, newStatus: DocumentStatus): Promise<DocumentTransfer> {
     let productsToReprocess: string[] = [];
 
     const updatedDoc = await this.prisma.$transaction(
@@ -370,7 +421,7 @@ export class DocumentTransferService {
     doc: { id: string; sourceStoreId: string; destinationStoreId: string; date: Date },
     items: { productId: string; quantity: Decimal }[],
     reason: LedgerReason = 'INITIAL',
-  ) {
+  ): Promise<void> {
     const { sourceStoreId, destinationStoreId, date, id } = doc;
 
     // 1. Fetch Source Stocks for WAP inheritance
@@ -429,18 +480,20 @@ export class DocumentTransferService {
     );
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll(include?: Record<string, boolean>): Promise<DocumentTransfer[]> {
     return this.prisma.documentTransfer.findMany({
-      include,
+      include: include || { sourceStore: true, destinationStore: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  findOne(id: string) {
+  findOne(id: string): Promise<DocumentTransfer> {
     return this.prisma.documentTransfer.findUniqueOrThrow({
       where: { id },
       include: {
-        items: true,
+        items: {
+          include: { product: true },
+        },
         sourceStore: true,
         destinationStore: true,
         documentHistory: {

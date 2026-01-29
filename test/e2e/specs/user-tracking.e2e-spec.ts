@@ -3,7 +3,7 @@ import fastifyCookie from '@fastify/cookie';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 import request from 'supertest';
 import { HttpAdapterHost } from '@nestjs/core';

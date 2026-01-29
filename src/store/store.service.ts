@@ -1,19 +1,21 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+
+import { Store } from '../generated/prisma/client';
 import { CreateStoreDto } from '../generated/types/backend/dto/store/create-store.dto';
 import { UpdateStoreDto } from '../generated/types/backend/dto/store/update-store.dto';
-import { PrismaService } from '../core/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class StoreService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(createStoreDto: CreateStoreDto) {
+  create(createStoreDto: CreateStoreDto): Promise<Store> {
     return this.prisma.store.create({
       data: createStoreDto,
     });
   }
 
-  findAll(isActive?: boolean, include?: Record<string, boolean>) {
+  findAll(isActive?: boolean, include?: Record<string, boolean>): Promise<Store[]> {
     return this.prisma.store.findMany({
       where: { isActive },
       orderBy: { createdAt: 'desc' },
@@ -21,21 +23,21 @@ export class StoreService {
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string, include?: Record<string, boolean>): Promise<Store> {
     return this.prisma.store.findUniqueOrThrow({
       where: { id },
       include,
     });
   }
 
-  update(id: string, updateStoreDto: UpdateStoreDto) {
+  async update(id: string, updateStoreDto: UpdateStoreDto): Promise<Store> {
     return this.prisma.store.update({
       where: { id },
-      data: updateStoreDto,
+      data: { ...updateStoreDto },
     });
   }
 
-  remove(id: string) {
+  remove(id: string): Promise<Store> {
     return this.prisma.store.delete({
       where: { id },
     });

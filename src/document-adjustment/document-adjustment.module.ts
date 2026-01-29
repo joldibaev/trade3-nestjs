@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { DocumentAdjustmentService } from './document-adjustment.service';
-import { DocumentHistoryModule } from '../document-history/document-history.module';
-import { DocumentAdjustmentController } from './document-adjustment.controller';
-import { PrismaModule } from '../core/prisma/prisma.module';
 
+import { DocumentHistoryModule } from '../document-history/document-history.module';
+import { PrismaModule } from '../prisma/prisma.module';
 import { StoreModule } from '../store/store.module';
+import { DocumentAdjustmentController } from './document-adjustment.controller';
+import { DocumentAdjustmentService } from './document-adjustment.service';
 
 @Module({
   imports: [PrismaModule, StoreModule, DocumentHistoryModule],

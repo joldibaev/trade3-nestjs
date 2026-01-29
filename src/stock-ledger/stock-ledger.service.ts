@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { Prisma } from '../generated/prisma/client';
+
+import { Prisma, StockLedger } from '../generated/prisma/client';
 import { StockMovementType } from '../generated/prisma/enums';
+import { PrismaService } from '../prisma/prisma.service';
 import Decimal = Prisma.Decimal;
 
 export interface LogStockLedgerDto {
@@ -28,7 +29,7 @@ export class StockLedgerService {
   /**
    * Logs a standardized StockLedger record ensuring strong relations and snapshots.
    */
-  async create(tx: Prisma.TransactionClient, data: LogStockLedgerDto) {
+  async create(tx: Prisma.TransactionClient, data: LogStockLedgerDto): Promise<StockLedger> {
     const {
       type,
       storeId,
@@ -67,7 +68,7 @@ export class StockLedgerService {
     if (type === 'TRANSFER_IN' || type === 'TRANSFER_OUT')
       dataInput.documentTransferId = documentId;
 
-    await tx.stockLedger.create({
+    return tx.stockLedger.create({
       data: dataInput,
     });
   }
@@ -81,7 +82,7 @@ export class StockLedgerService {
       startDate?: Date;
       endDate?: Date;
     },
-  ) {
+  ): Promise<StockLedger[]> {
     const where: Prisma.StockLedgerWhereInput = {};
 
     if (filters?.productId) where.productId = filters.productId;

@@ -1,7 +1,8 @@
-import { Module, Global } from '@nestjs/common';
-import { StockLedgerService } from './stock-ledger.service';
+import { Global, Module } from '@nestjs/common';
+
+import { PrismaModule } from '../prisma/prisma.module';
 import { StockLedgerController } from './stock-ledger.controller';
-import { PrismaModule } from '../core/prisma/prisma.module';
+import { StockLedgerService } from './stock-ledger.service';
 
 @Global()
 @Module({

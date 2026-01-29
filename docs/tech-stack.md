@@ -63,7 +63,7 @@ We use **Zod** for all validation to ensure runtime safety matches compile-time 
 
 - **DTOs**: Must be defined using `createZodDto`.
 - **Global Pipe**: `ZodValidationPipe` is enabled globally in `main.ts`.
-- **Swagger**: `patchNestJsSwagger()` is used to automatically generate OpenAPI schemas from Zod definitions.
+- **Swagger**: `cleanupOpenApiDoc()` is used to automatically generate OpenAPI schemas from Zod definitions.
 
 ```typescript
 // Example DTO

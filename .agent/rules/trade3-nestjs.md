@@ -59,7 +59,7 @@ export class CreateUserDto extends createZodDto(CreateUserSchema) {}
 
 ## **6. API & Security**
 - **Fastify Adapter**: Use `NestFastifyApplication` in `main.ts`.
-- **Swagger Patching**: Use `patchNestJsSwagger()` to ensure Zod DTOs are correctly rendered in the Swagger UI.
+- **Swagger Patching**: Use `cleanupOpenApiDoc()` to ensure Zod DTOs are correctly rendered in the Swagger UI.
 - **Guards**: Apply `JwtAuthGuard` globally or per-controller. Use a custom `@Public()` decorator for unauthorized access.
 - **Serialization**: Use Zod's `.omit()` or `.pick()` to filter out sensitive data from API responses.
 

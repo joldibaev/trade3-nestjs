@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common';
+
+import { Price } from '../generated/prisma/client';
 import { CreatePriceDto } from '../generated/types/backend/dto/price/create-price.dto';
 import { UpdatePriceDto } from '../generated/types/backend/dto/price/update-price.dto';
-import { PrismaService } from '../core/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class PriceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(createPriceDto: CreatePriceDto) {
+  create(createPriceDto: CreatePriceDto): Promise<Price> {
     // Upsert to handle unique constraint (update if exists)
     return this.prisma.price.upsert({
       where: {
@@ -23,28 +25,28 @@ export class PriceService {
     });
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll(include?: Record<string, boolean>): Promise<Price[]> {
     return this.prisma.price.findMany({
       orderBy: { createdAt: 'desc' },
       include,
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string, include?: Record<string, boolean>): Promise<Price> {
     return this.prisma.price.findUniqueOrThrow({
       where: { id },
       include,
     });
   }
 
-  update(id: string, updatePriceDto: UpdatePriceDto) {
+  update(id: string, updatePriceDto: UpdatePriceDto): Promise<Price> {
     return this.prisma.price.update({
       where: { id },
       data: updatePriceDto,
     });
   }
 
-  remove(id: string) {
+  remove(id: string): Promise<Price> {
     return this.prisma.price.delete({
       where: { id },
     });

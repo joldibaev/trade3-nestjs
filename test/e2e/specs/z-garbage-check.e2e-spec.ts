@@ -3,7 +3,7 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import fastifyCookie from '@fastify/cookie';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 
 describe('Global Cleanup Verification (e2e)', () => {
   let app: NestFastifyApplication;

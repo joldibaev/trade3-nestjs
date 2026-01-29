@@ -1,18 +1,21 @@
 import { Injectable } from '@nestjs/common';
+
+import { CategoryService } from '../category/category.service';
+import { CodeGeneratorService } from '../code-generator/code-generator.service';
+import { Prisma, Product } from '../generated/prisma/client';
 import { CreateProductDto } from '../generated/types/backend/dto/product/create-product.dto';
 import { UpdateProductDto } from '../generated/types/backend/dto/product/update-product.dto';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
-import { Prisma } from '../generated/prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ProductService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly codeGenerator: CodeGeneratorService,
+    private readonly categoryService: CategoryService,
   ) {}
 
-  async create(createProductDto: CreateProductDto) {
+  async create(createProductDto: CreateProductDto): Promise<Product> {
     const code = await this.codeGenerator.getNextProductCode();
     return this.prisma.product.create({
       data: {
@@ -22,14 +25,23 @@ export class ProductService {
     });
   }
 
-  findAll(
+  async findAll(
     categoryId?: string,
     query?: string,
     isActive?: boolean,
     include?: Record<string, boolean>,
-  ) {
+  ): Promise<Product[]> {
+    let categoryIds: string[] | undefined;
+    if (categoryId) {
+      const subCategoryIds = await this.categoryService.getSubcategoryIds(categoryId);
+      categoryIds = [categoryId, ...subCategoryIds];
+    }
+
     const where: Prisma.ProductWhereInput = {
-      AND: [categoryId ? { categoryId } : {}, isActive !== undefined ? { isActive } : {}],
+      AND: [
+        categoryIds ? { categoryId: { in: categoryIds } } : {},
+        isActive !== undefined ? { isActive } : {},
+      ],
     };
 
     if (query) {
@@ -66,7 +78,7 @@ export class ProductService {
     });
   }
 
-  findOne(id: string) {
+  findOne(id: string): Promise<Product> {
     return this.prisma.product.findUniqueOrThrow({
       where: { id },
       include: {
@@ -85,14 +97,14 @@ export class ProductService {
     });
   }
 
-  update(id: string, updateProductDto: UpdateProductDto) {
+  async update(id: string, updateProductDto: UpdateProductDto): Promise<Product> {
     return this.prisma.product.update({
       where: { id },
-      data: updateProductDto,
+      data: { ...updateProductDto },
     });
   }
 
-  remove(id: string) {
+  remove(id: string): Promise<Product> {
     return this.prisma.$transaction(async (tx) => {
       // 1. Delete dependencies
       await tx.stock.deleteMany({ where: { productId: id } });

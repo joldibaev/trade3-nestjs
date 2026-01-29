@@ -1,16 +1,16 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { InventoryService } from '../core/inventory/inventory.service';
-import { Prisma } from '../generated/prisma/client';
+
+import { CodeGeneratorService } from '../code-generator/code-generator.service';
+import { BaseDocumentService } from '../common/base-document.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
+import { DocumentReturn, Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
+import { InventoryService } from '../inventory/inventory.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StoreService } from '../store/store.service';
 import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
 import { CreateDocumentReturnItemDto } from './dto/create-document-return-item.dto';
 import { UpdateDocumentReturnItemDto } from './dto/update-document-return-item.dto';
-import { StoreService } from '../store/store.service';
-
-import { DocumentHistoryService } from '../document-history/document-history.service';
-import { BaseDocumentService } from '../common/base-document.service';
-import { CodeGeneratorService } from '../core/code-generator/code-generator.service';
 import Decimal = Prisma.Decimal;
 
 @Injectable()
@@ -24,7 +24,7 @@ export class DocumentReturnService {
     private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
-  async create(createDocumentReturnDto: CreateDocumentReturnDto) {
+  async create(createDocumentReturnDto: CreateDocumentReturnDto): Promise<DocumentReturn> {
     const { storeId, clientId, date, status, notes } = createDocumentReturnDto;
 
     let targetStatus = status || 'DRAFT';
@@ -65,7 +65,7 @@ export class DocumentReturnService {
     });
   }
 
-  async update(id: string, updateDto: CreateDocumentReturnDto) {
+  async update(id: string, updateDto: CreateDocumentReturnDto): Promise<DocumentReturn> {
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.documentReturn.findUniqueOrThrow({
         where: { id },
@@ -113,7 +113,7 @@ export class DocumentReturnService {
     });
   }
 
-  async addItems(id: string, itemsDto: CreateDocumentReturnItemDto[]) {
+  async addItems(id: string, itemsDto: CreateDocumentReturnItemDto[]): Promise<DocumentReturn> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
@@ -170,7 +170,11 @@ export class DocumentReturnService {
     );
   }
 
-  async updateItem(id: string, itemId: string, dto: UpdateDocumentReturnItemDto) {
+  async updateItem(
+    id: string,
+    itemId: string,
+    dto: UpdateDocumentReturnItemDto,
+  ): Promise<DocumentReturn> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
@@ -232,7 +236,7 @@ export class DocumentReturnService {
     );
   }
 
-  async removeItems(id: string, itemIds: string[]) {
+  async removeItems(id: string, itemIds: string[]): Promise<DocumentReturn> {
     return this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
@@ -283,7 +287,7 @@ export class DocumentReturnService {
     );
   }
 
-  async updateStatus(id: string, newStatus: DocumentStatus) {
+  async updateStatus(id: string, newStatus: DocumentStatus): Promise<DocumentReturn> {
     let productsToReprocess: string[] = [];
 
     const updatedDoc = await this.prisma.$transaction(
@@ -407,18 +411,20 @@ export class DocumentReturnService {
     return updatedDoc;
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll(include?: Record<string, boolean>): Promise<DocumentReturn[]> {
     return this.prisma.documentReturn.findMany({
-      include,
+      include: include || { store: true, client: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  findOne(id: string) {
+  findOne(id: string): Promise<DocumentReturn> {
     return this.prisma.documentReturn.findUniqueOrThrow({
       where: { id },
       include: {
-        items: true,
+        items: {
+          include: { product: true },
+        },
         client: true,
         store: true,
         documentHistory: {
