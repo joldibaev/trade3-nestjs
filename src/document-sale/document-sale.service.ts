@@ -117,8 +117,32 @@ export class DocumentSaleService {
         const { storeId, cashboxId, clientId, date, priceTypeId, notes } = updateDto;
         const docDate = date ? new Date(date) : new Date();
 
-        if (storeId) {
+        if (storeId && storeId !== sale.storeId) {
           await this.storeService.validateStore(storeId);
+
+          // Migrate Reservations
+          const items = await tx.documentSaleItem.findMany({ where: { saleId: id } });
+          if (items.length > 0) {
+            const pIds = items.map((i) => i.productId);
+            // Lock BOTH stores
+            await this.inventoryService.lockInventory(
+              tx,
+              pIds.flatMap((pid) => [
+                { storeId: sale.storeId, productId: pid },
+                { storeId: storeId, productId: pid },
+              ]),
+            );
+
+            const resItems = items.map((i) => ({ productId: i.productId, quantity: i.quantity }));
+            // Release OLD
+            await this.inventoryService.applyReservations(
+              tx,
+              sale.storeId,
+              resItems.map((i) => ({ ...i, quantity: i.quantity.negated() })),
+            );
+            // Apply NEW
+            await this.inventoryService.applyReservations(tx, storeId, resItems);
+          }
         }
 
         if (cashboxId) {
@@ -189,6 +213,13 @@ export class DocumentSaleService {
 
         this.baseService.ensureDraft(sale.status);
 
+        // ACQUIRE LOCKS for all products involved
+        const pIds = itemsDto.map((dto) => dto.productId);
+        await this.inventoryService.lockInventory(
+          tx,
+          pIds.map((pid) => ({ storeId: sale.storeId, productId: pid })),
+        );
+
         let totalAddition = new Decimal(0);
         const addedQuantities = new Map<string, Decimal>();
 
@@ -200,27 +231,20 @@ export class DocumentSaleService {
 
           const qVal = new Decimal(quantity);
 
-          // 1. Stock Validation
+          // 1. Stock Validation (Phys - Reserved)
           const stock = await tx.stock.findUnique({
             where: { productId_storeId: { productId, storeId: sale.storeId } },
           });
-          const availableQty = stock?.quantity || new Decimal(0);
-
-          // Sum existing in this doc
-          const existingInDoc = await tx.documentSaleItem.findMany({
-            where: { saleId: id, productId },
-          });
-          const existingQtySum = existingInDoc.reduce(
-            (sum, item) => sum.add(item.quantity),
-            new Decimal(0),
-          );
+          const physicalQty = stock?.quantity || new Decimal(0);
+          const reservedQty = stock?.reserved || new Decimal(0);
+          const availableToPromise = physicalQty.sub(reservedQty);
 
           // Track what we added in THIS loop too (if batch adding same product)
           const inThisBatch = addedQuantities.get(productId) || new Decimal(0);
 
-          if (existingQtySum.add(inThisBatch).add(qVal).gt(availableQty)) {
+          if (inThisBatch.add(qVal).gt(availableToPromise)) {
             throw new BadRequestException(
-              `Недостаточно товара на складе. В наличии: ${availableQty.toString()}, в документе уже: ${existingQtySum.add(inThisBatch).toString()}, пытаетесь добавить: ${qVal.toString()}`,
+              `Недостаточно свободного товара на складе (в наличии: ${physicalQty.toString()}, из них забронировано: ${reservedQty.toString()}, доступно: ${availableToPromise.toString()}, пытаетесь добавить: ${qVal.toString()})`,
             );
           }
 
@@ -265,6 +289,16 @@ export class DocumentSaleService {
           });
         }
 
+        // Apply Reservation to Stock table
+        await this.inventoryService.applyReservations(
+          tx,
+          sale.storeId,
+          Array.from(addedQuantities.entries()).map(([productId, quantity]) => ({
+            productId,
+            quantity,
+          })),
+        );
+
         await tx.documentSale.update({
           where: { id },
           data: { total: { increment: totalAddition } },
@@ -305,26 +339,26 @@ export class DocumentSaleService {
           where: { id: itemId },
         });
 
+        // ACQUIRE LOCKS
+        await this.inventoryService.lockInventory(tx, [
+          { storeId: sale.storeId, productId: item.productId },
+        ]);
+
         const { quantity, price } = dto;
         const qVal = quantity !== undefined ? new Decimal(quantity) : item.quantity;
+        const qDelta = qVal.sub(item.quantity);
 
-        if (quantity !== undefined) {
+        if (qDelta.isPositive()) {
           const stock = await tx.stock.findUnique({
             where: { productId_storeId: { productId: item.productId, storeId: sale.storeId } },
           });
-          const availableQty = stock?.quantity || new Decimal(0);
+          const physicalQty = stock?.quantity || new Decimal(0);
+          const reservedQty = stock?.reserved || new Decimal(0);
+          const availableToPromise = physicalQty.sub(reservedQty);
 
-          const otherInDoc = await tx.documentSaleItem.findMany({
-            where: { saleId: id, productId: item.productId, NOT: { id: itemId } },
-          });
-          const otherQtySum = otherInDoc.reduce(
-            (sum, item) => sum.add(item.quantity),
-            new Decimal(0),
-          );
-
-          if (otherQtySum.add(qVal).gt(availableQty)) {
+          if (qDelta.gt(availableToPromise)) {
             throw new BadRequestException(
-              `Недостаточно товара на складе. В наличии: ${availableQty.toString()}, другие позиции этого товара в документе: ${otherQtySum.toString()}, новая порция: ${qVal.toString()}`,
+              `Недостаточно свободного товара на складе (в наличии: ${physicalQty.toString()}, из них забронировано: ${reservedQty.toString()}, доступно: ${availableToPromise.toString()}, пытаетесь добавить еще: ${qDelta.toString()})`,
             );
           }
         }
@@ -333,7 +367,7 @@ export class DocumentSaleService {
         const newTotal = qVal.mul(pVal);
         const amountDiff = newTotal.sub(item.total);
 
-        const _updatedItem = await tx.documentSaleItem.update({
+        await tx.documentSaleItem.update({
           where: { id: itemId },
           data: {
             quantity: qVal,
@@ -341,6 +375,11 @@ export class DocumentSaleService {
             total: newTotal,
           },
         });
+
+        // Apply Reservation Delta
+        await this.inventoryService.applyReservations(tx, sale.storeId, [
+          { productId: item.productId, quantity: qDelta },
+        ]);
 
         await tx.documentSale.update({
           where: { id },
@@ -387,18 +426,31 @@ export class DocumentSaleService {
 
         this.baseService.ensureDraft(sale.status);
 
+        const itemsToRemove = await tx.documentSaleItem.findMany({
+          where: { id: { in: itemIds } },
+        });
+
+        if (itemsToRemove.length === 0) return sale;
+
+        // ACQUIRE LOCKS
+        const pIdsToRemove = itemsToRemove.map((i) => i.productId);
+        await this.inventoryService.lockInventory(
+          tx,
+          pIdsToRemove.map((pid) => ({ storeId: sale.storeId, productId: pid })),
+        );
+
         let totalSubtraction = new Decimal(0);
+        const removedQuantities = new Map<string, Decimal>();
 
-        for (const itemId of itemIds) {
-          const item = await tx.documentSaleItem.findUniqueOrThrow({
-            where: { id: itemId },
-          });
-
+        for (const item of itemsToRemove) {
           await tx.documentSaleItem.delete({
-            where: { id: itemId },
+            where: { id: item.id },
           });
 
           totalSubtraction = totalSubtraction.add(item.total);
+
+          const currentRemoved = removedQuantities.get(item.productId) || new Decimal(0);
+          removedQuantities.set(item.productId, currentRemoved.add(item.quantity));
 
           await this.ledgerService.logAction(tx, {
             documentId: id,
@@ -407,6 +459,16 @@ export class DocumentSaleService {
             details: { productId: item.productId, quantity: item.quantity, total: item.total },
           });
         }
+
+        // Release Reservation
+        await this.inventoryService.applyReservations(
+          tx,
+          sale.storeId,
+          Array.from(removedQuantities.entries()).map(([productId, quantity]) => ({
+            productId,
+            quantity: quantity.negated(),
+          })),
+        );
 
         await tx.documentSale.update({
           where: { id },
@@ -474,13 +536,20 @@ export class DocumentSaleService {
           (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
           actualNewStatus === 'COMPLETED'
         ) {
-          // 1. Update items with CURRENT cost price before completing
+          // 1. Release Reservation (Decrease Reserved)
+          await this.inventoryService.applyReservations(
+            tx,
+            sale.storeId,
+            items.map((i) => ({ productId: i.productId, quantity: i.quantity.negated() })),
+          );
+
+          // 2. Update items with CURRENT cost price before completing
           await this.updateItemCostPrices(tx, sale);
 
-          // 2. Apply stock movements (Decrease Stock)
+          // 3. Apply stock movements (Decrease Physical Stock)
           await this.applyInventoryMovements(tx, sale, items, 'INITIAL');
 
-          // 3. Check for backdated reprocessing
+          // 4. Check for backdated reprocessing
           productsToReprocess = productIds;
         }
 
@@ -491,13 +560,22 @@ export class DocumentSaleService {
             actualNewStatus === 'CANCELLED' ||
             actualNewStatus === 'SCHEDULED')
         ) {
-          // Revert stock (Increase Stock)
+          // 1. Revert physical stock (Increase Physical Stock)
           const revertItems = items.map((i) => ({
             ...i,
             quantity: i.quantity.negated(),
           }));
 
           await this.applyInventoryMovements(tx, sale, revertItems, 'REVERSAL');
+
+          // 2. If moving back to DRAFT or SCHEDULED, RESTORE reservation
+          if (actualNewStatus === 'DRAFT' || actualNewStatus === 'SCHEDULED') {
+            await this.inventoryService.applyReservations(
+              tx,
+              sale.storeId,
+              items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+            );
+          }
 
           // ALWAYS trigger reprocessing for REVERT
           productsToReprocess = productIds;

@@ -93,8 +93,34 @@ export class DocumentTransferService {
       const { sourceStoreId, destinationStoreId, date, notes } = updateDto;
       const docDate = date ? new Date(date) : new Date();
 
-      if (sourceStoreId === destinationStoreId) {
-        throw new BadRequestException('Склад отправителя и получателя должны отличаться');
+      if (sourceStoreId && sourceStoreId !== doc.sourceStoreId) {
+        if (sourceStoreId === (destinationStoreId || doc.destinationStoreId)) {
+          throw new BadRequestException('Склад отправителя и получателя должны отличаться');
+        }
+
+        // Migrate Reservations
+        const items = await tx.documentTransferItem.findMany({ where: { transferId: id } });
+        if (items.length > 0) {
+          const pIds = items.map((i) => i.productId);
+          // Lock BOTH stores
+          await this.inventoryService.lockInventory(
+            tx,
+            pIds.flatMap((pid) => [
+              { storeId: doc.sourceStoreId, productId: pid },
+              { storeId: sourceStoreId, productId: pid },
+            ]),
+          );
+
+          const resItems = items.map((i) => ({ productId: i.productId, quantity: i.quantity }));
+          // Release OLD
+          await this.inventoryService.applyReservations(
+            tx,
+            doc.sourceStoreId,
+            resItems.map((i) => ({ ...i, quantity: i.quantity.negated() })),
+          );
+          // Apply NEW
+          await this.inventoryService.applyReservations(tx, sourceStoreId, resItems);
+        }
       }
 
       // 3. Update Document
@@ -144,31 +170,32 @@ export class DocumentTransferService {
 
         this.baseService.ensureDraft(doc.status);
 
+        // ACQUIRE LOCKS
+        const pIds = itemsDto.map((i) => i.productId);
+        await this.inventoryService.lockInventory(
+          tx,
+          pIds.map((pid) => ({ storeId: doc.sourceStoreId, productId: pid })),
+        );
+
         const addedQuantities = new Map<string, Decimal>();
 
         for (const dto of itemsDto) {
           const { productId, quantity } = dto;
           const qVal = new Decimal(quantity);
 
-          // 1. Stock Validation (Check source store)
+          // 1. Stock Validation (Phys - Reserved)
           const stock = await tx.stock.findUnique({
             where: { productId_storeId: { productId, storeId: doc.sourceStoreId } },
           });
-          const availableQty = stock?.quantity || new Decimal(0);
-
-          const existingInDoc = await tx.documentTransferItem.findMany({
-            where: { transferId: id, productId },
-          });
-          const existingQtySum = existingInDoc.reduce(
-            (sum, item) => sum.add(item.quantity),
-            new Decimal(0),
-          );
+          const physicalQty = stock?.quantity || new Decimal(0);
+          const reservedQty = stock?.reserved || new Decimal(0);
+          const availableToPromise = physicalQty.sub(reservedQty);
 
           const inThisBatch = addedQuantities.get(productId) || new Decimal(0);
 
-          if (existingQtySum.add(inThisBatch).add(qVal).gt(availableQty)) {
+          if (inThisBatch.add(qVal).gt(availableToPromise)) {
             throw new BadRequestException(
-              `Недостаточно товара на складе отправителя. В наличии: ${availableQty.toString()}, в документе уже: ${existingQtySum.add(inThisBatch).toString()}, пытаетесь добавить: ${qVal.toString()}`,
+              `Недостаточно свободного товара на складе отправителя (в наличии: ${physicalQty.toString()}, забронировано: ${reservedQty.toString()}, доступно: ${availableToPromise.toString()}, пытаетесь добавить: ${qVal.toString()})`,
             );
           }
 
@@ -189,6 +216,16 @@ export class DocumentTransferService {
             details: { productId: productId, quantity: qVal },
           });
         }
+
+        // Apply Reservation
+        await this.inventoryService.applyReservations(
+          tx,
+          doc.sourceStoreId,
+          Array.from(addedQuantities.entries()).map(([productId, quantity]) => ({
+            productId,
+            quantity,
+          })),
+        );
 
         return tx.documentTransfer.findUniqueOrThrow({
           where: { id },
@@ -223,27 +260,28 @@ export class DocumentTransferService {
           where: { id: itemId },
         });
 
+        // ACQUIRE LOCKS
+        await this.inventoryService.lockInventory(tx, [
+          { storeId: doc.sourceStoreId, productId: item.productId },
+        ]);
+
         const { quantity } = dto;
         const qVal = new Decimal(quantity);
+        const qDelta = qVal.sub(item.quantity);
 
-        // Stock Validation
-        const stock = await tx.stock.findUnique({
-          where: { productId_storeId: { productId: item.productId, storeId: doc.sourceStoreId } },
-        });
-        const availableQty = stock?.quantity || new Decimal(0);
+        if (qDelta.isPositive()) {
+          const stock = await tx.stock.findUnique({
+            where: { productId_storeId: { productId: item.productId, storeId: doc.sourceStoreId } },
+          });
+          const physicalQty = stock?.quantity || new Decimal(0);
+          const reservedQty = stock?.reserved || new Decimal(0);
+          const availableToPromise = physicalQty.sub(reservedQty);
 
-        const otherInDoc = await tx.documentTransferItem.findMany({
-          where: { transferId: id, productId: item.productId, NOT: { id: itemId } },
-        });
-        const otherQtySum = otherInDoc.reduce(
-          (sum, item) => sum.add(item.quantity),
-          new Decimal(0),
-        );
-
-        if (otherQtySum.add(qVal).gt(availableQty)) {
-          throw new BadRequestException(
-            `Недостаточно товара на складе отправителя. В наличии: ${availableQty.toString()}, другие позиции этого товара в документе: ${otherQtySum.toString()}, новая порция: ${qVal.toString()}`,
-          );
+          if (qDelta.gt(availableToPromise)) {
+            throw new BadRequestException(
+              `Недостаточно свободного товара на складе отправителя (в наличии: ${physicalQty.toString()}, забронировано: ${reservedQty.toString()}, доступно: ${availableToPromise.toString()}, пытаетесь добавить еще: ${qDelta.toString()})`,
+            );
+          }
         }
 
         await tx.documentTransferItem.update({
@@ -252,6 +290,11 @@ export class DocumentTransferService {
             quantity: qVal,
           },
         });
+
+        // Apply Reservation Delta
+        await this.inventoryService.applyReservations(tx, doc.sourceStoreId, [
+          { productId: item.productId, quantity: qDelta },
+        ]);
 
         await this.ledgerService.logAction(tx, {
           documentId: id,
@@ -289,14 +332,31 @@ export class DocumentTransferService {
 
         this.baseService.ensureDraft(doc.status);
 
+        const itemsToRemove = await tx.documentTransferItem.findMany({
+          where: { id: { in: itemIds } },
+        });
+
+        if (itemsToRemove.length === 0) return doc;
+
+        // ACQUIRE LOCKS
+        const pIdsToRemove = itemsToRemove.map((i) => i.productId);
+        await this.inventoryService.lockInventory(
+          tx,
+          pIdsToRemove.map((pid) => ({ storeId: doc.sourceStoreId, productId: pid })),
+        );
+
+        const removedQuantities = new Map<string, Decimal>();
+
         for (const itemId of itemIds) {
-          const item = await tx.documentTransferItem.findUniqueOrThrow({
-            where: { id: itemId },
-          });
+          const item = itemsToRemove.find((i) => i.id === itemId);
+          if (!item) continue;
 
           await tx.documentTransferItem.delete({
             where: { id: itemId },
           });
+
+          const currentRemoved = removedQuantities.get(item.productId) || new Decimal(0);
+          removedQuantities.set(item.productId, currentRemoved.add(item.quantity));
 
           await this.ledgerService.logAction(tx, {
             documentId: id,
@@ -305,6 +365,16 @@ export class DocumentTransferService {
             details: { productId: item.productId, quantity: item.quantity },
           });
         }
+
+        // Release Reservation
+        await this.inventoryService.applyReservations(
+          tx,
+          doc.sourceStoreId,
+          Array.from(removedQuantities.entries()).map(([productId, quantity]) => ({
+            productId,
+            quantity: quantity.negated(),
+          })),
+        );
 
         return tx.documentTransfer.findUniqueOrThrow({
           where: { id },
@@ -365,6 +435,14 @@ export class DocumentTransferService {
           (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
           actualNewStatus === 'COMPLETED'
         ) {
+          // 1. Release Reservation at Source Store
+          await this.inventoryService.applyReservations(
+            tx,
+            doc.sourceStoreId,
+            items.map((i) => ({ productId: i.productId, quantity: i.quantity.negated() })),
+          );
+
+          // 2. Apply Physical Movements
           await this.applyInventoryMovements(tx, doc, items, 'INITIAL');
 
           // Check if we need reprocessing (Backdated)
@@ -378,7 +456,18 @@ export class DocumentTransferService {
             actualNewStatus === 'CANCELLED' ||
             actualNewStatus === 'SCHEDULED')
         ) {
+          // 1. Revert Physical Movements
           await this.applyInventoryMovements(tx, doc, items, 'REVERSAL');
+
+          // 2. If moving back to DRAFT or SCHEDULED, RESTORE reservation at Source Store
+          if (actualNewStatus === 'DRAFT' || actualNewStatus === 'SCHEDULED') {
+            await this.inventoryService.applyReservations(
+              tx,
+              doc.sourceStoreId,
+              items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+            );
+          }
+
           productsToReprocess = productIds;
         }
 

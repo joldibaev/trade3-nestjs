@@ -567,4 +567,37 @@ export class InventoryService {
       }
     }
   }
+  /**
+   * Updates reservation quantity for products.
+   * Delta can be positive (add to reserve) or negative (release from reserve).
+   */
+  async applyReservations(
+    tx: Prisma.TransactionClient,
+    storeId: string,
+    items: { productId: string; quantity: Decimal }[],
+  ): Promise<void> {
+    if (items.length === 0) return;
+
+    // 0. ACQUIRE LOCKS for all products involved
+    await this.lockInventory(
+      tx,
+      items.map((i) => ({ storeId, productId: i.productId })),
+    );
+
+    for (const item of items) {
+      await tx.stock.upsert({
+        where: { productId_storeId: { productId: item.productId, storeId } },
+        create: {
+          productId: item.productId,
+          storeId,
+          quantity: 0,
+          reserved: item.quantity,
+          averagePurchasePrice: 0,
+        },
+        update: {
+          reserved: { increment: item.quantity },
+        },
+      });
+    }
+  }
 }

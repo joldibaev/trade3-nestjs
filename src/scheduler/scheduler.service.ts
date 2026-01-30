@@ -91,4 +91,41 @@ export class SchedulerService {
       }
     }
   }
+
+  /**
+   * Cleans up "ghost" reservations by cancelling DRAFT documents older than 24 hours.
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async cleanupDraftReservations(): Promise<void> {
+    this.logger.log('Cleaning up old draft reservations...');
+    const cutoffDate = new Date();
+    cutoffDate.setHours(cutoffDate.getHours() - 24);
+
+    // 1. Cleanup Old Sales
+    const oldSales = await this.prisma.documentSale.findMany({
+      where: { status: 'DRAFT', createdAt: { lte: cutoffDate } },
+    });
+    for (const doc of oldSales) {
+      try {
+        this.logger.log(`Auto-cancelling ghost Sale ${doc.code}`);
+        // Changing to CANCELLED will trigger reservation release in SaleService
+        await this.saleService.updateStatus(doc.id, 'CANCELLED');
+      } catch (e) {
+        this.logger.error(`Failed to cleanup ghost Sale ${doc.id}`, e);
+      }
+    }
+
+    // 2. Cleanup Old Transfers
+    const oldTransfers = await this.prisma.documentTransfer.findMany({
+      where: { status: 'DRAFT', createdAt: { lte: cutoffDate } },
+    });
+    for (const doc of oldTransfers) {
+      try {
+        this.logger.log(`Auto-cancelling ghost Transfer ${doc.code}`);
+        await this.transferService.updateStatus(doc.id, 'CANCELLED');
+      } catch (e) {
+        this.logger.error(`Failed to cleanup ghost Transfer ${doc.id}`, e);
+      }
+    }
+  }
 }
