@@ -1,11 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
-import { ProductService } from './product.service';
-import { CreateProductDto } from '../generated/dto/product/create-product.dto';
-import { UpdateProductDto } from '../generated/dto/product/update-product.dto';
-import { parseInclude } from '../common/utils/prisma-helpers';
-import { ProductRelations } from '../generated/relations/product-relations.enum';
+
 import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
+import { parseInclude } from '../common/utils/prisma-helpers';
+import { Product } from '../generated/prisma/client';
+import { CreateProductDto } from '../generated/types/backend/dto/product/create-product.dto';
+import { UpdateProductDto } from '../generated/types/backend/dto/product/update-product.dto';
+import { ProductRelations } from '../generated/types/backend/relations/product-relations.enum';
+import { ProductService } from './product.service';
 
 @ApiTags('products')
 @Controller('products')
@@ -13,7 +15,7 @@ export class ProductController {
   constructor(private readonly productsService: ProductService) {}
 
   @Post()
-  create(@Body() createProductDto: CreateProductDto) {
+  create(@Body() createProductDto: CreateProductDto): Promise<Product> {
     return this.productsService.create(createProductDto);
   }
 
@@ -26,27 +28,35 @@ export class ProductController {
     type: String,
     description: 'Search by name, article or barcode',
   })
-  findAll(
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  async findAll(
     @Query('categoryId') categoryId?: string,
     @Query('query') query?: string,
+    @Query('isActive') isActive?: string,
     @Query('include') include?: string | string[],
-  ) {
-    return this.productsService.findAll(categoryId, query, parseInclude(include));
+  ): Promise<Product[]> {
+    // todo clean
+    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    return this.productsService.findAll(categoryId, query, active, parseInclude(include));
   }
 
   @Get(':id')
-  @ApiIncludeQuery(ProductRelations)
-  findOne(@Param('id') id: string, @Query('include') include?: string | string[]) {
-    return this.productsService.findOne(id, parseInclude(include));
+  findOne(@Param('id') id: string): Promise<Product> {
+    return this.productsService.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
+  update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto): Promise<Product> {
     return this.productsService.update(id, updateProductDto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string): Promise<Product> {
     return this.productsService.remove(id);
+  }
+
+  @Get(':id/last-purchase-price')
+  getLastPurchasePrice(@Param('id') id: string): Promise<number> {
+    return this.productsService.getLastPurchasePrice(id);
   }
 }

@@ -1,15 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyCookie from '@fastify/cookie';
+import { ZodValidationPipe } from 'nestjs-zod';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
-import { ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { HttpExceptionFilter } from '../../../src/common/filters/http-exception.filter';
 
 describe('Product Search (e2e)', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let helper: TestHelper;
 
   beforeAll(async () => {
@@ -17,32 +18,28 @@ describe('Product Search (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyCookie);
+    app.useGlobalPipes(new ZodValidationPipe());
 
     // Apply globals
     const httpAdapterHost = app.get(HttpAdapterHost);
     app.useGlobalFilters(new HttpExceptionFilter(httpAdapterHost));
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
 
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
 
     const prismaService = app.get(PrismaService);
     helper = new TestHelper(app, prismaService);
   });
 
   afterAll(async () => {
-    await helper.cleanup();
+    await helper?.cleanup();
     await app.close();
   });
 
   beforeEach(async () => {
-    await helper.cleanup();
+    await helper?.cleanup();
   });
 
   describe('GET /products?query=...', () => {
@@ -57,6 +54,58 @@ describe('Product Search (e2e)', () => {
         .query({ query: uniqueName.split('_')[0] + ' ' + uniqueName.split('_')[2] }) // Search by parts of unique name or just full unique name
         // actually full unique name is safer
         .query({ query: uniqueName })
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(product.id);
+    });
+
+    it('should find product by multiple tokens (intersection)', async () => {
+      const category = await helper.createCategory();
+      const product = await helper.createProduct(category.id, {
+        name: 'Professional Drill 2000',
+        article: 'DEW-X1',
+      });
+      await helper.createProduct(category.id, {
+        name: 'Professional Saw 3000',
+        article: 'DEW-Y2',
+      });
+
+      // Search by tokens from different fields
+      const res = await request(app.getHttpServer())
+        .get('/products')
+        .query({ query: 'drill professional DEW' })
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(product.id);
+    });
+
+    it('should NOT find product if one token does not match', async () => {
+      const category = await helper.createCategory();
+      await helper.createProduct(category.id, {
+        name: 'Professional Drill 2000',
+        article: 'DEW-X1',
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/products')
+        .query({ query: 'drill bosch' }) // 'bosch' won't match
+        .expect(200);
+
+      expect(res.body).toHaveLength(0);
+    });
+
+    it('should find product by code', async () => {
+      const category = await helper.createCategory();
+      const product = await helper.createProduct(category.id, {
+        name: 'Product X',
+        code: 'UNIQUE123',
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/products')
+        .query({ query: 'UNIQUE' })
         .expect(200);
 
       expect(res.body).toHaveLength(1);

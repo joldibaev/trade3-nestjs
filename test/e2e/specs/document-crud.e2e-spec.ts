@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyCookie from '@fastify/cookie';
+import { ZodValidationPipe } from 'nestjs-zod';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 
 describe('Document CRUD (e2e)', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let prisma: PrismaService;
   let helper: TestHelper;
 
@@ -15,17 +17,20 @@ describe('Document CRUD (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyCookie);
+    app.useGlobalPipes(new ZodValidationPipe());
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
 
     prisma = moduleFixture.get<PrismaService>(PrismaService);
 
     helper = new TestHelper(app, prisma);
-    await helper.cleanup();
+    await helper?.cleanup();
   });
 
   afterAll(async () => {
-    await helper.cleanup();
+    await helper?.cleanup();
     await app.close();
   });
 
@@ -57,34 +62,32 @@ describe('Document CRUD (e2e)', () => {
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.items).toHaveLength(0);
       expect(res.body.code).toBeDefined();
-      expect(typeof res.body.code).toBe('number');
+      expect(typeof res.body.code).toBe('string');
 
       helper.createdIds.purchases.push(purchaseId);
 
-      // 2. Add Items
-      const updateRes = await request(app.getHttpServer())
-        .patch(`/document-purchases/${purchaseId}`)
-        .send({
-          storeId,
-          vendorId,
-          date: new Date(),
-          items: [{ productId, quantity: 10, price: 100 }],
-        })
-        .expect(200);
+      // 2. Add Item
+      const itemRes = await request(app.getHttpServer())
+        .post(`/document-purchases/${purchaseId}/items`)
+        .send({ items: [{ productId, quantity: 10, price: 100 }] })
+        .expect(201);
 
-      expect(updateRes.body.items).toHaveLength(1);
-      expect(updateRes.body.items[0].quantity).toBe('10');
+      // Verify header returned from findOne (or addItem return)
+      expect(itemRes.body.items).toHaveLength(1);
+      expect(itemRes.body.items[0].quantity).toBe('10');
     });
 
-    it('should update DRAFT purchase', async () => {
+    it('should update DRAFT purchase item', async () => {
+      // Find item ID
+      const docBefore = await prisma.documentPurchase.findUnique({
+        where: { id: purchaseId },
+        include: { items: true },
+      });
+      const itemId = docBefore?.items[0].productId; // DocumentPurchaseService use productId as itemId in updateItem logic if matched
+
       const res = await request(app.getHttpServer())
-        .patch(`/document-purchases/${purchaseId}`)
-        .send({
-          storeId,
-          vendorId,
-          date: new Date(),
-          items: [{ productId, quantity: 20, price: 120 }],
-        })
+        .patch(`/document-purchases/${purchaseId}/items/${itemId}`)
+        .send({ quantity: 20, price: 120 })
         .expect(200);
 
       expect(res.body.items).toHaveLength(1);
@@ -96,7 +99,7 @@ describe('Document CRUD (e2e)', () => {
         where: { id: purchaseId },
         include: { items: true },
       });
-      expect(doc?.items[0].quantity).toEqual(expect.objectContaining({ d: [20] })); // Decimal check simplistic
+      expect(doc?.items![0].quantity.toString()).toBe('20');
     });
 
     it('should complete purchase', async () => {
@@ -106,20 +109,22 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should NOT update COMPLETED purchase', async () => {
+    it('should NOT update COMPLETED purchase header (nor items)', async () => {
       await request(app.getHttpServer())
         .patch(`/document-purchases/${purchaseId}`)
         .send({
-          storeId,
-          vendorId,
-          date: new Date(),
-          items: [{ productId, quantity: 5, price: 50 }],
+          notes: 'Attempt update',
         })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`/document-purchases/${purchaseId}/items`)
+        .send({ items: [{ productId, quantity: 5, price: 50 }] })
         .expect(400);
     });
 
-    it('should NOT delete COMPLETED purchase', async () => {
-      await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(400);
+    it('should NOT delete COMPLETED purchase (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(404);
     });
 
     it('should revert purchase to DRAFT', async () => {
@@ -129,11 +134,8 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should delete DRAFT purchase', async () => {
-      await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(200);
-
-      const doc = await prisma.documentPurchase.findUnique({ where: { id: purchaseId } });
-      expect(doc).toBeNull();
+    it('should NOT delete DRAFT purchase (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-purchases/${purchaseId}`).expect(404);
     });
   });
 
@@ -163,28 +165,33 @@ describe('Document CRUD (e2e)', () => {
           cashboxId,
           date: new Date(),
           status: 'DRAFT',
-          items: [{ productId, quantity: 5, price: 100 }],
         })
         .expect(201);
 
       saleId = res.body.id;
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.code).toBeDefined();
-      expect(typeof res.body.code).toBe('number');
 
+      // Add item
+      const itemRes = await request(app.getHttpServer())
+        .post(`/document-sales/${saleId}/items`)
+        .send({ items: [{ productId, quantity: 5, price: 100 }] })
+        .expect(201);
+
+      expect(itemRes.body.items).toHaveLength(1);
       helper.createdIds.sales.push(saleId);
     });
 
-    it('should update DRAFT sale', async () => {
+    it('should update DRAFT sale item', async () => {
+      const docBefore = await prisma.documentSale.findUnique({
+        where: { id: saleId },
+        include: { items: true },
+      });
+      const itemId = docBefore?.items[0].id;
+
       const res = await request(app.getHttpServer())
-        .patch(`/document-sales/${saleId}`)
-        .send({
-          storeId,
-          clientId,
-          cashboxId,
-          date: new Date(),
-          items: [{ productId, quantity: 10, price: 100 }],
-        })
+        .patch(`/document-sales/${saleId}/items/${itemId}`)
+        .send({ quantity: 10, price: 100 })
         .expect(200);
 
       expect(res.body.items[0].quantity).toBe('10');
@@ -197,15 +204,23 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should NOT update COMPLETED sale', async () => {
+    it('should NOT update COMPLETED sale header (nor items)', async () => {
       await request(app.getHttpServer())
         .patch(`/document-sales/${saleId}`)
         .send({
-          storeId,
-          clientId,
-          cashboxId,
-          items: [],
+          notes: 'Attempt update',
         })
+        .expect(400);
+
+      const doc = await prisma.documentSale.findUnique({
+        where: { id: saleId },
+        include: { items: true },
+      });
+      const itemId = doc?.items[0].id;
+
+      await request(app.getHttpServer())
+        .patch(`/document-sales/${saleId}/items/${itemId}`)
+        .send({ quantity: 5, price: 100 })
         .expect(400);
     });
 
@@ -216,11 +231,8 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should delete DRAFT sale', async () => {
-      await request(app.getHttpServer()).delete(`/document-sales/${saleId}`).expect(200);
-
-      const doc = await prisma.documentSale.findUnique({ where: { id: saleId } });
-      expect(doc).toBeNull();
+    it('should NOT delete DRAFT sale (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-sales/${saleId}`).expect(404);
     });
   });
 
@@ -247,27 +259,33 @@ describe('Document CRUD (e2e)', () => {
           clientId,
           date: new Date(),
           status: 'DRAFT',
-          items: [{ productId, quantity: 2, price: 50 }],
         })
         .expect(201);
 
       returnId = res.body.id;
       expect(res.body.status).toBe('DRAFT');
       expect(res.body.code).toBeDefined();
-      expect(typeof res.body.code).toBe('number');
 
+      // Add item
+      const itemRes = await request(app.getHttpServer())
+        .post(`/document-returns/${returnId}/items`)
+        .send({ items: [{ productId, quantity: 2, price: 50 }] })
+        .expect(201);
+
+      expect(itemRes.body.items).toHaveLength(1);
       helper.createdIds.returns.push(returnId);
     });
 
-    it('should update DRAFT return', async () => {
+    it('should update DRAFT return item', async () => {
+      const docBefore = await prisma.documentReturn.findUnique({
+        where: { id: returnId },
+        include: { items: true },
+      });
+      const itemId = docBefore?.items[0].id;
+
       const res = await request(app.getHttpServer())
-        .patch(`/document-returns/${returnId}`)
-        .send({
-          storeId,
-          clientId,
-          date: new Date(),
-          items: [{ productId, quantity: 5, price: 50 }],
-        })
+        .patch(`/document-returns/${returnId}/items/${itemId}`)
+        .send({ quantity: 5, price: 50 })
         .expect(200);
 
       expect(res.body.items[0].quantity).toBe('5');
@@ -280,8 +298,8 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should NOT delete COMPLETED return', async () => {
-      await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(400);
+    it('should NOT delete COMPLETED return (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(404);
     });
 
     it('should revert return to DRAFT', async () => {
@@ -291,11 +309,8 @@ describe('Document CRUD (e2e)', () => {
         .expect(200);
     });
 
-    it('should delete DRAFT return', async () => {
-      await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(200);
-
-      const doc = await prisma.documentReturn.findUnique({ where: { id: returnId } });
-      expect(doc).toBeNull();
+    it('should NOT delete DRAFT return (endpoint removed)', async () => {
+      await request(app.getHttpServer()).delete(`/document-returns/${returnId}`).expect(404);
     });
   });
 });

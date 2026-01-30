@@ -1,23 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { InventoryService } from '../core/inventory/inventory.service';
-import { Prisma } from '../generated/prisma/client';
-import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
+
+import { CodeGeneratorService } from '../code-generator/code-generator.service';
+import { BaseDocumentService } from '../common/base-document.service';
+import { DocumentHistoryService } from '../document-history/document-history.service';
+import { DocumentReturn, Prisma } from '../generated/prisma/client';
+import { DocumentStatus } from '../generated/prisma/enums';
+import { InventoryService } from '../inventory/inventory.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { StoreService } from '../store/store.service';
-import { StockMovementService } from '../stock-movement/stock-movement.service';
+import { CreateDocumentReturnDto } from './dto/create-document-return.dto';
+import { CreateDocumentReturnItemDto } from './dto/create-document-return-item.dto';
+import { UpdateDocumentReturnItemDto } from './dto/update-document-return-item.dto';
 import Decimal = Prisma.Decimal;
-
-interface PreparedReturnItem {
-  productId: string;
-  quantity: Decimal;
-  fallbackWap: Decimal;
-}
-
-interface ReturnContext {
-  id?: string;
-  storeId: string;
-  date?: Date;
-}
 
 @Injectable()
 export class DocumentReturnService {
@@ -25,80 +19,278 @@ export class DocumentReturnService {
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
     private readonly storeService: StoreService,
-    private readonly stockMovementService: StockMovementService,
+    private readonly ledgerService: DocumentHistoryService,
+    private readonly baseService: BaseDocumentService,
+    private readonly codeGenerator: CodeGeneratorService,
   ) {}
 
-  async create(createDocumentReturnDto: CreateDocumentReturnDto) {
-    const { storeId, clientId, date, status, items } = createDocumentReturnDto;
+  async create(createDocumentReturnDto: CreateDocumentReturnDto): Promise<DocumentReturn> {
+    const { storeId, clientId, date, status, notes } = createDocumentReturnDto;
 
-    const targetStatus = status || 'COMPLETED';
+    let targetStatus = status || 'DRAFT';
+    const docDate = date ? new Date(date) : new Date();
+
+    if (targetStatus === 'COMPLETED' && docDate > new Date()) {
+      targetStatus = 'SCHEDULED' as DocumentStatus;
+    }
 
     // 1. Validate Store
     await this.storeService.validateStore(storeId);
 
-    // 2. Prepare Items
-    const productIds = items.map((i) => i.productId);
+    return this.prisma.$transaction(async (tx) => {
+      // Generate Code
+      const code = await this.codeGenerator.getNextReturnCode();
 
-    // Fetch fallback WAPs for all products in one go
-    const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
+      const newDoc = await tx.documentReturn.create({
+        data: {
+          code,
+          storeId,
+          clientId,
+          date: docDate,
+          status: targetStatus,
+          notes,
+          total: 0,
+        },
+      });
 
-    // Calculate totals & Prepare items
-    let totalAmount = new Decimal(0);
-    const returnItems = items.map((item) => {
-      // Default price to 0 if not provided
-      const price = new Decimal(item.price || 0);
-      const quantity = new Decimal(item.quantity);
-      const total = quantity.mul(price);
-      totalAmount = totalAmount.add(total);
+      // Log CREATED
+      await this.ledgerService.logAction(tx, {
+        documentId: newDoc.id,
+        documentType: 'documentReturn',
+        action: 'CREATED',
+        details: { status: targetStatus, notes },
+      });
 
-      // Determine fallback WAP for this product
-      // Strategy: Use WAP from another store if available
-      const fallbackWap = wapMap.get(item.productId) || new Decimal(0);
-
-      return {
-        productId: item.productId,
-        quantity,
-        price,
-        total,
-        fallbackWap,
-      };
+      return newDoc;
     });
+  }
 
+  async update(id: string, updateDto: CreateDocumentReturnDto): Promise<DocumentReturn> {
+    return this.prisma.$transaction(async (tx) => {
+      const doc = await tx.documentReturn.findUniqueOrThrow({
+        where: { id },
+      });
+
+      this.baseService.ensureDraft(doc.status);
+
+      const { storeId, clientId, date, notes } = updateDto;
+      const docDate = date ? new Date(date) : new Date();
+
+      const updatedDoc = await tx.documentReturn.update({
+        where: { id },
+        data: {
+          storeId,
+          clientId,
+          date: docDate,
+          notes,
+        },
+      });
+
+      const changes: Record<string, unknown> = {};
+      if (notes !== undefined && notes !== (doc.notes ?? '')) {
+        changes.notes = notes;
+      }
+      if (storeId !== doc.storeId) {
+        changes.storeId = storeId;
+      }
+      if (clientId !== doc.clientId) {
+        changes.clientId = clientId;
+      }
+      if (date && new Date(date).getTime() !== doc.date?.getTime()) {
+        changes.date = date;
+      }
+
+      if (Object.keys(changes).length > 0) {
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentReturn',
+          action: 'UPDATED',
+          details: changes,
+        });
+      }
+
+      return updatedDoc;
+    });
+  }
+
+  async addItems(id: string, itemsDto: CreateDocumentReturnItemDto[]): Promise<DocumentReturn> {
     return this.prisma.$transaction(
       async (tx) => {
-        const doc = await tx.documentReturn.create({
-          data: {
-            storeId,
-            clientId,
-            date: date ? new Date(date) : new Date(),
-            status: targetStatus,
-            totalAmount,
-            items: {
-              create: returnItems.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantity,
-                price: i.price,
-                total: i.total,
-              })),
-            },
-          },
-          include: { items: true },
+        const doc = await tx.documentReturn.findUniqueOrThrow({
+          where: { id },
         });
 
-        if (doc.status === 'COMPLETED') {
-          await this.applyInventoryMovements(tx, doc, returnItems);
+        this.baseService.ensureDraft(doc.status);
+
+        let totalAddition = new Decimal(0);
+
+        for (const dto of itemsDto) {
+          const { productId, quantity, price } = dto;
+          const qDelta = new Decimal(quantity);
+          const pVal = new Decimal(price || 0);
+          const itemTotal = qDelta.mul(pVal);
+          totalAddition = totalAddition.add(itemTotal);
+
+          await tx.documentReturnItem.create({
+            data: {
+              returnId: id,
+              productId: productId,
+              quantity: qDelta,
+              price: pVal,
+              total: itemTotal,
+            },
+          });
+
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentReturn',
+            action: 'ITEM_ADDED',
+            details: { productId, quantity: qDelta, price: pVal, total: itemTotal },
+          });
         }
 
-        return doc;
+        await tx.documentReturn.update({
+          where: { id },
+          data: { total: { increment: totalAddition } },
+        });
+
+        return tx.documentReturn.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            client: true,
+            store: true,
+            documentHistory: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
       },
-      {
-        isolationLevel: 'ReadCommitted',
-      },
+      { isolationLevel: 'ReadCommitted' },
     );
   }
 
-  async updateStatus(id: string, newStatus: 'DRAFT' | 'COMPLETED' | 'CANCELLED') {
+  async updateItem(
+    id: string,
+    itemId: string,
+    dto: UpdateDocumentReturnItemDto,
+  ): Promise<DocumentReturn> {
     return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentReturn.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(doc.status);
+
+        const item = await tx.documentReturnItem.findUniqueOrThrow({
+          where: { id: itemId },
+        });
+
+        const { quantity, price } = dto;
+        const qDelta = quantity !== undefined ? new Decimal(quantity) : item.quantity;
+        const pVal = price !== undefined ? new Decimal(price) : item.price;
+        const newTotal = qDelta.mul(pVal);
+        const amountDiff = newTotal.sub(item.total);
+
+        await tx.documentReturnItem.update({
+          where: { id: itemId },
+          data: {
+            quantity: qDelta,
+            price: pVal,
+            total: newTotal,
+          },
+        });
+
+        await tx.documentReturn.update({
+          where: { id },
+          data: { total: { increment: amountDiff } },
+        });
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentReturn',
+          action: 'ITEM_CHANGED',
+          details: {
+            productId: item.productId,
+            oldQuantity: item.quantity,
+            newQuantity: qDelta,
+            oldPrice: item.price,
+            newPrice: pVal,
+          },
+        });
+
+        return tx.documentReturn.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            client: true,
+            store: true,
+            documentHistory: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'ReadCommitted' },
+    );
+  }
+
+  async removeItems(id: string, itemIds: string[]): Promise<DocumentReturn> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const doc = await tx.documentReturn.findUniqueOrThrow({
+          where: { id },
+        });
+
+        this.baseService.ensureDraft(doc.status);
+
+        let totalSubtraction = new Decimal(0);
+
+        for (const itemId of itemIds) {
+          const item = await tx.documentReturnItem.findUniqueOrThrow({
+            where: { id: itemId },
+          });
+
+          await tx.documentReturnItem.delete({
+            where: { id: itemId },
+          });
+
+          totalSubtraction = totalSubtraction.add(item.total);
+
+          await this.ledgerService.logAction(tx, {
+            documentId: id,
+            documentType: 'documentReturn',
+            action: 'ITEM_REMOVED',
+            details: { productId: item.productId, quantity: item.quantity, total: item.total },
+          });
+        }
+
+        await tx.documentReturn.update({
+          where: { id },
+          data: { total: { decrement: totalSubtraction } },
+        });
+
+        return tx.documentReturn.findUniqueOrThrow({
+          where: { id },
+          include: {
+            items: true,
+            client: true,
+            store: true,
+            documentHistory: {
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      },
+      { isolationLevel: 'ReadCommitted' },
+    );
+  }
+
+  async updateStatus(id: string, newStatus: DocumentStatus): Promise<DocumentReturn> {
+    let productsToReprocess: string[] = [];
+
+    const updatedDoc = await this.prisma.$transaction(
       async (tx) => {
         const doc = await tx.documentReturn.findUniqueOrThrow({
           where: { id },
@@ -106,16 +298,27 @@ export class DocumentReturnService {
         });
 
         const oldStatus = doc.status;
+        let actualNewStatus = newStatus;
 
-        if (oldStatus === newStatus) {
+        if (newStatus === 'COMPLETED' && doc.date > new Date()) {
+          actualNewStatus = 'SCHEDULED' as DocumentStatus;
+        }
+
+        if (oldStatus === actualNewStatus) {
           return doc;
         }
 
         if (oldStatus === 'CANCELLED') {
-          throw new BadRequestException('Cannot change status of CANCELLED document');
+          throw new BadRequestException('Нельзя изменить статус отмененного документа');
         }
 
+        // ACQUIRE LOCKS for all products involved
         const productIds = doc.items.map((i) => i.productId);
+        await this.inventoryService.lockInventory(
+          tx,
+          productIds.map((pid) => ({ storeId: doc.storeId, productId: pid })),
+        );
+
         const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
         const items = doc.items.map((i) => ({
@@ -124,168 +327,73 @@ export class DocumentReturnService {
           fallbackWap: wapMap.get(i.productId) || new Decimal(0),
         }));
 
-        // DRAFT -> COMPLETED
-        if (oldStatus === 'DRAFT' && newStatus === 'COMPLETED') {
-          await this.applyInventoryMovements(tx, doc, items);
+        // DRAFT/SCHEDULED -> COMPLETED
+        if (
+          (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&
+          actualNewStatus === 'COMPLETED'
+        ) {
+          await this.inventoryService.applyMovements(
+            tx,
+            {
+              storeId: doc.storeId,
+              type: 'RETURN',
+              date: doc.date ?? new Date(),
+              documentId: doc.id ?? '',
+              reason: 'INITIAL',
+            },
+            items.map((i) => ({
+              productId: i.productId,
+              quantity: i.quantity,
+              price: i.fallbackWap,
+            })),
+            'IN',
+          );
+
+          // Check for backdated reprocessing
+          productsToReprocess = productIds;
         }
 
-        // COMPLETED -> DRAFT (or CANCELLED)
-        if (oldStatus === 'COMPLETED' && (newStatus === 'DRAFT' || newStatus === 'CANCELLED')) {
-          // Revert stock (Decrease Stock)
-
-          // 1. Validate Stock Availability (Must have enough to remove)
-          await this.validateStockForRevert(tx, doc.storeId, items);
-
-          // 2. Apply revert (negative quantity)
+        // COMPLETED -> DRAFT (or CANCELLED or SCHEDULED)
+        if (
+          oldStatus === 'COMPLETED' &&
+          (actualNewStatus === 'DRAFT' ||
+            actualNewStatus === 'CANCELLED' ||
+            actualNewStatus === 'SCHEDULED')
+        ) {
+          // Revert stock (Decrease Stock) - use negative qty with reason REVERSAL
           const revertItems = items.map((i) => ({
-            ...i,
+            productId: i.productId,
             quantity: i.quantity.negated(),
+            price: i.fallbackWap,
           }));
 
-          await this.applyInventoryMovements(tx, doc, revertItems);
-        }
-
-        return tx.documentReturn.update({
-          where: { id },
-          data: { status: newStatus },
-          include: { items: true },
-        });
-      },
-      {
-        isolationLevel: 'Serializable',
-      },
-    );
-  }
-
-  private async validateStockForRevert(
-    tx: Prisma.TransactionClient,
-    storeId: string,
-    items: PreparedReturnItem[],
-  ) {
-    // To revert a return, we remove items from stock.
-    // We must ensure stock >= items.quantity
-    const productIds = items.map((i) => i.productId);
-    const stocks = await tx.stock.findMany({
-      where: { storeId, productId: { in: productIds } },
-    });
-    const stockMap = new Map(stocks.map((s) => [s.productId, s.quantity]));
-
-    for (const item of items) {
-      const currentQty = stockMap.get(item.productId) || new Decimal(0);
-
-      if (currentQty.lessThan(item.quantity)) {
-        throw new BadRequestException(
-          `Insufficient stock for product ${item.productId} to revert return (items were already sold/moved)`,
-        );
-      }
-    }
-  }
-
-  private async applyInventoryMovements(
-    tx: Prisma.TransactionClient,
-    doc: ReturnContext,
-    items: PreparedReturnItem[],
-  ) {
-    const storeId = doc.storeId;
-
-    for (const item of items) {
-      // Use atomic increment for concurrency safety
-      // Upsert handles both "creation of new stock" and "update of existing"
-      await tx.stock.upsert({
-        where: {
-          productId_storeId: { productId: item.productId, storeId },
-        },
-        create: {
-          productId: item.productId,
-          storeId,
-          quantity: item.quantity,
-          averagePurchasePrice: item.fallbackWap, // Use fetched fallback instead of 0
-        },
-        update: {
-          quantity: { increment: item.quantity },
-          // Note: We deliberately do NOT update WAP on return (as agreed),
-          // assuming the returned item has the same cost structure or is negligible.
-        },
-      });
-
-      // Fetch updated stock for accurate snapshot
-      const updatedStock = await tx.stock.findUniqueOrThrow({
-        where: {
-          productId_storeId: { productId: item.productId, storeId },
-        },
-      });
-
-      // Audit: Log Stock Movement
-      await this.stockMovementService.create(tx, {
-        type: 'RETURN',
-        storeId,
-        productId: item.productId,
-        quantity: item.quantity,
-        date: doc.date ?? new Date(),
-        documentId: doc.id ?? '',
-        quantityAfter: updatedStock.quantity,
-        averagePurchasePrice: updatedStock.averagePurchasePrice,
-      });
-    }
-  }
-
-  async update(id: string, updateDto: CreateDocumentReturnDto) {
-    return this.prisma.$transaction(
-      async (tx) => {
-        const doc = await tx.documentReturn.findUniqueOrThrow({
-          where: { id },
-          include: { items: true },
-        });
-
-        if (doc.status !== 'DRAFT') {
-          throw new BadRequestException('Only DRAFT documents can be updated');
-        }
-
-        const { storeId, clientId, date, items } = updateDto;
-
-        // 1. Prepare Items
-        const productIds = items.map((i) => i.productId);
-        const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
-
-        let totalAmount = new Decimal(0);
-        const returnItems = items.map((item) => {
-          const price = new Decimal(item.price || 0);
-          const quantity = new Decimal(item.quantity);
-          const total = quantity.mul(price);
-          totalAmount = totalAmount.add(total);
-          const fallbackWap = wapMap.get(item.productId) || new Decimal(0);
-
-          return {
-            productId: item.productId,
-            quantity,
-            price,
-            total,
-            fallbackWap,
-          };
-        });
-
-        // 2. Delete existing items
-        await tx.documentReturnItem.deleteMany({
-          where: { returnId: id },
-        });
-
-        // 3. Update Document
-        return tx.documentReturn.update({
-          where: { id },
-          data: {
-            storeId,
-            clientId,
-            date: date ? new Date(date) : new Date(),
-            totalAmount,
-            items: {
-              create: returnItems.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantity,
-                price: i.price,
-                total: i.total,
-              })),
+          await this.inventoryService.applyMovements(
+            tx,
+            {
+              storeId: doc.storeId,
+              type: 'RETURN',
+              date: doc.date ?? new Date(),
+              documentId: doc.id ?? '',
+              reason: 'REVERSAL',
             },
-          },
+            revertItems,
+            'IN',
+          );
+
+          // ALWAYS trigger reprocessing for REVERT
+          productsToReprocess = productIds;
+        }
+
+        await this.ledgerService.logAction(tx, {
+          documentId: id,
+          documentType: 'documentReturn',
+          action: 'STATUS_CHANGED',
+          details: { from: oldStatus, to: newStatus },
+        });
+
+        return tx.documentReturn.update({
+          where: { id },
+          data: { status: actualNewStatus },
           include: { items: true },
         });
       },
@@ -293,42 +401,41 @@ export class DocumentReturnService {
         isolationLevel: 'ReadCommitted',
       },
     );
-  }
 
-  async remove(id: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const doc = await tx.documentReturn.findUniqueOrThrow({
-        where: { id },
-      });
-
-      if (doc.status !== 'DRAFT') {
-        throw new BadRequestException('Only DRAFT documents can be deleted');
+    // POST-TRANSACTION: Reprocess History
+    if (productsToReprocess.length > 0) {
+      for (const pid of productsToReprocess) {
+        await this.inventoryService.reprocessProductHistory(
+          updatedDoc.storeId,
+          pid,
+          updatedDoc.date,
+          id, // use document ID as causationId
+        );
       }
+    }
 
-      await tx.documentReturnItem.deleteMany({
-        where: { returnId: id },
-      });
-
-      return tx.documentReturn.delete({
-        where: { id },
-      });
-    });
+    return updatedDoc;
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll(include?: Record<string, boolean>): Promise<DocumentReturn[]> {
     return this.prisma.documentReturn.findMany({
-      include,
+      include: include || { store: true, client: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  findOne(id: string) {
+  findOne(id: string): Promise<DocumentReturn> {
     return this.prisma.documentReturn.findUniqueOrThrow({
       where: { id },
       include: {
-        items: true,
+        items: {
+          include: { product: true },
+        },
         client: true,
         store: true,
+        documentHistory: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }

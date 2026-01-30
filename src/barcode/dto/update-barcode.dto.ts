@@ -1,4 +1,5 @@
-import { PartialType } from '@nestjs/swagger';
-import { CreateBarcodeDto } from './create-barcode.dto';
+import { createZodDto } from 'nestjs-zod';
 
-export class UpdateBarcodeDto extends PartialType(CreateBarcodeDto) {}
+import { CreateBarcodeSchema } from './create-barcode.dto';
+
+export class UpdateBarcodeDto extends createZodDto(CreateBarcodeSchema.partial()) {}

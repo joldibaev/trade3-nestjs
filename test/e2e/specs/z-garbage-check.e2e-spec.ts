@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyCookie from '@fastify/cookie';
+import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 
 describe('Global Cleanup Verification (e2e)', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let prisma: PrismaService;
 
   beforeAll(async () => {
@@ -12,8 +14,11 @@ describe('Global Cleanup Verification (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyCookie);
+    app.useGlobalPipes(new ZodValidationPipe());
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
 
     prisma = app.get(PrismaService);
   });
@@ -26,7 +31,7 @@ describe('Global Cleanup Verification (e2e)', () => {
     const tables = ['store', 'cashbox', 'vendor', 'client', 'product', 'category', 'priceType'];
 
     let garbageFound = false;
-    const details = [];
+    const details: string[] = [];
 
     for (const table of tables) {
       const records = await (prisma[table] as any).findMany({
@@ -56,19 +61,23 @@ describe('Global Cleanup Verification (e2e)', () => {
       }
     }
 
-    // Check username for User
-    const users = await prisma.user.findMany({
+    // Special check for DocumentPriceChange (no name field)
+    const priceChanges = await prisma.documentPriceChange.findMany({
       where: {
-        username: { contains: 'User_' },
+        OR: [
+          { notes: { contains: 'Initial pricing' } },
+          { notes: { contains: 'Автоматически создан' } },
+        ],
       },
     });
-    if (users.length > 0) {
+
+    if (priceChanges.length > 0) {
       console.error(
-        `GARBAGE FOUND in User (username):`,
-        users.map((u) => u.username),
+        `GARBAGE FOUND in documentPriceChange:`,
+        priceChanges.map((r) => r.id),
       );
       garbageFound = true;
-      details.push(`User (username): ${users.length} records`);
+      details.push(`documentPriceChange: ${priceChanges.length} records`);
     }
 
     if (garbageFound) {

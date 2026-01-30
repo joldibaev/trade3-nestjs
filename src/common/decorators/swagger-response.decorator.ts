@@ -5,7 +5,7 @@ import { ApiQuery } from '@nestjs/swagger';
  *
  * @param entityEnum - The relation enum created by the resource generator
  */
-export const ApiIncludeQuery = (entityEnum: Record<string, string>) => {
+export const ApiIncludeQuery = (entityEnum: Record<string, string>): MethodDecorator => {
   return ApiQuery({
     name: 'include',
     enum: entityEnum,

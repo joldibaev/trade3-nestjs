@@ -1,8 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+
+import { DocumentSummary } from '../common/interfaces/summary.interface';
+import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
+import { DocumentSale } from '../generated/prisma/client';
 import { DocumentSaleService } from './document-sale.service';
 import { CreateDocumentSaleDto } from './dto/create-document-sale.dto';
-import { ApiTags } from '@nestjs/swagger';
-import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
+import { CreateDocumentSaleItemsDto } from './dto/create-document-sale-items.dto';
+import { RemoveDocumentSaleItemsDto } from './dto/remove-document-sale-items.dto';
+import { UpdateDocumentSaleItemDto } from './dto/update-document-sale-item.dto';
 
 @ApiTags('document-sales')
 @Controller('document-sales')
@@ -10,32 +16,60 @@ export class DocumentSaleController {
   constructor(private readonly documentSaleService: DocumentSaleService) {}
 
   @Post()
-  create(@Body() createDocumentSaleDto: CreateDocumentSaleDto) {
+  create(@Body() createDocumentSaleDto: CreateDocumentSaleDto): Promise<DocumentSale> {
     return this.documentSaleService.create(createDocumentSaleDto);
   }
 
+  @Get('summary')
+  getSummary(): Promise<DocumentSummary> {
+    return this.documentSaleService.getSummary();
+  }
+
   @Get()
-  findAll() {
+  findAll(): Promise<DocumentSale[]> {
     return this.documentSaleService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string): Promise<DocumentSale> {
     return this.documentSaleService.findOne(id);
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateDocumentStatusDto) {
-    return this.documentSaleService.updateStatus(id, updateStatusDto.status);
+  updateStatus(
+    @Param('id') id: string,
+    @Body() updateDocumentStatusDto: UpdateDocumentStatusDto,
+  ): Promise<DocumentSale> {
+    return this.documentSaleService.updateStatus(id, updateDocumentStatusDto.status);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDto: CreateDocumentSaleDto) {
+  update(@Param('id') id: string, @Body() updateDto: CreateDocumentSaleDto): Promise<DocumentSale> {
     return this.documentSaleService.update(id, updateDto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.documentSaleService.remove(id);
+  @Post(':id/items')
+  addItems(
+    @Param('id') id: string,
+    @Body() dto: CreateDocumentSaleItemsDto,
+  ): Promise<DocumentSale> {
+    return this.documentSaleService.addItems(id, dto.items);
+  }
+
+  @Patch(':id/items/:itemId')
+  updateItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdateDocumentSaleItemDto,
+  ): Promise<DocumentSale> {
+    return this.documentSaleService.updateItem(id, itemId, dto);
+  }
+
+  @Delete(':id/items')
+  removeItems(
+    @Param('id') id: string,
+    @Body() dto: RemoveDocumentSaleItemsDto,
+  ): Promise<DocumentSale> {
+    return this.documentSaleService.removeItems(id, dto.itemIds);
   }
 }

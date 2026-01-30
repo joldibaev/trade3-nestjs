@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+
+import { Barcode } from '../generated/prisma/client';
+import { BarcodeType } from '../generated/prisma/enums';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateBarcodeDto } from './dto/create-barcode.dto';
 import { UpdateBarcodeDto } from './dto/update-barcode.dto';
-import { PrismaService } from '../core/prisma/prisma.service';
-import { BarcodeType } from '../generated/prisma/enums';
 
 @Injectable()
 export class BarcodeService {
@@ -15,7 +17,7 @@ export class BarcodeService {
     return BarcodeType.OTHER;
   }
 
-  create(createBarcodeDto: CreateBarcodeDto) {
+  create(createBarcodeDto: CreateBarcodeDto): Promise<Barcode> {
     const type = this.identifyBarcodeType(createBarcodeDto.value);
     return this.prisma.barcode.create({
       data: {
@@ -25,21 +27,20 @@ export class BarcodeService {
     });
   }
 
-  findAll(include?: Record<string, boolean>) {
+  findAll(include?: Record<string, boolean>): Promise<Barcode[]> {
     return this.prisma.barcode.findMany({
       include,
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  findOne(id: string, include?: Record<string, boolean>) {
+  findOne(id: string): Promise<Barcode> {
     return this.prisma.barcode.findUniqueOrThrow({
       where: { id },
-      include,
     });
   }
 
-  update(id: string, updateBarcodeDto: UpdateBarcodeDto) {
+  update(id: string, updateBarcodeDto: UpdateBarcodeDto): Promise<Barcode> {
     const { value } = updateBarcodeDto;
 
     return this.prisma.barcode.update({
@@ -51,7 +52,7 @@ export class BarcodeService {
     });
   }
 
-  remove(id: string) {
+  remove(id: string): Promise<Barcode> {
     return this.prisma.barcode.delete({
       where: { id },
     });

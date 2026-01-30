@@ -1,8 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+
+import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
+import { DocumentAdjustment } from '../generated/prisma/client';
 import { DocumentAdjustmentService } from './document-adjustment.service';
 import { CreateDocumentAdjustmentDto } from './dto/create-document-adjustment.dto';
-import { ApiTags } from '@nestjs/swagger';
-import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
+import { CreateDocumentAdjustmentItemDto } from './dto/create-document-adjustment-item.dto';
+import { CreateDocumentAdjustmentItemsDto } from './dto/create-document-adjustment-items.dto';
+import { RemoveDocumentAdjustmentItemsDto } from './dto/remove-document-adjustment-items.dto';
 
 @ApiTags('document-adjustments')
 @Controller('document-adjustments')
@@ -10,22 +15,60 @@ export class DocumentAdjustmentController {
   constructor(private readonly documentAdjustmentService: DocumentAdjustmentService) {}
 
   @Post()
-  create(@Body() createDocumentAdjustmentDto: CreateDocumentAdjustmentDto) {
+  create(
+    @Body() createDocumentAdjustmentDto: CreateDocumentAdjustmentDto,
+  ): Promise<DocumentAdjustment> {
     return this.documentAdjustmentService.create(createDocumentAdjustmentDto);
   }
 
   @Get()
-  findAll() {
+  findAll(): Promise<DocumentAdjustment[]> {
     return this.documentAdjustmentService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string): Promise<DocumentAdjustment> {
     return this.documentAdjustmentService.findOne(id);
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateDocumentStatusDto) {
+  updateStatus(
+    @Param('id') id: string,
+    @Body() updateStatusDto: UpdateDocumentStatusDto,
+  ): Promise<DocumentAdjustment> {
     return this.documentAdjustmentService.updateStatus(id, updateStatusDto.status);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: CreateDocumentAdjustmentDto,
+  ): Promise<DocumentAdjustment> {
+    return this.documentAdjustmentService.update(id, updateDto);
+  }
+
+  @Post(':id/items')
+  addItems(
+    @Param('id') id: string,
+    @Body() dto: CreateDocumentAdjustmentItemsDto,
+  ): Promise<DocumentAdjustment> {
+    return this.documentAdjustmentService.addItems(id, dto.items);
+  }
+
+  @Patch(':id/items/:itemId')
+  updateItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: CreateDocumentAdjustmentItemDto,
+  ): Promise<DocumentAdjustment> {
+    return this.documentAdjustmentService.updateItem(id, itemId, dto);
+  }
+
+  @Delete(':id/items')
+  removeItems(
+    @Param('id') id: string,
+    @Body() dto: RemoveDocumentAdjustmentItemsDto,
+  ): Promise<DocumentAdjustment> {
+    return this.documentAdjustmentService.removeItems(id, dto.itemIds);
   }
 }

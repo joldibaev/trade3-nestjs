@@ -1,14 +1,16 @@
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyCookie from '@fastify/cookie';
+import { ZodValidationPipe } from 'nestjs-zod';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 import { HttpAdapterHost } from '@nestjs/core';
 import { HttpExceptionFilter } from '../../../src/common/filters/http-exception.filter';
 
 describe('Master Data - Partners (e2e)', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let helper: TestHelper;
 
   beforeAll(async () => {
@@ -16,27 +18,23 @@ describe('Master Data - Partners (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyCookie);
+    app.useGlobalPipes(new ZodValidationPipe());
 
     // Apply globals
     const httpAdapterHost = app.get(HttpAdapterHost);
     app.useGlobalFilters(new HttpExceptionFilter(httpAdapterHost));
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
 
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
 
     const prismaService = app.get(PrismaService);
     helper = new TestHelper(app, prismaService);
   });
 
   afterAll(async () => {
-    await helper.cleanup();
+    await helper?.cleanup();
     await app.close();
   });
 
@@ -72,6 +70,32 @@ describe('Master Data - Partners (e2e)', () => {
 
       await request(app.getHttpServer()).get(`/vendors/${vendor.id}`).expect(404);
     });
+
+    it('should filter vendors by isActive', async () => {
+      const activeVendor = await helper.createVendor();
+      const inactiveVendor = await helper.createVendor();
+
+      await request(app.getHttpServer())
+        .patch(`/vendors/${inactiveVendor.id}`)
+        .send({ isActive: false })
+        .expect(200);
+
+      const resActive = await request(app.getHttpServer())
+        .get('/vendors?isActive=true')
+        .expect(200);
+
+      const activeIds = resActive.body.map((v: any) => v.id);
+      expect(activeIds).toContain(activeVendor.id);
+      expect(activeIds).not.toContain(inactiveVendor.id);
+
+      const resInactive = await request(app.getHttpServer())
+        .get('/vendors?isActive=false')
+        .expect(200);
+
+      const inactiveIds = resInactive.body.map((v: any) => v.id);
+      expect(inactiveIds).toContain(inactiveVendor.id);
+      expect(inactiveIds).not.toContain(activeVendor.id);
+    });
   });
 
   describe('Client', () => {
@@ -98,6 +122,31 @@ describe('Master Data - Partners (e2e)', () => {
       await request(app.getHttpServer()).delete(`/clients/${client.id}`).expect(200);
 
       await request(app.getHttpServer()).get(`/clients/${client.id}`).expect(404);
+    });
+    it('should filter clients by isActive', async () => {
+      const activeClient = await helper.createClient();
+      const inactiveClient = await helper.createClient();
+
+      await request(app.getHttpServer())
+        .patch(`/clients/${inactiveClient.id}`)
+        .send({ isActive: false })
+        .expect(200);
+
+      const resActive = await request(app.getHttpServer())
+        .get('/clients?isActive=true')
+        .expect(200);
+
+      const activeIds = resActive.body.map((c: any) => c.id);
+      expect(activeIds).toContain(activeClient.id);
+      expect(activeIds).not.toContain(inactiveClient.id);
+
+      const resInactive = await request(app.getHttpServer())
+        .get('/clients?isActive=false')
+        .expect(200);
+
+      const inactiveIds = resInactive.body.map((c: any) => c.id);
+      expect(inactiveIds).toContain(inactiveClient.id);
+      expect(inactiveIds).not.toContain(activeClient.id);
     });
   });
 });

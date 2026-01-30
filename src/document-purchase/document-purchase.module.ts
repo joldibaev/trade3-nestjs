@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
-import { DocumentPurchaseService } from './document-purchase.service';
-import { DocumentPurchaseController } from './document-purchase.controller';
-import { PrismaModule } from '../core/prisma/prisma.module';
 
+import { DocumentHistoryModule } from '../document-history/document-history.module';
+import { PrismaModule } from '../prisma/prisma.module';
 import { StoreModule } from '../store/store.module';
+import { DocumentPurchaseController } from './document-purchase.controller';
+import { DocumentPurchaseService } from './document-purchase.service';
 
 @Module({
-  imports: [PrismaModule, StoreModule],
+  imports: [PrismaModule, StoreModule, DocumentHistoryModule],
   controllers: [DocumentPurchaseController],
   providers: [DocumentPurchaseService],
   exports: [DocumentPurchaseService],

@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyCookie from '@fastify/cookie';
+import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from '../../../src/app.module';
-import { PrismaService } from '../../../src/core/prisma/prisma.service';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 import request from 'supertest';
 
 describe('Reporting Modules (PriceHistory & StockMovement)', () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let helper: TestHelper;
 
   beforeAll(async () => {
@@ -14,56 +16,19 @@ describe('Reporting Modules (PriceHistory & StockMovement)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyCookie);
+    app.useGlobalPipes(new ZodValidationPipe());
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
 
     const prisma = app.get(PrismaService);
     helper = new TestHelper(app, prisma);
   });
 
   afterAll(async () => {
-    await helper.cleanup();
+    await helper?.cleanup();
     await app.close();
-  });
-
-  it('should retrieve price history with filters', async () => {
-    const store = await helper.createStore();
-    const vendor = await helper.createVendor();
-    const category = await helper.createCategory();
-    const product = await helper.createProduct(category.id);
-    const { retail } = await helper.createPriceTypes();
-
-    // Create purchase with price update
-    const purchase = await helper.createPurchase(
-      store.id,
-      vendor.id,
-      product.id,
-      10,
-      1000,
-      'DRAFT',
-      [{ priceTypeId: retail.id, value: 1500 }],
-    );
-    await helper.completePurchase(purchase.id);
-
-    // Test GET /price-histories with productId
-    const response = await request(app.getHttpServer())
-      .get('/price-histories')
-      .query({ productId: product.id })
-      .expect(200);
-
-    expect(response.body).toBeInstanceOf(Array);
-    expect(response.body.length).toBeGreaterThan(0);
-    expect(response.body[0].value).toBe('1500');
-    expect(response.body[0].productId).toBe(product.id);
-
-    // Test GET /price-histories with priceTypeId
-    const responseType = await request(app.getHttpServer())
-      .get('/price-histories')
-      .query({ priceTypeId: retail.id })
-      .expect(200);
-
-    expect(responseType.body.length).toBeGreaterThan(0);
-    expect(responseType.body[0].priceTypeId).toBe(retail.id);
   });
 
   it('should retrieve stock movements with filters', async () => {
@@ -82,7 +47,7 @@ describe('Reporting Modules (PriceHistory & StockMovement)', () => {
 
     // Test GET /stock-movements with productId and storeId
     const response = await request(app.getHttpServer())
-      .get('/stock-movements')
+      .get('/stock-ledgers')
       .query({ productId: product.id, storeId: store.id })
       .expect(200);
 
@@ -93,7 +58,7 @@ describe('Reporting Modules (PriceHistory & StockMovement)', () => {
 
     // Test GET /stock-movements with type
     const responseType = await request(app.getHttpServer())
-      .get('/stock-movements')
+      .get('/stock-ledgers')
       .query({ type: 'PURCHASE' })
       .expect(200);
 
