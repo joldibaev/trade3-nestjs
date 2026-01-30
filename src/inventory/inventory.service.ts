@@ -90,6 +90,31 @@ export class InventoryService {
   }
 
   /**
+   * Acquires multiple transaction-level advisory locks in a consistent order to prevent deadlocks.
+   */
+  async lockInventory(
+    tx: Prisma.TransactionClient,
+    locks: { storeId: string; productId: string }[],
+  ): Promise<void> {
+    const uniqueLocks = Array.from(new Set(locks.map((l) => `${l.storeId}|${l.productId}`))).map(
+      (s) => {
+        const [storeId, productId] = s.split('|');
+        return { storeId, productId };
+      },
+    );
+
+    // Sort by storeId then productId to ensure consistent locking order across all transactions
+    uniqueLocks.sort((a, b) => {
+      if (a.storeId !== b.storeId) return a.storeId.localeCompare(b.storeId);
+      return a.productId.localeCompare(b.productId);
+    });
+
+    for (const lock of uniqueLocks) {
+      await this.lockProduct(tx, lock.storeId, lock.productId);
+    }
+  }
+
+  /**
    * REPROCESS HISTORY
    * Re-calculates WAP and Stock Balance sequentially from a given date.
    * Used when past Purchase/Adjustment documents are cancelled or modified.
@@ -361,6 +386,12 @@ export class InventoryService {
     direction: MovementDirection,
   ): Promise<void> {
     const { storeId, type, date, documentId, reason = 'INITIAL', causationId } = context;
+
+    // 0. ACQUIRE LOCKS for all products involved (Critical for Concurrency Safety)
+    await this.lockInventory(
+      tx,
+      items.map((i) => ({ storeId, productId: i.productId })),
+    );
 
     // Protection against double-initialization
     // We only skip if the document item ALREADY has the intended net effect in the ledger.

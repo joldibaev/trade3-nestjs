@@ -335,7 +335,13 @@ export class DocumentAdjustmentService {
           return doc;
         }
 
+        // ACQUIRE LOCKS for all products involved
         const productIds = doc.items.map((i) => i.productId);
+        await this.inventoryService.lockInventory(
+          tx,
+          productIds.map((pid) => ({ storeId: doc.storeId, productId: pid })),
+        );
+
         const fallbackWapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
         // DRAFT/SCHEDULED -> COMPLETED

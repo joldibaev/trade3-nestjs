@@ -443,10 +443,10 @@ export class DocumentSaleService {
 
         // ACQUIRE LOCKS for all products involved
         const productIds = sale.items.map((i) => i.productId);
-        const sortedProductIds = [...new Set(productIds)].sort(); // Unique and Sorted
-        for (const pid of sortedProductIds) {
-          await this.inventoryService.lockProduct(tx, sale.storeId, pid);
-        }
+        await this.inventoryService.lockInventory(
+          tx,
+          productIds.map((pid) => ({ storeId: sale.storeId, productId: pid })),
+        );
 
         const oldStatus = sale.status;
         let actualNewStatus = newStatus;

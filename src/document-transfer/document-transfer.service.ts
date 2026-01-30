@@ -353,6 +353,13 @@ export class DocumentTransferService {
           quantity: i.quantity,
         }));
 
+        // ACQUIRE LOCKS for all products involved in BOTH stores simultaneously to prevent deadlocks
+        const locks = productIds.flatMap((pid) => [
+          { storeId: doc.sourceStoreId, productId: pid },
+          { storeId: doc.destinationStoreId, productId: pid },
+        ]);
+        await this.inventoryService.lockInventory(tx, locks);
+
         // DRAFT/SCHEDULED -> COMPLETED
         if (
           (oldStatus === 'DRAFT' || oldStatus === 'SCHEDULED') &&

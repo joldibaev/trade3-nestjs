@@ -21,26 +21,31 @@
 #### Как это работает
 
 1.  **Хеширование ключа**: Для каждого товара на складе генерируется уникальный ключ блокировки на основе `storeId` и `productId` (используется функция `hashtext`).
-2.  **Захват блокировки (Queue)**: В начале любой транзакции, изменяющей остатки (Продажа, Закупка, Пересчет), мы явно вызываем:
-    ```sql
-    SELECT pg_advisory_xact_lock(hashtext('store_uuid-product_uuid'));
-    ```
+2.  **Захват блокировки (Queue)**: В начале любой транзакции, изменяющей остатки (Продажа, Закупка, Пересчет), мы вызываем метод пакетной блокировки.
 3.  **Очередь вместо ошибки**: Если другой процесс уже работает с этим товаром, текущая транзакция **приостанавливается и ждет** (Wait), пока первая не завершится (commit/rollback).
 4.  **Гарантия последовательности**: Это превращает параллельные запросы к одному товару в последовательную цепочку. Каждый следующий запрос видит актуальные остатки, оставленные предыдущим.
+5.  **Safety Net**: В качестве дополнительной защиты, метод `InventoryService.applyMovements` также выполняет блокировку товаров. Это гарантирует целостность данных, даже если разработчик забыл вызвать блокировку в сервисе документа.
 
 ### Реализация
 
-Механизм инкапсулирован в `InventoryService`:
+Механизм управления блокировками инкапсулирован в `InventoryService`:
 
 ```typescript
-// src/core/inventory/inventory.service.ts
-async lockProduct(tx: Prisma.TransactionClient, storeId: string, productId: string) {
-  const keyString = `${storeId}-${productId}`;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${keyString}))`;
-}
+// src/inventory/inventory.service.ts
+
+/**
+ * Блокирует один товар на конкретном складе.
+ */
+async lockProduct(tx: Prisma.TransactionClient, storeId: string, productId: string);
+
+/**
+ * Пакетная блокировка (Золотой стандарт).
+ * Автоматически дедуплицирует и сортирует ключи во избежание Deadlocks.
+ */
+async lockInventory(tx: Prisma.TransactionClient, locks: { storeId: string; productId: string }[]);
 ```
 
-Этот метод **ОБЯЗАН** вызываться в начале любой транзакции (`$transaction`), которая планирует изменять `Stock` или `StockLedger`.
+Вызов `lockInventory` **ОБЯЗАН** находиться в самом начале транзакции (`$transaction`), до любых расчетов остатков или себестоимости.
 
 ### Пример использования (DocumentSaleService)
 
@@ -48,21 +53,23 @@ async lockProduct(tx: Prisma.TransactionClient, storeId: string, productId: stri
 // src/document-sale/document-sale.service.ts
 await this.prisma.$transaction(
   async (tx) => {
-    // 1. Сортируем ID во избежание Deadlocks (важно!)
-    const sortedProductIds = sortUnique(items.map((i) => i.productId));
+    // 1. Блокируем все товары документа (автоматически сортируется внутри сервиса)
+    const productIds = items.map((i) => i.productId);
+    await this.inventoryService.lockInventory(
+      tx,
+      productIds.map((pid) => ({ storeId: sale.storeId, productId: pid })),
+    );
 
-    // 2. Блокируем все товары, участвующие в продаже
-    for (const pid of sortedProductIds) {
-      await this.inventoryService.lockProduct(tx, storeId, pid);
-    }
-
-    // 3. Читаем остатки (Stock) - теперь это безопасно
-    // 4. Вычисляем (Compute)
-    // 5. Обновляем (Update)
+    // 2. Читаем остатки, обновляем данные и пишем в Ledger
+    await this.applyInventoryMovements(tx, sale, items, 'INITIAL');
   },
   { isolationLevel: 'ReadCommitted' },
 );
 ```
+
+### Особый случай: Перемещения (Transfer)
+
+При межскладских перемещениях критически важно блокировать товары **сразу на обоих складах** (отправитель и получатель) в одном вызове `lockInventory`. Это единственный надежный способ избежать взаимной блокировки (Deadlock) двух одновременных встречных перемещений.
 
 ## Преимущества
 

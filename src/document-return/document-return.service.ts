@@ -312,7 +312,13 @@ export class DocumentReturnService {
           throw new BadRequestException('Нельзя изменить статус отмененного документа');
         }
 
+        // ACQUIRE LOCKS for all products involved
         const productIds = doc.items.map((i) => i.productId);
+        await this.inventoryService.lockInventory(
+          tx,
+          productIds.map((pid) => ({ storeId: doc.storeId, productId: pid })),
+        );
+
         const wapMap = await this.inventoryService.getFallbackWapMap(productIds);
 
         const items = doc.items.map((i) => ({

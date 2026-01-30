@@ -126,6 +126,13 @@ export class DocumentPurchaseService {
         const oldStatus = purchase.status;
         let actualNewStatus = newStatus;
 
+        // ACQUIRE LOCKS for all products involved
+        const productIds = purchase.items.map((i) => i.productId);
+        await this.inventoryService.lockInventory(
+          tx,
+          productIds.map((pid) => ({ storeId: purchase.storeId, productId: pid })),
+        );
+
         // Auto-schedule if date is in the future
         // Note: when Scheduler calls this, date will be <= now, so it will proceed to "COMPLETED".
         if (newStatus === 'COMPLETED' && purchase.date > new Date()) {
