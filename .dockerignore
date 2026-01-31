@@ -1,2 +1,27 @@
 node_modules
 dist
+src/generated
+
+# Метаданные и доки
+README.md
+docs
+.agent
+.git
+.husky
+.idea
+.vscode
+
+# Тесты
+test
+stress-test
+vitest.config.ts
+
+# Линтеры и конфиги
+.env
+.editorconfig
+.prettierrc
+eslint*
+
+# Скрипты запуска
+docker-run.*
+docker-compose*.yml

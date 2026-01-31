@@ -8,11 +8,11 @@ echo "Starting Docker Compose with $replicas replicas..."
 # Run docker compose
 docker compose up -d --build --scale trade3-nestjs="$replicas"
 
-# Check the exit status of the last command
 if [ $? -ne 0 ]; then
-    echo -e "\n[ERROR] Something went wrong! Check the logs."
-    read -n 1 -s -r -p "Press any key to continue..."
+    echo -e "\n\033[0;31m[ERROR] Something went wrong! Check the logs.\033[0m"
 else
-    echo -e "\n[SUCCESS] Cluster is up and running with $replicas replicas."
-    read -n 1 -s -r -p "Press any key to continue..."
+    echo -e "\n\033[0;32m[SUCCESS] Cluster is up and running with $replicas replicas.\033[0m"
 fi
+
+echo "Press Enter to exit..."
+read

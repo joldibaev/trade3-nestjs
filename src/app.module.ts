@@ -13,6 +13,7 @@ import { ClientModule } from './client/client.module';
 import { CodeGeneratorModule } from './code-generator/code-generator.module';
 import { CommonModule } from './common/common.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { HealthController } from './common/health.controller';
 import { DocumentAdjustmentModule } from './document-adjustment/document-adjustment.module';
 import { DocumentHistoryModule } from './document-history/document-history.module';
 import { DocumentPriceChangeModule } from './document-price-change/document-price-change.module';
@@ -65,6 +66,7 @@ import { VendorModule } from './vendor/vendor.module';
     UsersModule,
     StatisticsModule,
   ],
+  controllers: [HealthController],
   providers: [
     {
       provide: APP_GUARD,
