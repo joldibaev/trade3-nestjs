@@ -71,7 +71,7 @@ CREATE TABLE "PriceLedger" (
     "value" DECIMAL(15,4) NOT NULL,
     "productId" TEXT NOT NULL,
     "priceTypeId" TEXT NOT NULL,
-    "documentPriceChangeId" TEXT,
+    "documentRevaluationId" TEXT,
     "batchId" TEXT,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -326,7 +326,7 @@ CREATE TABLE "DocumentTransferItem" (
 );
 
 -- CreateTable
-CREATE TABLE "DocumentPriceChange" (
+CREATE TABLE "DocumentRevaluation" (
     "id" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -337,11 +337,11 @@ CREATE TABLE "DocumentPriceChange" (
     "documentPurchaseId" TEXT,
     "authorId" TEXT,
 
-    CONSTRAINT "DocumentPriceChange_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "DocumentRevaluation_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "DocumentPriceChangeItem" (
+CREATE TABLE "DocumentRevaluationItem" (
     "id" TEXT NOT NULL,
     "documentId" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
@@ -351,7 +351,7 @@ CREATE TABLE "DocumentPriceChangeItem" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "DocumentPriceChangeItem_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "DocumentRevaluationItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -391,7 +391,7 @@ CREATE TABLE "DocumentHistory" (
     "documentReturnId" TEXT,
     "documentAdjustmentId" TEXT,
     "documentTransferId" TEXT,
-    "documentPriceChangeId" TEXT,
+    "documentRevaluationId" TEXT,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -458,10 +458,10 @@ CREATE UNIQUE INDEX "DocumentAdjustment_code_key" ON "DocumentAdjustment"("code"
 CREATE UNIQUE INDEX "DocumentTransfer_code_key" ON "DocumentTransfer"("code");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "DocumentPriceChange_code_key" ON "DocumentPriceChange"("code");
+CREATE UNIQUE INDEX "DocumentRevaluation_code_key" ON "DocumentRevaluation"("code");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "DocumentPriceChange_documentPurchaseId_key" ON "DocumentPriceChange"("documentPurchaseId");
+CREATE UNIQUE INDEX "DocumentRevaluation_documentPurchaseId_key" ON "DocumentRevaluation"("documentPurchaseId");
 
 -- CreateIndex
 CREATE INDEX "StockLedger_storeId_productId_date_idx" ON "StockLedger"("storeId", "productId", "date" DESC);
@@ -491,7 +491,7 @@ CREATE INDEX "DocumentHistory_documentAdjustmentId_idx" ON "DocumentHistory"("do
 CREATE INDEX "DocumentHistory_documentTransferId_idx" ON "DocumentHistory"("documentTransferId");
 
 -- CreateIndex
-CREATE INDEX "DocumentHistory_documentPriceChangeId_idx" ON "DocumentHistory"("documentPriceChangeId");
+CREATE INDEX "DocumentHistory_documentRevaluationId_idx" ON "DocumentHistory"("documentRevaluationId");
 
 -- AddForeignKey
 ALTER TABLE "Cashbox" ADD CONSTRAINT "Cashbox_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -503,7 +503,7 @@ ALTER TABLE "PriceLedger" ADD CONSTRAINT "PriceLedger_productId_fkey" FOREIGN KE
 ALTER TABLE "PriceLedger" ADD CONSTRAINT "PriceLedger_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PriceLedger" ADD CONSTRAINT "PriceLedger_documentPriceChangeId_fkey" FOREIGN KEY ("documentPriceChangeId") REFERENCES "DocumentPriceChange"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "PriceLedger" ADD CONSTRAINT "PriceLedger_documentRevaluationId_fkey" FOREIGN KEY ("documentRevaluationId") REFERENCES "DocumentRevaluation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Price" ADD CONSTRAINT "Price_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -605,19 +605,19 @@ ALTER TABLE "DocumentTransferItem" ADD CONSTRAINT "DocumentTransferItem_transfer
 ALTER TABLE "DocumentTransferItem" ADD CONSTRAINT "DocumentTransferItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentPriceChange" ADD CONSTRAINT "DocumentPriceChange_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "DocumentRevaluation" ADD CONSTRAINT "DocumentRevaluation_documentPurchaseId_fkey" FOREIGN KEY ("documentPurchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentPriceChange" ADD CONSTRAINT "DocumentPriceChange_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "DocumentRevaluation" ADD CONSTRAINT "DocumentRevaluation_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentPriceChangeItem" ADD CONSTRAINT "DocumentPriceChangeItem_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "DocumentPriceChange"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DocumentRevaluationItem" ADD CONSTRAINT "DocumentRevaluationItem_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "DocumentRevaluation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentPriceChangeItem" ADD CONSTRAINT "DocumentPriceChangeItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "DocumentRevaluationItem" ADD CONSTRAINT "DocumentRevaluationItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentPriceChangeItem" ADD CONSTRAINT "DocumentPriceChangeItem_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "DocumentRevaluationItem" ADD CONSTRAINT "DocumentRevaluationItem_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StockLedger" ADD CONSTRAINT "StockLedger_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -659,7 +659,7 @@ ALTER TABLE "DocumentHistory" ADD CONSTRAINT "DocumentHistory_documentAdjustment
 ALTER TABLE "DocumentHistory" ADD CONSTRAINT "DocumentHistory_documentTransferId_fkey" FOREIGN KEY ("documentTransferId") REFERENCES "DocumentTransfer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentHistory" ADD CONSTRAINT "DocumentHistory_documentPriceChangeId_fkey" FOREIGN KEY ("documentPriceChangeId") REFERENCES "DocumentPriceChange"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "DocumentHistory" ADD CONSTRAINT "DocumentHistory_documentRevaluationId_fkey" FOREIGN KEY ("documentRevaluationId") REFERENCES "DocumentRevaluation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DocumentHistory" ADD CONSTRAINT "DocumentHistory_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;

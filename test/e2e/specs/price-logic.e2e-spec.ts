@@ -54,16 +54,16 @@ describe('Price Logic (Slice Last)', () => {
     };
 
     const resOld = await request(app.getHttpServer())
-      .post('/document-price-changes')
+      .post('/document-revaluations')
       .send(createPayloadOld)
       .expect(201);
 
     const idOld = resOld.body.id;
-    helper.createdIds.priceChanges.push(idOld);
+    helper.createdIds.revaluations.push(idOld);
 
     // Complete Old
     await request(app.getHttpServer())
-      .patch(`/document-price-changes/${idOld}/status`)
+      .patch(`/document-revaluations/${idOld}/status`)
       .send({ status: 'COMPLETED' })
       .expect(200);
 
@@ -87,16 +87,16 @@ describe('Price Logic (Slice Last)', () => {
     };
 
     const resNew = await request(app.getHttpServer())
-      .post('/document-price-changes')
+      .post('/document-revaluations')
       .send(createPayloadNew)
       .expect(201);
 
     const idNew = resNew.body.id;
-    helper.createdIds.priceChanges.push(idNew);
+    helper.createdIds.revaluations.push(idNew);
 
     // Complete New
     await request(app.getHttpServer())
-      .patch(`/document-price-changes/${idNew}/status`)
+      .patch(`/document-revaluations/${idNew}/status`)
       .send({ status: 'COMPLETED' })
       .expect(200);
 
@@ -120,19 +120,19 @@ describe('Price Logic (Slice Last)', () => {
 
     // Revert status to DRAFT
     await request(app.getHttpServer())
-      .patch(`/document-price-changes/${idOld}/status`)
+      .patch(`/document-revaluations/${idOld}/status`)
       .send({ status: 'DRAFT' })
       .expect(200);
 
     // Update content
     await request(app.getHttpServer())
-      .patch(`/document-price-changes/${idOld}`)
+      .patch(`/document-revaluations/${idOld}`)
       .send(updatePayload)
       .expect(200);
 
     // Complete again
     await request(app.getHttpServer())
-      .patch(`/document-price-changes/${idOld}/status`)
+      .patch(`/document-revaluations/${idOld}/status`)
       .send({ status: 'COMPLETED' })
       .expect(200);
 

@@ -3,10 +3,10 @@ import { z } from 'zod';
 
 import { DocumentStatus } from '../../generated/prisma/enums';
 
-export const UpdateDocumentPriceChangeStatusSchema = z.object({
+export const UpdateDocumentRevaluationStatusSchema = z.object({
   status: z.enum(DocumentStatus),
 });
 
-export class UpdateDocumentPriceChangeStatusDto extends createZodDto(
-  UpdateDocumentPriceChangeStatusSchema,
+export class UpdateDocumentRevaluationStatusDto extends createZodDto(
+  UpdateDocumentRevaluationStatusSchema,
 ) {}

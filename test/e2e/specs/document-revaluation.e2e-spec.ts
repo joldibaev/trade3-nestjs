@@ -7,7 +7,7 @@ import { PrismaService } from '../../../src/prisma/prisma.service';
 import { TestHelper } from '../helpers/test-helper';
 import request from 'supertest';
 
-describe('Document Price Change (e2e)', () => {
+describe('Document Revaluation (e2e)', () => {
   let app: NestFastifyApplication;
   let helper: TestHelper;
   let prisma: PrismaService;
@@ -32,7 +32,7 @@ describe('Document Price Change (e2e)', () => {
     await app.close();
   });
 
-  it('should create a price change document and update prices on completion', async () => {
+  it('should create a revaluation document and update prices on completion', async () => {
     const store = await helper.createStore();
     const category = await helper.createCategory();
     const product = await helper.createProduct(category.id);
@@ -53,12 +53,12 @@ describe('Document Price Change (e2e)', () => {
     };
 
     const res = await request(app.getHttpServer())
-      .post('/document-price-changes')
+      .post('/document-revaluations')
       .send(createPayload)
       .expect(201);
 
     const docId = res.body.id;
-    helper.createdIds.priceChanges.push(docId);
+    helper.createdIds.revaluations.push(docId);
     expect(res.body.status).toBe('DRAFT');
 
     // Verify Price NOT updated yet
@@ -69,7 +69,7 @@ describe('Document Price Change (e2e)', () => {
 
     // 2. Complete Document
     await request(app.getHttpServer())
-      .patch(`/document-price-changes/${docId}/status`)
+      .patch(`/document-revaluations/${docId}/status`)
       .send({ status: 'COMPLETED' })
       .expect(200);
 
@@ -81,7 +81,7 @@ describe('Document Price Change (e2e)', () => {
 
     // Verify Ledger
     const ledger = await prisma.priceLedger.findFirst({
-      where: { documentPriceChangeId: docId },
+      where: { documentRevaluationId: docId },
     });
     expect(ledger).toBeDefined();
     expect(ledger?.value.toNumber()).toBe(500);
@@ -127,12 +127,12 @@ describe('Document Price Change (e2e)', () => {
     };
 
     const res = await request(app.getHttpServer())
-      .post('/document-price-changes')
+      .post('/document-revaluations')
       .send(createPayload)
       .expect(201);
 
     const docId = res.body.id;
-    helper.createdIds.priceChanges.push(docId);
+    helper.createdIds.revaluations.push(docId);
 
     // Verify Price is 200
     const price1 = await prisma.price.findUnique({
@@ -142,7 +142,7 @@ describe('Document Price Change (e2e)', () => {
 
     // 2. Revert to DRAFT
     await request(app.getHttpServer())
-      .patch(`/document-price-changes/${docId}/status`)
+      .patch(`/document-revaluations/${docId}/status`)
       .send({ status: 'DRAFT' })
       .expect(200);
 
@@ -154,13 +154,13 @@ describe('Document Price Change (e2e)', () => {
 
     // Verify Ledger for 200 STILL exists (Audit trail)
     const originalLedger = await prisma.priceLedger.findFirst({
-      where: { documentPriceChangeId: docId, value: 200 },
+      where: { documentRevaluationId: docId, value: 200 },
     });
     expect(originalLedger).toBeDefined();
 
     // Verify Reverse Ledger entry (Storno) exists
     const stornoLedger = await prisma.priceLedger.findFirst({
-      where: { documentPriceChangeId: docId, value: 100 },
+      where: { documentRevaluationId: docId, value: 100 },
     });
     expect(stornoLedger).toBeDefined();
   });

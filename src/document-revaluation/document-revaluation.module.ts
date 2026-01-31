@@ -4,13 +4,12 @@ import { DocumentHistoryModule } from '../document-history/document-history.modu
 import { PriceModule } from '../price/price.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { StoreModule } from '../store/store.module';
-import { DocumentPurchaseController } from './document-purchase.controller';
-import { DocumentPurchaseService } from './document-purchase.service';
+import { DocumentRevaluationController } from './document-revaluation.controller';
+import { DocumentRevaluationService } from './document-revaluation.service';
 
 @Module({
   imports: [PrismaModule, StoreModule, DocumentHistoryModule, PriceModule],
-  controllers: [DocumentPurchaseController],
-  providers: [DocumentPurchaseService],
-  exports: [DocumentPurchaseService],
+  controllers: [DocumentRevaluationController],
+  providers: [DocumentRevaluationService],
 })
-export class DocumentPurchaseModule {}
+export class DocumentRevaluationModule {}

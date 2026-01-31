@@ -44,7 +44,7 @@ model User {
   createdReturns      DocumentReturn[]
   createdAdjustments  DocumentAdjustment[]
   createdTransfers    DocumentTransfer[]
-  createdPriceChanges DocumentPriceChange[]
+  createdRevaluations DocumentRevaluation[]
   createdHistory      DocumentHistory[]
 }
 
@@ -91,7 +91,7 @@ model PriceType {
   priceLedger      PriceLedger[]
   prices           Price[]
   sales            DocumentSale[]
-  priceChangeItems DocumentPriceChangeItem[]
+  revaluationItems DocumentRevaluationItem[]
   isActive         Boolean                   @default(true)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
@@ -109,8 +109,8 @@ model PriceLedger {
   priceTypeId String
 
   // Source Document linking
-  documentPriceChange   DocumentPriceChange? @relation(fields: [documentPriceChangeId], references: [id])
-  documentPriceChangeId String?
+  documentRevaluation   DocumentRevaluation? @relation(fields: [documentRevaluationId], references: [id])
+  documentRevaluationId String?
 
   batchId String?
 
@@ -181,7 +181,7 @@ model Product {
   returnItems      DocumentReturnItem[]
   adjustmentItems  DocumentAdjustmentItem[]
   transferItems    DocumentTransferItem[]
-  priceChangeItems DocumentPriceChangeItem[]
+  revaluationItems DocumentRevaluationItem[]
   barcodes         Barcode[]
   stockLedger      StockLedger[]
   isActive         Boolean                   @default(true)
@@ -300,7 +300,7 @@ model DocumentPurchase {
   documentHistory DocumentHistory[]
 
   // Optional: Link to a price change document generated from this purchase
-  generatedPriceChange DocumentPriceChange? @relation("PurchaseToPriceChange")
+  revaluation DocumentRevaluation? @relation("PurchaseToRevaluation")
 
   author   User?   @relation(fields: [authorId], references: [id])
   authorId String?
@@ -416,7 +416,7 @@ model DocumentTransferItem {
   updatedAt  DateTime         @updatedAt
 }
 
-model DocumentPriceChange {
+model DocumentRevaluation {
   id   String   @id @default(uuid(7))
   code String   @unique
   date DateTime @default(now())
@@ -424,7 +424,7 @@ model DocumentPriceChange {
   status DocumentStatus @default(DRAFT)
   notes  String?
 
-  items DocumentPriceChangeItem[]
+  items DocumentRevaluationItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -432,17 +432,17 @@ model DocumentPriceChange {
   documentHistory      DocumentHistory[]
   generatedPriceLedger PriceLedger[]
 
-  // Relation to the purchase that generated this price change
-  documentPurchase   DocumentPurchase? @relation("PurchaseToPriceChange", fields: [documentPurchaseId], references: [id])
+  // Relation to the purchase that generated this revaluation
+  documentPurchase   DocumentPurchase? @relation("PurchaseToRevaluation", fields: [documentPurchaseId], references: [id])
   documentPurchaseId String?           @unique
 
   author   User?   @relation(fields: [authorId], references: [id])
   authorId String?
 }
 
-model DocumentPriceChangeItem {
+model DocumentRevaluationItem {
   id         String              @id @default(uuid(7))
-  document   DocumentPriceChange @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document   DocumentRevaluation @relation(fields: [documentId], references: [id], onDelete: Cascade)
   documentId String
 
   product   Product @relation(fields: [productId], references: [id])
@@ -546,8 +546,8 @@ model DocumentHistory {
   documentTransfer   DocumentTransfer? @relation(fields: [documentTransferId], references: [id])
   documentTransferId String?
 
-  documentPriceChange   DocumentPriceChange? @relation(fields: [documentPriceChangeId], references: [id])
-  documentPriceChangeId String?
+  documentRevaluation   DocumentRevaluation? @relation(fields: [documentRevaluationId], references: [id])
+  documentRevaluationId String?
 
   date      DateTime @default(now())
   createdAt DateTime @default(now())
@@ -561,5 +561,5 @@ model DocumentHistory {
   @@index([documentReturnId])
   @@index([documentAdjustmentId])
   @@index([documentTransferId])
-  @@index([documentPriceChangeId])
+  @@index([documentRevaluationId])
 }

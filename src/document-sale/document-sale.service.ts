@@ -2,7 +2,6 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { CodeGeneratorService } from '../code-generator/code-generator.service';
 import { BaseDocumentService } from '../common/base-document.service';
-import { DocumentSummary } from '../common/interfaces/summary.interface';
 import { DocumentHistoryService } from '../document-history/document-history.service';
 import { DocumentSale, Prisma } from '../generated/prisma/client';
 import { DocumentStatus, LedgerReason } from '../generated/prisma/enums';
@@ -646,31 +645,6 @@ export class DocumentSaleService {
       include: { store: true, client: true },
       orderBy: { createdAt: 'desc' },
     });
-  }
-
-  async getSummary(): Promise<DocumentSummary> {
-    const where: Prisma.DocumentSaleWhereInput = {};
-
-    const [aggregate, totalCount] = await Promise.all([
-      this.prisma.documentSale.aggregate({
-        where,
-        _sum: { total: true },
-      }),
-      this.prisma.documentSale.count({ where }),
-    ]);
-
-    const completedCount = await this.prisma.documentSale.count({
-      where: {
-        ...where,
-        status: 'COMPLETED',
-      },
-    });
-
-    return {
-      totalAmount: aggregate._sum.total?.toNumber() || 0,
-      totalCount,
-      completedCount,
-    };
   }
 
   findOne(id: string): Promise<DocumentSale> {

@@ -26,7 +26,7 @@ model DocumentHistory {
   documentReturnId      String?
   documentAdjustmentId  String?
   documentTransferId    String?
-  documentPriceChangeId String?
+  documentRevaluationId String?
 
   date      DateTime @default(now())
   createdAt DateTime @default(now())
@@ -93,6 +93,6 @@ await this.ledgerService.logDiff(
 - `DocumentReturnService`
 - `DocumentAdjustmentService`
 - `DocumentTransferService`
-- `DocumentPriceChangeService`
+- `DocumentRevaluationService`
 
 Любое изменение данных в этих сервисах должно сопровождаться вызовом `DocumentHistoryService` внутри той же транзакции базы данных.

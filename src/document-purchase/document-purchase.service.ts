@@ -2,20 +2,18 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { CodeGeneratorService } from '../code-generator/code-generator.service';
 import { BaseDocumentService } from '../common/base-document.service';
-import { DocumentSummary } from '../common/interfaces/summary.interface';
 import { DocumentHistoryService } from '../document-history/document-history.service';
 import { DocumentPurchase, Prisma } from '../generated/prisma/client';
 import { DocumentStatus } from '../generated/prisma/enums';
 import { InventoryService } from '../inventory/inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StoreService } from '../store/store.service';
-
-import Decimal = Prisma.Decimal;
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
 import { CreateDocumentPurchaseItemDto } from './dto/create-document-purchase-item.dto';
 import { UpdateDocumentPurchaseDto } from './dto/update-document-purchase.dto';
 import { UpdateDocumentPurchaseItemDto } from './dto/update-document-purchase-item.dto';
 import { UpdateProductPriceDto } from './dto/update-product-price.dto';
+import Decimal = Prisma.Decimal;
 
 interface PreparedPurchaseItem {
   productId: string;
@@ -209,7 +207,7 @@ export class DocumentPurchaseService {
         const updatedDoc = await tx.documentPurchase.update({
           where: { id },
           data: { status: actualNewStatus },
-          include: { items: true, generatedPriceChange: true },
+          include: { items: true, revaluation: true },
         });
 
         await this.ledgerService.logAction(tx, {
@@ -220,140 +218,6 @@ export class DocumentPurchaseService {
           authorId: userId,
         });
 
-        // --- Cascade Status to Linked Price Change ---
-        if (updatedDoc.generatedPriceChange) {
-          const pcId = updatedDoc.generatedPriceChange.id;
-          let newPriceChangeStatus: DocumentStatus | undefined;
-
-          // If purchasing is COMPLETED, complete the price change
-          if (actualNewStatus === 'COMPLETED') {
-            newPriceChangeStatus = 'COMPLETED';
-          }
-          // If purchasing is reverted to DRAFT or CANCELLED, revert price change to DRAFT
-          // (Assuming we want to allow editing or it was just a mistake)
-          else if (
-            actualNewStatus === 'DRAFT' ||
-            actualNewStatus === 'CANCELLED' ||
-            actualNewStatus === 'SCHEDULED'
-          ) {
-            newPriceChangeStatus = 'DRAFT';
-          }
-
-          if (
-            newPriceChangeStatus &&
-            updatedDoc.generatedPriceChange.status !== newPriceChangeStatus
-          ) {
-            // We must use the service logic or update manually.
-            // Since DocumentPriceChangeService is not injected (circular dependency risk),
-            // and we need transactional logic including ledger/rebalance,
-            // we have to check how DocumentPriceChange handles status updates.
-            // It uses `applyPriceChanges` or `revertPriceChanges`.
-            // We can't easily replicate all that logic here without code duplication or services.
-            // Best approach: Use a shared service or inject DocumentPriceChangeService (using forwardRef).
-            // For now, to avoid large refactors, I will inject simple DB updates and minimal logic,
-            // BUT price changes affect `Price` table and `PriceLedger`.
-            // I MUST execute the proper logic.
-            // Let's assume I can't inject DocumentPriceChangeService easily here.
-            // I will implement the critical logic inline or move it to a shared helper?
-            // Actually, `handlePriceChanges` already does creation/deletion.
-            // For status change, we need `apply` or `revert`.
-            // Let's rely on manual implementation of what DocumentPriceChangeService.updateStatus does.
-
-            // SOLUTION: I will replicate the `apply`/`revert` logic here using `tx`.
-            // It is duplicated, but safe for now.
-
-            await tx.documentPriceChange.update({
-              where: { id: pcId },
-              data: { status: newPriceChangeStatus },
-            });
-
-            await this.ledgerService.logAction(tx, {
-              documentId: pcId,
-              documentType: 'documentPriceChange',
-              action: 'STATUS_CHANGED',
-              details: {
-                from: updatedDoc.generatedPriceChange.status,
-                to: newPriceChangeStatus,
-                isAutomatic: true,
-                sourceCode: updatedDoc.code,
-                sourceType: 'documentPurchase',
-              },
-            });
-
-            if (newPriceChangeStatus === 'COMPLETED') {
-              // Fetch items of price change
-              const pcItems = await tx.documentPriceChangeItem.findMany({
-                where: { documentId: pcId },
-              });
-              // Apply
-              for (const item of pcItems) {
-                // Ledger
-                await tx.priceLedger.create({
-                  data: {
-                    productId: item.productId,
-                    priceTypeId: item.priceTypeId,
-                    valueBefore: item.oldValue,
-                    value: item.newValue,
-                    documentPriceChangeId: pcId,
-                    batchId: pcId,
-                    date: updatedDoc.date,
-                  },
-                });
-                // Rebalance (Update Price table)
-                await tx.price.upsert({
-                  where: {
-                    productId_priceTypeId: {
-                      productId: item.productId,
-                      priceTypeId: item.priceTypeId,
-                    },
-                  },
-                  create: {
-                    productId: item.productId,
-                    priceTypeId: item.priceTypeId,
-                    value: item.newValue,
-                  },
-                  update: { value: item.newValue },
-                });
-              }
-            } else if (
-              updatedDoc.generatedPriceChange.status === 'COMPLETED' &&
-              newPriceChangeStatus === 'DRAFT'
-            ) {
-              // Revert
-              const pcItems = await tx.documentPriceChangeItem.findMany({
-                where: { documentId: pcId },
-              });
-              for (const item of pcItems) {
-                // Ledger (Reversing entry)
-                await tx.priceLedger.create({
-                  data: {
-                    productId: item.productId,
-                    priceTypeId: item.priceTypeId,
-                    valueBefore: item.newValue,
-                    value: item.oldValue,
-                    documentPriceChangeId: pcId,
-                    batchId: pcId,
-                    date: updatedDoc.date,
-                  },
-                });
-                // Rebalance
-                // To correctly rebalance, we need to find the latest value.
-                // Since we just added a ledger entry, we can just set it to `value`.
-                // But to be 100% properly behaved like the service, we should find "latest".
-                // Simplified: set to oldValue.
-                await tx.price.update({
-                  where: {
-                    productId_priceTypeId: {
-                      productId: item.productId,
-                      priceTypeId: item.priceTypeId,
-                    },
-                  },
-                  data: { value: item.oldValue },
-                });
-              }
-            }
-          }
-        }
         // ---------------------------------------------
 
         return updatedDoc;
@@ -438,16 +302,16 @@ export class DocumentPurchaseService {
         });
 
         // Sync Price Changes with ALL items
-        // Load existing DocumentPriceChange to preserve newPrices from previous items
-        const existingPriceChange = await tx.documentPriceChange.findUnique({
+        // Load existing DocumentRevaluation to preserve newPrices from previous items
+        const existingRevaluation = await tx.documentRevaluation.findUnique({
           where: { documentPurchaseId: id },
           include: { items: true },
         });
 
-        // Reconstruct newPrices for existing items from DocumentPriceChange
+        // Reconstruct newPrices for existing items from DocumentRevaluation
         const existingNewPricesMap = new Map<string, UpdateProductPriceDto[]>();
-        if (existingPriceChange) {
-          for (const priceItem of existingPriceChange.items) {
+        if (existingRevaluation) {
+          for (const priceItem of existingRevaluation.items) {
             if (!existingNewPricesMap.has(priceItem.productId)) {
               existingNewPricesMap.set(priceItem.productId, []);
             }
@@ -484,7 +348,6 @@ export class DocumentPurchaseService {
                 product: {
                   include: {
                     prices: true,
-                    priceChangeItems: true,
                   },
                 },
               },
@@ -494,7 +357,7 @@ export class DocumentPurchaseService {
             },
             vendor: true,
             store: true,
-            generatedPriceChange: {
+            revaluation: {
               include: {
                 items: true,
               },
@@ -597,7 +460,6 @@ export class DocumentPurchaseService {
                 product: {
                   include: {
                     prices: true,
-                    priceChangeItems: true,
                   },
                 },
               },
@@ -607,7 +469,7 @@ export class DocumentPurchaseService {
             },
             vendor: true,
             store: true,
-            generatedPriceChange: {
+            revaluation: {
               include: {
                 items: true,
               },
@@ -675,7 +537,6 @@ export class DocumentPurchaseService {
                 product: {
                   include: {
                     prices: true,
-                    priceChangeItems: true,
                   },
                 },
               },
@@ -685,7 +546,7 @@ export class DocumentPurchaseService {
             },
             vendor: true,
             store: true,
-            generatedPriceChange: {
+            revaluation: {
               include: {
                 items: true,
               },
@@ -791,32 +652,10 @@ export class DocumentPurchaseService {
       include: {
         store: true,
         vendor: true,
-        generatedPriceChange: true,
+        revaluation: true,
       },
       orderBy: { createdAt: 'desc' },
     });
-  }
-
-  async getSummary(): Promise<DocumentSummary> {
-    const where: Prisma.DocumentPurchaseWhereInput = {};
-
-    const [aggregate, totalCount] = await Promise.all([
-      this.prisma.documentPurchase.aggregate({
-        where: { ...where, status: 'COMPLETED' },
-        _sum: { total: true },
-      }),
-      this.prisma.documentPurchase.count({ where }),
-    ]);
-
-    const completedCount = await this.prisma.documentPurchase.count({
-      where: { ...where, status: 'COMPLETED' },
-    });
-
-    return {
-      totalAmount: Number(aggregate._sum.total || 0),
-      totalCount,
-      completedCount,
-    };
   }
 
   findOne(id: string): Promise<DocumentPurchase> {
@@ -828,7 +667,7 @@ export class DocumentPurchaseService {
             product: {
               include: {
                 prices: true,
-                priceChangeItems: true,
+                revaluationItems: true,
               },
             },
           },
@@ -838,7 +677,7 @@ export class DocumentPurchaseService {
         },
         vendor: true,
         store: true,
-        generatedPriceChange: {
+        revaluation: {
           include: {
             items: true,
           },
@@ -872,17 +711,9 @@ export class DocumentPurchaseService {
     date: Date,
     items: PreparedPurchaseItem[],
   ): Promise<void> {
-    // Check for existing linked document
-    const existing = await tx.documentPriceChange.findUnique({
-      where: { documentPurchaseId: purchaseId },
-    });
-
     const itemsWithNewPrices = items.filter((i) => i.newPrices && i.newPrices.length > 0);
 
     if (itemsWithNewPrices.length === 0) {
-      if (existing && existing.status === 'DRAFT') {
-        await tx.documentPriceChange.delete({ where: { id: existing.id } });
-      }
       return;
     }
 
@@ -921,28 +752,44 @@ export class DocumentPurchaseService {
     }
 
     if (priceChangeItems.length === 0) {
-      if (existing && existing.status === 'DRAFT') {
-        await tx.documentPriceChange.delete({ where: { id: existing.id } });
-      }
       return;
     }
 
+    // Check for existing linked document
+    const existing = await tx.documentRevaluation.findUnique({
+      where: { documentPurchaseId: purchaseId },
+    });
+
     if (existing) {
-      if (existing.status !== 'DRAFT') {
-        // If already completed, we don't automatically update it
-        // TODO: decide if we should throw error or just ignore
-        return;
-      }
-      await tx.documentPriceChange.delete({ where: { id: existing.id } });
+      // If it exists, add new items (or ignore if they are already there)
+      // For simplicity in automatic mode, we just append new items
+      await tx.documentRevaluationItem.createMany({
+        data: priceChangeItems.map((item) => ({
+          ...item,
+          documentId: existing.id,
+        })),
+      });
+
+      // Log the addition
+      await this.ledgerService.logAction(tx, {
+        documentId: existing.id,
+        documentType: 'documentRevaluation',
+        action: 'ITEM_ADDED',
+        details: {
+          count: priceChangeItems.length,
+          items: priceChangeItems.map((i) => i.productId),
+        },
+      });
+      return;
     }
 
-    // Generate code for DocumentPriceChange
-    const priceChangeCode = await this.codeGenerator.getNextPriceChangeCode();
+    // Generate code for DocumentRevaluation
+    const revaluationCode = await this.codeGenerator.getNextRevaluationCode();
 
-    // Create the new linked Price Change Document
-    const pcDoc = await tx.documentPriceChange.create({
+    // Create the new linked Revaluation Document
+    const rvDoc = await tx.documentRevaluation.create({
       data: {
-        code: priceChangeCode,
+        code: revaluationCode,
         date,
         status: 'DRAFT',
         notes: `Автоматически создан на основе закупки №${purchaseCode}`,
@@ -955,12 +802,12 @@ export class DocumentPurchaseService {
 
     // Log the creation in DocumentHistory
     await this.ledgerService.logAction(tx, {
-      documentId: pcDoc.id,
-      documentType: 'documentPriceChange',
+      documentId: rvDoc.id,
+      documentType: 'documentRevaluation',
       action: 'CREATED',
       details: {
         status: 'DRAFT',
-        notes: pcDoc.notes,
+        notes: rvDoc.notes,
         isAutomatic: true,
         sourceCode: purchaseCode,
         sourceType: 'documentPurchase',

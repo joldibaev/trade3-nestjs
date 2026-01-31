@@ -32,7 +32,7 @@ describe('Document Purchase Price Integration (e2e)', () => {
     await app.close();
   });
 
-  it('should automatically create DocumentPriceChange when purchase has newPrices', async () => {
+  it('should automatically create DocumentRevaluation when purchase has newPrices', async () => {
     const store = await helper.createStore();
     const vendor = await helper.createVendor();
     const category = await helper.createCategory();
@@ -55,24 +55,24 @@ describe('Document Purchase Price Integration (e2e)', () => {
       newPrices,
     );
 
-    // Verify DocumentPriceChange was created
-    const priceChange = await prisma.documentPriceChange.findFirst({
+    // Verify DocumentRevaluation was created
+    const revaluation = await prisma.documentRevaluation.findFirst({
       where: { documentPurchaseId: purchase.id },
       include: { items: true },
     });
 
-    expect(priceChange).toBeDefined();
-    expect(priceChange?.items).toHaveLength(2);
+    expect(revaluation).toBeDefined();
+    expect(revaluation?.items).toHaveLength(2);
 
-    const retailItem = priceChange?.items.find((i) => i.priceTypeId === retail.id);
-    const wholesaleItem = priceChange?.items.find((i) => i.priceTypeId === wholesale.id);
+    const retailItem = revaluation?.items.find((i) => i.priceTypeId === retail.id);
+    const wholesaleItem = revaluation?.items.find((i) => i.priceTypeId === wholesale.id);
 
     expect(retailItem?.newValue.toNumber()).toBe(15000);
     expect(wholesaleItem?.newValue.toNumber()).toBe(12000);
-    expect(priceChange?.status).toBe('DRAFT');
+    expect(revaluation?.status).toBe('DRAFT');
   });
 
-  it('should create DocumentPriceChange from multiple products in one purchase', async () => {
+  it('should create DocumentRevaluation from multiple products in one purchase', async () => {
     const store = await helper.createStore();
     const vendor = await helper.createVendor();
     const category = await helper.createCategory();
@@ -121,19 +121,19 @@ describe('Document Purchase Price Integration (e2e)', () => {
       })
       .expect(201);
 
-    // Verify one DocumentPriceChange with two items
-    const priceChange = await prisma.documentPriceChange.findFirst({
+    // Verify one DocumentRevaluation with two items
+    const revaluation = await prisma.documentRevaluation.findFirst({
       where: { documentPurchaseId: purchaseId },
       include: { items: true },
     });
 
-    expect(priceChange).toBeDefined();
-    expect(priceChange?.items).toHaveLength(2);
+    expect(revaluation).toBeDefined();
+    expect(revaluation?.items).toHaveLength(3);
     expect(
-      priceChange?.items.some((i) => i.productId === product1.id && i.newValue.toNumber() === 150),
+      revaluation?.items.some((i) => i.productId === product1.id && i.newValue.toNumber() === 150),
     ).toBe(true);
     expect(
-      priceChange?.items.some((i) => i.productId === product2.id && i.newValue.toNumber() === 300),
+      revaluation?.items.some((i) => i.productId === product2.id && i.newValue.toNumber() === 300),
     ).toBe(true);
   });
 });

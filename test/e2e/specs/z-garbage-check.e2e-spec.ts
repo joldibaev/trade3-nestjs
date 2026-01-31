@@ -61,8 +61,8 @@ describe('Global Cleanup Verification (e2e)', () => {
       }
     }
 
-    // Special check for DocumentPriceChange (no name field)
-    const priceChanges = await prisma.documentPriceChange.findMany({
+    // Special check for DocumentRevaluation (no name field)
+    const priceChanges = await prisma.DocumentRevaluation.findMany({
       where: {
         OR: [
           { notes: { contains: 'Initial pricing' } },
@@ -73,11 +73,11 @@ describe('Global Cleanup Verification (e2e)', () => {
 
     if (priceChanges.length > 0) {
       console.error(
-        `GARBAGE FOUND in documentPriceChange:`,
+        `GARBAGE FOUND in DocumentRevaluation:`,
         priceChanges.map((r) => r.id),
       );
       garbageFound = true;
-      details.push(`documentPriceChange: ${priceChanges.length} records`);
+      details.push(`DocumentRevaluation: ${priceChanges.length} records`);
     }
 
     if (garbageFound) {

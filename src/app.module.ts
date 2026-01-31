@@ -16,9 +16,9 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { HealthController } from './common/health.controller';
 import { DocumentAdjustmentModule } from './document-adjustment/document-adjustment.module';
 import { DocumentHistoryModule } from './document-history/document-history.module';
-import { DocumentPriceChangeModule } from './document-price-change/document-price-change.module';
 import { DocumentPurchaseModule } from './document-purchase/document-purchase.module';
 import { DocumentReturnModule } from './document-return/document-return.module';
+import { DocumentRevaluationModule } from './document-revaluation/document-revaluation.module';
 import { DocumentSaleModule } from './document-sale/document-sale.module';
 import { DocumentTransferModule } from './document-transfer/document-transfer.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -57,7 +57,7 @@ import { VendorModule } from './vendor/vendor.module';
     InventoryModule,
     StockLedgerModule,
     PriceLedgerModule,
-    DocumentPriceChangeModule,
+    DocumentRevaluationModule,
     DocumentHistoryModule,
     CommonModule,
     SchedulerCoreModule,

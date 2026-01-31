@@ -1,7 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 
-import { DocumentSummary } from '../common/interfaces/summary.interface';
 import { UpdateDocumentStatusDto } from '../document-purchase/dto/update-document-status.dto';
 import { DocumentSale } from '../generated/prisma/client';
 import { DocumentSaleService } from './document-sale.service';
@@ -18,11 +17,6 @@ export class DocumentSaleController {
   @Post()
   create(@Body() createDocumentSaleDto: CreateDocumentSaleDto): Promise<DocumentSale> {
     return this.documentSaleService.create(createDocumentSaleDto);
-  }
-
-  @Get('summary')
-  getSummary(): Promise<DocumentSummary> {
-    return this.documentSaleService.getSummary();
   }
 
   @Get()

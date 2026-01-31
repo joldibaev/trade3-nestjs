@@ -169,7 +169,7 @@ export class TestHelper {
     returns: [] as string[],
     adjustments: [] as string[],
     transfers: [] as string[],
-    priceChanges: [] as string[],
+    revaluations: [] as string[],
     stocks: [] as string[],
   };
 
@@ -190,7 +190,7 @@ export class TestHelper {
     await this.prismaService.documentReturnItem.deleteMany({});
     await this.prismaService.documentAdjustmentItem.deleteMany({});
     await this.prismaService.documentTransferItem.deleteMany({});
-    await this.prismaService.documentPriceChangeItem.deleteMany({});
+    await this.prismaService.documentRevaluationItem.deleteMany({});
 
     // 2. Delete Documents
     await this.prismaService.documentSale.deleteMany({});
@@ -198,7 +198,7 @@ export class TestHelper {
     await this.prismaService.documentReturn.deleteMany({});
     await this.prismaService.documentAdjustment.deleteMany({});
     await this.prismaService.documentTransfer.deleteMany({});
-    await this.prismaService.documentPriceChange.deleteMany({});
+    await this.prismaService.documentRevaluation.deleteMany({});
 
     // 3. Cleanup Master Data
     await this.prismaService.stock.deleteMany({});

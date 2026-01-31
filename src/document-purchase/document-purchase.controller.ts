@@ -3,7 +3,6 @@ import { ApiTags } from '@nestjs/swagger';
 
 import type { AuthUser } from '../auth/interfaces/auth.interface';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { DocumentSummary } from '../common/interfaces/summary.interface';
 import { DocumentPurchase } from '../generated/prisma/client';
 import { DocumentPurchaseService } from './document-purchase.service';
 import { CreateDocumentPurchaseDto } from './dto/create-document-purchase.dto';
@@ -26,11 +25,6 @@ export class DocumentPurchaseController {
     @CurrentUser() user: AuthUser,
   ): Promise<DocumentPurchase> {
     return this.documentPurchaseService.create(createDocumentPurchaseDto, user?.id);
-  }
-
-  @Get('summary')
-  getSummary(): Promise<DocumentSummary> {
-    return this.documentPurchaseService.getSummary();
   }
 
   @Get()

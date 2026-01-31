@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { DocumentHistoryDetailsSchema } from './dto/document-history-details.schema';
 
 export type LedgerActionType =
   | 'CREATED'
@@ -20,7 +21,7 @@ interface LogActionParams {
     | 'documentReturn'
     | 'documentAdjustment'
     | 'documentTransfer'
-    | 'documentPriceChange';
+    | 'documentRevaluation';
   action: LedgerActionType;
   details?: Record<string, unknown>;
   authorId?: string;
@@ -33,7 +34,7 @@ type PrismaTransaction = Omit<
 
 @Injectable()
 export class DocumentHistoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor() {}
 
   /**
    * Log a generic action for a document.
@@ -41,15 +42,17 @@ export class DocumentHistoryService {
   async logAction(tx: PrismaTransaction, params: LogActionParams): Promise<void> {
     const { documentId, documentType, action, details, authorId } = params;
 
+    const validatedDetails = DocumentHistoryDetailsSchema.parse(details || {});
+
     const data: Prisma.DocumentHistoryUncheckedCreateInput = {
       action,
-      details: (details as Prisma.InputJsonValue) || Prisma.JsonNull,
+      details: validatedDetails as Prisma.InputJsonValue,
       documentPurchaseId: documentType === 'documentPurchase' ? documentId : null,
       documentSaleId: documentType === 'documentSale' ? documentId : null,
       documentReturnId: documentType === 'documentReturn' ? documentId : null,
       documentAdjustmentId: documentType === 'documentAdjustment' ? documentId : null,
       documentTransferId: documentType === 'documentTransfer' ? documentId : null,
-      documentPriceChangeId: documentType === 'documentPriceChange' ? documentId : null,
+      documentRevaluationId: documentType === 'documentRevaluation' ? documentId : null,
       authorId: authorId || null,
     };
 

@@ -100,7 +100,7 @@
   - Пересчет себестоимости (WAP).
 
 - **`document-purchase-price-logic.e2e-spec.ts`**:
-  - Автоматическое создание `DocumentPriceChange` при добавлении позиций с новыми ценами
+  - Автоматическое создание `DocumentRevaluation` при добавлении позиций с новыми ценами
   - Сохранение изменений цен для нескольких товаров в одном документе
 
 - **`document-transfer`** и **`document-adjustment`**:

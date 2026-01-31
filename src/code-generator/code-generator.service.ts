@@ -51,7 +51,7 @@ export class CodeGeneratorService {
     return this.getNextCode('transfer', 'T', 1);
   }
 
-  async getNextPriceChangeCode(): Promise<string> {
-    return this.getNextCode('price_change', 'PC', 1);
+  async getNextRevaluationCode(): Promise<string> {
+    return this.getNextCode('revaluation', 'RV', 1);
   }
 }

@@ -9,9 +9,11 @@
 We adhere strictly to the **Vertical Slice Architecture**. This means code is organized by **Feature**, not by **Layer**.
 
 ### ✅ The Rule
+
 A folder in `src/` should represent a **Business Capability** (e.g., `product`, `order`, `auth`), NOT a technical layer.
 
 **Structure Example:**
+
 ```text
 src/
   ├── product/              # <--- Feature Module
@@ -30,25 +32,29 @@ src/
 
 ## 2. Server Framework
 
-| Component | Choice | Rationale |
-| :--- | :--- | :--- |
-| **Framework** | **NestJS v11** | Robust Dependency Injection and modularity. |
-| **Adapter** | **Fastify** | Significantly higher throughput (req/sec) than Express. |
-| **Language** | **TypeScript 5.7+** | Strict typing enabled (`noImplicitAny`, `strictNullChecks`). |
+| Component     | Choice              | Rationale                                                                    |
+| :------------ | :------------------ | :--------------------------------------------------------------------------- |
+| **Framework** | **NestJS v11**      | Robust Dependency Injection and modularity.                                  |
+| **Adapter**   | **Fastify**         | Significantly higher throughput (req/sec) than Express (Rule 1).             |
+| **Language**  | **TypeScript 5.7+** | Full strict mode enabled (`strict: true`, `noImplicitAny: true`) (Rule 7.1). |
 
-**Key Constraint**: Do not use Express-specific middleware. Use Fastify plugins or NestJS abstracted interfaces.
+**Key Constraints**:
+
+- **Strict Typing**: `strictPropertyInitialization` is disabled only for generated files; all manual code must be strictly typed.
+- **Fastify Only**: Do not use Express-specific middleware. Use Fastify plugins or NestJS abstracted interfaces.
 
 ---
 
 ## 3. Database Layer
 
-| Component | Choice | Rationale |
-| :--- | :--- | :--- |
-| **Database** | **PostgreSQL 16+** | Reliable, supports JSONB and heavy concurrency. |
-| **ORM** | **Prisma v7+** | Type-safe queries that match the schema. |
-| **Migration** | `prisma migrate` | Declarative schema management. |
+| Component     | Choice             | Rationale                                       |
+| :------------ | :----------------- | :---------------------------------------------- |
+| **Database**  | **PostgreSQL 16+** | Reliable, supports JSONB and heavy concurrency. |
+| **ORM**       | **Prisma v7+**     | Type-safe queries that match the schema.        |
+| **Migration** | `prisma migrate`   | Declarative schema management.                  |
 
 ### Best Practices
+
 - **No Raw SQL** unless absolutely necessary for performance.
 - **Repository Pattern**: NOT enforced globally. Services can call Prisma directly if the logic is simple. For complex queries, create specialized repository classes within the Feature Slice.
 
@@ -73,7 +79,7 @@ import { z } from 'zod';
 const CreateProductSchema = z.object({
   name: z.string().min(3),
   price: z.number().positive(),
-  tags: z.array(z.string()).optional()
+  tags: z.array(z.string()).optional(),
 });
 
 export class CreateProductDto extends createZodDto(CreateProductSchema) {}
@@ -99,4 +105,5 @@ We use **Vitest** for a faster, modern testing experience.
 - **Package Manager**: npm
 
 ---
+
 _Adhere to these standards to maintain system integrity and performance._
