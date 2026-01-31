@@ -8,6 +8,7 @@ import { TestHelper } from '../helpers/test-helper';
 import request from 'supertest';
 import { HttpAdapterHost } from '@nestjs/core';
 import { HttpExceptionFilter } from '../../../src/common/filters/http-exception.filter';
+import * as bcrypt from 'bcrypt';
 
 describe('User Tracking (authorId) E2E', () => {
   let app: NestFastifyApplication;
@@ -43,13 +44,15 @@ describe('User Tracking (authorId) E2E', () => {
     const testEmail = `test_${Date.now()}@example.com`;
     const testPassword = 'Password123!';
 
-    await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({
+    const passwordHash = await bcrypt.hash(testPassword, 10);
+    const user = await prisma.user.create({
+      data: {
         email: testEmail,
-        password: testPassword,
-      })
-      .expect(201);
+        passwordHash,
+      },
+    });
+
+    userId = user.id;
 
     const loginRes = await request(app.getHttpServer())
       .post('/auth/login')
@@ -60,12 +63,6 @@ describe('User Tracking (authorId) E2E', () => {
       .expect(200);
 
     accessToken = loginRes.body.accessToken;
-
-    // Get user ID from database
-    const user = await prisma.user.findUnique({
-      where: { email: testEmail },
-    });
-    userId = user!.id;
 
     // Setup Test Data
     const store = await helper.createStore();

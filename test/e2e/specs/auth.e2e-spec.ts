@@ -8,6 +8,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import fastifyCookie from '@fastify/cookie';
 import { HttpAdapterHost } from '@nestjs/core';
 import { HttpExceptionFilter } from '../../../src/common/filters/http-exception.filter';
+import * as bcrypt from 'bcrypt';
 
 describe('Authentication (e2e)', () => {
   let app: NestFastifyApplication;
@@ -38,6 +39,16 @@ describe('Authentication (e2e)', () => {
     }
   });
 
+  async function createUser(email: string, password = 'password123') {
+    const passwordHash = await bcrypt.hash(password, 10);
+    return prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+      },
+    });
+  }
+
   afterAll(async () => {
     if (prisma) {
       try {
@@ -53,27 +64,6 @@ describe('Authentication (e2e)', () => {
     }
   });
 
-  describe('POST /auth/register', () => {
-    const registerDto = {
-      email: `test_auth_reg_${Date.now()}@example.com`,
-      password: 'password123',
-    };
-
-    it('should register a new user', async () => {
-      const response = await request(app.getHttpServer())
-        .post('/auth/register')
-        .send(registerDto)
-        .expect(201);
-
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.email).toBe(registerDto.email);
-    });
-
-    it('should not register a user with an existing email', async () => {
-      await request(app.getHttpServer()).post('/auth/register').send(registerDto).expect(409); // Conflict, P2002
-    });
-  });
-
   describe('POST /auth/login', () => {
     const loginDto = {
       email: `test_auth_login_${Date.now()}@example.com`,
@@ -81,7 +71,7 @@ describe('Authentication (e2e)', () => {
     };
 
     beforeAll(async () => {
-      await request(app.getHttpServer()).post('/auth/register').send(loginDto).expect(201);
+      await createUser(loginDto.email, loginDto.password);
     });
 
     it('should login and return tokens', async () => {
@@ -110,7 +100,7 @@ describe('Authentication (e2e)', () => {
         email: `test_auth_refresh_${Date.now()}@example.com`,
         password: 'password123',
       };
-      await request(app.getHttpServer()).post('/auth/register').send(loginDto).expect(201);
+      await createUser(loginDto.email, loginDto.password);
 
       const loginRes = await request(app.getHttpServer())
         .post('/auth/login')
@@ -138,7 +128,7 @@ describe('Authentication (e2e)', () => {
         email: `test_auth_logout_${Date.now()}@example.com`,
         password: 'password123',
       };
-      await request(app.getHttpServer()).post('/auth/register').send(loginDto).expect(201);
+      await createUser(loginDto.email, loginDto.password);
 
       const loginRes = await request(app.getHttpServer())
         .post('/auth/login')

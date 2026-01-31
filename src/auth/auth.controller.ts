@@ -1,15 +1,11 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { Role } from '../generated/prisma/enums';
-import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/auth.dto';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
-import { HashingService } from './hashing.service';
 import type {
   AuthLoginResponse,
   AuthLogoutResponse,
@@ -19,11 +15,7 @@ import type {
 
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private authService: AuthService,
-    private usersService: UsersService,
-    private hashingService: HashingService,
-  ) {}
+  constructor(private authService: AuthService) {}
 
   @Public()
   @UseGuards(LocalAuthGuard)
@@ -46,17 +38,6 @@ export class AuthController {
   @Get('profile')
   getProfile(@CurrentUser() user: AuthUser): AuthUser {
     return user;
-  }
-
-  @Public()
-  @Post('register')
-  async register(@Body() body: RegisterDto): Promise<unknown> {
-    const passwordHash = await this.hashingService.hash(body.password);
-    return this.usersService.create({
-      email: body.email,
-      passwordHash,
-      role: body.role || Role.USER,
-    });
   }
 
   @Post('logout')
