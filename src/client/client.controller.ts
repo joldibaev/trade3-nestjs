@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 
 import { Client } from '../generated/prisma/client';
 import { CreateClientDto } from '../generated/types/backend/dto/client/create-client.dto';
@@ -17,10 +17,8 @@ export class ClientController {
   }
 
   @Get()
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
-  findAll(@Query('isActive') isActive?: string): Promise<Client[]> {
-    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-    return this.clientsService.findAll(active);
+  findAll(): Promise<Client[]> {
+    return this.clientsService.findAll();
   }
 
   @Get(':id')

@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 
 import { Vendor } from '../generated/prisma/client';
 import { CreateVendorDto } from '../generated/types/backend/dto/vendor/create-vendor.dto';
@@ -17,10 +17,8 @@ export class VendorController {
   }
 
   @Get()
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
-  findAll(@Query('isActive') isActive?: string): Promise<Vendor[]> {
-    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-    return this.vendorsService.findAll(active);
+  findAll(): Promise<Vendor[]> {
+    return this.vendorsService.findAll();
   }
 
   @Get(':id')

@@ -15,9 +15,8 @@ export class StoreService {
     });
   }
 
-  findAll(isActive?: boolean, include?: Record<string, boolean>): Promise<Store[]> {
+  findAll(include?: Record<string, boolean>): Promise<Store[]> {
     return this.prisma.store.findMany({
-      where: { isActive },
       orderBy: { createdAt: 'desc' },
       include,
     });

@@ -70,32 +70,6 @@ describe('Master Data - Partners (e2e)', () => {
 
       await request(app.getHttpServer()).get(`/vendors/${vendor.id}`).expect(404);
     });
-
-    it('should filter vendors by isActive', async () => {
-      const activeVendor = await helper.createVendor();
-      const inactiveVendor = await helper.createVendor();
-
-      await request(app.getHttpServer())
-        .patch(`/vendors/${inactiveVendor.id}`)
-        .send({ isActive: false })
-        .expect(200);
-
-      const resActive = await request(app.getHttpServer())
-        .get('/vendors?isActive=true')
-        .expect(200);
-
-      const activeIds = resActive.body.map((v: any) => v.id);
-      expect(activeIds).toContain(activeVendor.id);
-      expect(activeIds).not.toContain(inactiveVendor.id);
-
-      const resInactive = await request(app.getHttpServer())
-        .get('/vendors?isActive=false')
-        .expect(200);
-
-      const inactiveIds = resInactive.body.map((v: any) => v.id);
-      expect(inactiveIds).toContain(inactiveVendor.id);
-      expect(inactiveIds).not.toContain(activeVendor.id);
-    });
   });
 
   describe('Client', () => {
@@ -122,31 +96,6 @@ describe('Master Data - Partners (e2e)', () => {
       await request(app.getHttpServer()).delete(`/clients/${client.id}`).expect(200);
 
       await request(app.getHttpServer()).get(`/clients/${client.id}`).expect(404);
-    });
-    it('should filter clients by isActive', async () => {
-      const activeClient = await helper.createClient();
-      const inactiveClient = await helper.createClient();
-
-      await request(app.getHttpServer())
-        .patch(`/clients/${inactiveClient.id}`)
-        .send({ isActive: false })
-        .expect(200);
-
-      const resActive = await request(app.getHttpServer())
-        .get('/clients?isActive=true')
-        .expect(200);
-
-      const activeIds = resActive.body.map((c: any) => c.id);
-      expect(activeIds).toContain(activeClient.id);
-      expect(activeIds).not.toContain(inactiveClient.id);
-
-      const resInactive = await request(app.getHttpServer())
-        .get('/clients?isActive=false')
-        .expect(200);
-
-      const inactiveIds = resInactive.body.map((c: any) => c.id);
-      expect(inactiveIds).toContain(inactiveClient.id);
-      expect(inactiveIds).not.toContain(activeClient.id);
     });
   });
 });

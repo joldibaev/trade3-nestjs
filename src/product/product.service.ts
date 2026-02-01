@@ -28,7 +28,6 @@ export class ProductService {
   async findAll(
     categoryId?: string,
     query?: string,
-    isActive?: boolean,
     include?: Record<string, boolean>,
   ): Promise<Product[]> {
     let categoryIds: string[] | undefined;
@@ -38,10 +37,7 @@ export class ProductService {
     }
 
     const where: Prisma.ProductWhereInput = {
-      AND: [
-        categoryIds ? { categoryId: { in: categoryIds } } : {},
-        isActive !== undefined ? { isActive } : {},
-      ],
+      AND: [categoryIds ? { categoryId: { in: categoryIds } } : {}],
     };
 
     if (query) {

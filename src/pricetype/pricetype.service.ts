@@ -15,9 +15,8 @@ export class PriceTypeService {
     });
   }
 
-  findAll(isActive?: boolean): Promise<PriceType[]> {
+  findAll(): Promise<PriceType[]> {
     return this.prisma.priceType.findMany({
-      where: { isActive },
       orderBy: { createdAt: 'desc' },
     });
   }

@@ -34,7 +34,6 @@ model User {
   passwordHash     String
   refreshTokenHash String? // Store hashed version for security
   role             Role     @default(USER)
-  isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -55,7 +54,6 @@ model Store {
   address       String?
   phone         String?
   workingHours  String?
-  isActive      Boolean              @default(true)
   cashboxes     Cashbox[]
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
@@ -77,7 +75,6 @@ model Cashbox {
   store     Store          @relation(fields: [storeId], references: [id])
   storeId   String
   sales     DocumentSale[]
-  isActive  Boolean        @default(true)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
@@ -92,7 +89,6 @@ model PriceType {
   prices           Price[]
   sales            DocumentSale[]
   revaluationItems DocumentRevaluationItem[]
-  isActive         Boolean                   @default(true)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
@@ -141,10 +137,9 @@ model Category {
   id        String     @id @default(uuid(7))
   name      String
   products  Product[]
-  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
   parentId  String?
   children  Category[] @relation("CategoryHierarchy")
-  isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -184,7 +179,6 @@ model Product {
   revaluationItems DocumentRevaluationItem[]
   barcodes         Barcode[]
   stockLedger      StockLedger[]
-  isActive         Boolean                   @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -221,7 +215,6 @@ model Vendor {
   email     String?
   address   String?
   purchases DocumentPurchase[]
-  isActive  Boolean            @default(true)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
@@ -236,7 +229,6 @@ model Client {
   address   String?
   sales     DocumentSale[]
   returns   DocumentReturn[]
-  isActive  Boolean          @default(true)
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
@@ -308,7 +300,7 @@ model DocumentPurchase {
 
 model DocumentPurchaseItem {
   id         String           @id @default(uuid(7))
-  purchase   DocumentPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  purchase   DocumentPurchase @relation(fields: [purchaseId], references: [id])
   purchaseId String
   product    Product          @relation(fields: [productId], references: [id])
   productId  String
@@ -442,7 +434,7 @@ model DocumentRevaluation {
 
 model DocumentRevaluationItem {
   id         String              @id @default(uuid(7))
-  document   DocumentRevaluation @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document   DocumentRevaluation @relation(fields: [documentId], references: [id])
   documentId String
 
   product   Product @relation(fields: [productId], references: [id])

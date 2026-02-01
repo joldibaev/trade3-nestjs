@@ -50,7 +50,6 @@ async function main() {
       address: 'ул. Пушкина, 10',
       phone: '+7 (700) 123-45-67',
       workingHours: '09:00 - 20:00',
-      isActive: true,
       cashboxes: ['Касса 1 (Канцтовары)', 'Касса 2 (Канцтовары)'],
     },
     {
@@ -58,7 +57,6 @@ async function main() {
       address: 'пр. Абая, 45',
       phone: '+7 (700) 765-43-21',
       workingHours: '10:00 - 21:00',
-      isActive: true,
       cashboxes: ['Касса 1 (Игрушки)', 'Касса 2 (Игрушки)'],
     },
   ];
@@ -70,14 +68,12 @@ async function main() {
         address: storeData.address,
         phone: storeData.phone,
         workingHours: storeData.workingHours,
-        isActive: storeData.isActive,
       },
       create: {
         name: storeData.name,
         address: storeData.address,
         phone: storeData.phone,
         workingHours: storeData.workingHours,
-        isActive: storeData.isActive,
         cashboxes: {
           create: storeData.cashboxes.map((name) => ({ name })),
         },

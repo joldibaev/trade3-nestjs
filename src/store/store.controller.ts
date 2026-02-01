@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 
 import { ApiIncludeQuery } from '../common/decorators/swagger-response.decorator';
 import { parseInclude } from '../common/utils/prisma-helpers';
@@ -21,13 +21,8 @@ export class StoreController {
 
   @Get()
   @ApiIncludeQuery(StoreRelations)
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
-  findAll(
-    @Query('isActive') isActive?: string,
-    @Query('include') include?: string | string[],
-  ): Promise<Store[]> {
-    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-    return this.storesService.findAll(active, parseInclude(include));
+  findAll(@Query('include') include?: string | string[]): Promise<Store[]> {
+    return this.storesService.findAll(parseInclude(include));
   }
 
   @Get(':id')

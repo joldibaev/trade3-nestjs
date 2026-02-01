@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 
 import { PriceType } from '../generated/prisma/client';
 import { CreatePriceTypeDto } from '../generated/types/backend/dto/price-type/create-price-type.dto';
@@ -17,10 +17,8 @@ export class PriceTypeController {
   }
 
   @Get()
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
-  findAll(@Query('isActive') isActive?: string): Promise<PriceType[]> {
-    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-    return this.priceTypeService.findAll(active);
+  findAll(): Promise<PriceType[]> {
+    return this.priceTypeService.findAll();
   }
 
   @Get(':id')

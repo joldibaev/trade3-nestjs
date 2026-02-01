@@ -28,15 +28,12 @@ export class ProductController {
     type: String,
     description: 'Search by name, article or barcode',
   })
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   async findAll(
     @Query('categoryId') categoryId?: string,
     @Query('query') query?: string,
-    @Query('isActive') isActive?: string,
     @Query('include') include?: string | string[],
   ): Promise<Product[]> {
-    const active = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
-    return this.productsService.findAll(categoryId, query, active, parseInclude(include));
+    return this.productsService.findAll(categoryId, query, parseInclude(include));
   }
 
   @Get(':id')

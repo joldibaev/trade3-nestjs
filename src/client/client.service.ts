@@ -15,9 +15,8 @@ export class ClientService {
     });
   }
 
-  findAll(isActive?: boolean): Promise<Client[]> {
+  findAll(): Promise<Client[]> {
     return this.prisma.client.findMany({
-      where: { isActive },
       orderBy: { createdAt: 'desc' },
     });
   }
