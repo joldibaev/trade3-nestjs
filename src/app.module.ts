@@ -22,6 +22,7 @@ import { DocumentRevaluationModule } from './document-revaluation/document-reval
 import { DocumentSaleModule } from './document-sale/document-sale.module';
 import { DocumentTransferModule } from './document-transfer/document-transfer.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { PaymentMethodModule } from './payment-method/payment-method.module';
 import { PriceModule } from './price/price.module';
 import { PriceLedgerModule } from './price-ledger/price-ledger.module';
 import { PriceTypeModule } from './pricetype/pricetype.module';
@@ -46,6 +47,7 @@ import { VendorModule } from './vendor/vendor.module';
     ProductModule,
     VendorModule,
     ClientModule,
+    PaymentMethodModule,
     PriceTypeModule,
     DocumentSaleModule,
     DocumentPurchaseModule,

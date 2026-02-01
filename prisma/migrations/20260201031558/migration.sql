@@ -20,7 +20,6 @@ CREATE TABLE "User" (
     "passwordHash" TEXT NOT NULL,
     "refreshTokenHash" TEXT,
     "role" "Role" NOT NULL DEFAULT 'USER',
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -34,7 +33,6 @@ CREATE TABLE "Store" (
     "address" TEXT,
     "phone" TEXT,
     "workingHours" TEXT,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -46,7 +44,6 @@ CREATE TABLE "Cashbox" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "storeId" TEXT NOT NULL,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -57,7 +54,6 @@ CREATE TABLE "Cashbox" (
 CREATE TABLE "PriceType" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -97,7 +93,6 @@ CREATE TABLE "Category" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "parentId" TEXT,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -125,7 +120,6 @@ CREATE TABLE "Product" (
     "name" TEXT NOT NULL,
     "article" TEXT,
     "categoryId" TEXT NOT NULL,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -151,7 +145,6 @@ CREATE TABLE "Vendor" (
     "phone" TEXT,
     "email" TEXT,
     "address" TEXT,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -165,11 +158,20 @@ CREATE TABLE "Client" (
     "phone" TEXT,
     "email" TEXT,
     "address" TEXT,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Client_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PaymentMethod" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PaymentMethod_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -443,6 +445,9 @@ CREATE UNIQUE INDEX "Vendor_name_key" ON "Vendor"("name");
 CREATE UNIQUE INDEX "Client_name_key" ON "Client"("name");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "PaymentMethod_name_key" ON "PaymentMethod"("name");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "DocumentSale_code_key" ON "DocumentSale"("code");
 
 -- CreateIndex
@@ -512,7 +517,7 @@ ALTER TABLE "Price" ADD CONSTRAINT "Price_productId_fkey" FOREIGN KEY ("productI
 ALTER TABLE "Price" ADD CONSTRAINT "Price_priceTypeId_fkey" FOREIGN KEY ("priceTypeId") REFERENCES "PriceType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Category" ADD CONSTRAINT "Category_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Category"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Category" ADD CONSTRAINT "Category_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Category"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Stock" ADD CONSTRAINT "Stock_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -557,7 +562,7 @@ ALTER TABLE "DocumentPurchase" ADD CONSTRAINT "DocumentPurchase_storeId_fkey" FO
 ALTER TABLE "DocumentPurchase" ADD CONSTRAINT "DocumentPurchase_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentPurchaseItem" ADD CONSTRAINT "DocumentPurchaseItem_purchaseId_fkey" FOREIGN KEY ("purchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DocumentPurchaseItem" ADD CONSTRAINT "DocumentPurchaseItem_purchaseId_fkey" FOREIGN KEY ("purchaseId") REFERENCES "DocumentPurchase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DocumentPurchaseItem" ADD CONSTRAINT "DocumentPurchaseItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -611,7 +616,7 @@ ALTER TABLE "DocumentRevaluation" ADD CONSTRAINT "DocumentRevaluation_documentPu
 ALTER TABLE "DocumentRevaluation" ADD CONSTRAINT "DocumentRevaluation_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "DocumentRevaluationItem" ADD CONSTRAINT "DocumentRevaluationItem_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "DocumentRevaluation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DocumentRevaluationItem" ADD CONSTRAINT "DocumentRevaluationItem_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "DocumentRevaluation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DocumentRevaluationItem" ADD CONSTRAINT "DocumentRevaluationItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
