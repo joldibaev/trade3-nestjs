@@ -2,6 +2,7 @@ import { PrismaClient } from '../src/generated/prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import 'dotenv/config';
+import * as bcrypt from 'bcrypt';
 
 const connectionString = `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?schema=public`;
 
@@ -13,14 +14,33 @@ async function main() {
   console.time('Total Seeding Time');
   console.log('Start seeding ...');
 
+  // 0. User
+  console.time('User');
+  const passwordHash = await bcrypt.hash('123123123', 10);
+  await prisma.user.upsert({
+    where: { email: 'nurlan@joldibaev.uz' },
+    update: { passwordHash },
+    create: {
+      email: 'nurlan@joldibaev.uz',
+      passwordHash,
+      role: 'ADMIN',
+    },
+  });
+  console.timeEnd('User');
+
   // 1. PriceType (Тип цены)
-  console.time('PriceType');
-  const retailPriceType = await prisma.priceType.upsert({
+  console.time('PriceTypes');
+  await prisma.priceType.upsert({
     where: { name: 'Розничная' },
     update: {},
     create: { name: 'Розничная' },
   });
-  console.timeEnd('PriceType');
+  await prisma.priceType.upsert({
+    where: { name: 'Оптовая' },
+    update: {},
+    create: { name: 'Оптовая' },
+  });
+  console.timeEnd('PriceTypes');
 
   // 2. Stores and Cashboxes (Магазины и Кассы)
   console.time('Stores');
@@ -31,7 +51,7 @@ async function main() {
       phone: '+7 (700) 123-45-67',
       workingHours: '09:00 - 20:00',
       isActive: true,
-      cashbox: 'Основная Касса (Канцтовары)',
+      cashboxes: ['Касса 1 (Канцтовары)', 'Касса 2 (Канцтовары)'],
     },
     {
       name: 'Игрушки',
@@ -39,7 +59,7 @@ async function main() {
       phone: '+7 (700) 765-43-21',
       workingHours: '10:00 - 21:00',
       isActive: true,
-      cashbox: 'Основная Касса (Игрушки)',
+      cashboxes: ['Касса 1 (Игрушки)', 'Касса 2 (Игрушки)'],
     },
   ];
 
@@ -59,129 +79,128 @@ async function main() {
         workingHours: storeData.workingHours,
         isActive: storeData.isActive,
         cashboxes: {
-          create: { name: storeData.cashbox },
+          create: storeData.cashboxes.map((name) => ({ name })),
         },
       },
     });
   }
   console.timeEnd('Stores');
 
-  // Helper to create products
-  const createProducts = async (
-    categoryId: string,
-    categoryName: string,
-    prefix: string,
-    count: number,
-  ) => {
-    const products: any[] = [];
-    for (let i = 1; i <= count; i++) {
-      const productName = `${prefix} ${categoryName} ${i}`;
-      products.push(
-        prisma.product.upsert({
-          where: {
-            categoryId_name: {
-              categoryId,
-              name: productName,
-            },
-          },
-          update: {},
-          create: {
-            name: productName,
-            categoryId,
-            code: `SEED-${prefix}-${categoryId}-${i}`,
-          },
-        }),
-      );
-    }
-    await Promise.all(products); // Parallelize product creation
-  };
-
-  // 3. Categories and Products Hierarchy
+  // 3. Categories and Products
   console.time('Categories & Products');
 
   const categoriesData = [
     {
-      name: 'Канцтовары (Категория)',
+      name: 'Канцтовары',
       children: [
         {
           name: 'Письменные принадлежности',
           children: [
-            { name: 'Ручки', productPrefix: 'Крутая' },
-            { name: 'Карандаши', productPrefix: 'Простой' },
-            { name: 'Маркеры', productPrefix: 'Яркий' },
+            {
+              name: 'Ручки',
+              products: [
+                { name: 'Ручка шариковая Parker Jotter', barcode: '3501170947334' },
+                { name: 'Ручка гелевая Pilot G-1', barcode: '4902505140359' },
+                { name: 'Набор ручек BIC Cristal (4 шт)', barcode: '3086123304561' },
+              ],
+            },
+            {
+              name: 'Карандаши',
+              products: [
+                { name: 'Карандаш чернографитный Faber-Castell', barcode: '4005401190003' },
+                { name: 'Цветные карандаши Koh-I-Noor (24 цвета)', barcode: '8593539097480' },
+              ],
+            },
           ],
         },
         {
           name: 'Бумажная продукция',
           children: [
-            { name: 'Тетради', productPrefix: 'Тетрадь' },
-            { name: 'Блокноты', productPrefix: 'Блокнот' },
-            { name: 'Стикеры', productPrefix: 'Набор' },
-          ],
-        },
-        {
-          name: 'Офисные мелочи',
-          children: [
-            { name: 'Степлеры', productPrefix: 'Степлер' },
-            { name: 'Скрепки', productPrefix: 'Упаковка' },
-            { name: 'Папки', productPrefix: 'Папка' },
+            {
+              name: 'Тетради',
+              products: [
+                { name: 'Тетрадь в клетку 12 листов', barcode: '4607106390012' },
+                { name: 'Тетрадь 48 листов Bruno Visconti', barcode: '4602265089324' },
+              ],
+            },
           ],
         },
       ],
     },
     {
-      name: 'Все игрушки',
+      name: 'Игрушки',
       children: [
-        {
-          name: 'Мягкие игрушки',
-          children: [
-            { name: 'Мишки', productPrefix: 'Мишка' },
-            { name: 'Зайчики', productPrefix: 'Заяц' },
-            { name: 'Котики', productPrefix: 'Кот' },
-          ],
-        },
         {
           name: 'Конструкторы',
           children: [
-            { name: 'Lego-like', productPrefix: 'Набор' },
-            { name: 'Магнитные', productPrefix: 'Магнит' },
-            { name: 'Деревянные', productPrefix: 'Брусочки' },
+            {
+              name: 'LEGO',
+              products: [
+                { name: 'LEGO Technic "McLaren Senna GTR"', barcode: '5702016912869' },
+                { name: 'LEGO City "Полицейский участок"', barcode: '5702017161914' },
+              ],
+            },
+            {
+              name: 'Магнитные конструкторы',
+              products: [{ name: 'Magformers Basic Set (30 деталей)', barcode: '8809465530113' }],
+            },
           ],
         },
         {
-          name: 'Развивающие',
+          name: 'Мягкие игрушки',
           children: [
-            { name: 'Пазлы', productPrefix: 'Пазл' },
-            { name: 'Настольные игры', productPrefix: 'Игра' },
-            { name: 'Наборы для творчества', productPrefix: 'Набор' },
+            {
+              name: 'Плюшевые звери',
+              products: [
+                { name: 'Медведь Тедди (30 см)', barcode: '5034566370154' },
+                { name: 'Заяц Mi (25 см)', barcode: '4627171440019' },
+              ],
+            },
           ],
         },
       ],
     },
   ];
 
-  // Recursive function to process categories
   const processCategories = async (data: any, parentId?: string) => {
-    // Create current category
     const category = await prisma.category.upsert({
       where: { name: data.name },
-      update: { parentId }, // Update parent connection if needed
+      update: { parentId },
       create: {
         name: data.name,
         parentId,
       },
     });
 
-    // If it has children, recurse
-    if (data.children && data.children.length > 0) {
+    if (data.children) {
       for (const child of data.children) {
         await processCategories(child, category.id);
       }
-    } else {
-      // It's a leaf node (in this structure), generate products
-      // Use explicitly provided prefix or just category name
-      const prefix = data.productPrefix || 'Товар';
-      await createProducts(category.id, data.name, prefix, 12); // Create 12 products per leaf category
+    }
+
+    if (data.products) {
+      for (let i = 0; i < data.products.length; i++) {
+        const prod = data.products[i];
+        await prisma.product.upsert({
+          where: {
+            categoryId_name: {
+              categoryId: category.id,
+              name: prod.name,
+            },
+          },
+          update: {},
+          create: {
+            name: prod.name,
+            categoryId: category.id,
+            code: `P-${category.name.substring(0, 3).toUpperCase()}-${i + 1}`,
+            barcodes: {
+              create: {
+                value: prod.barcode,
+              },
+            },
+          },
+        });
+      }
     }
   };
 
@@ -194,30 +213,15 @@ async function main() {
   // 4. Clients
   console.time('Clients');
   const clientsData = [
-    {
-      name: 'Постоянный Клиент',
-      phone: '0812345678',
-      email: 'regular@client.com',
-      address: 'ул. Главная, 10',
-    },
-    { name: 'Случайный Покупатель', phone: '0898765432' },
-    { name: 'Организация А', email: 'contact@orga.com', address: 'Офис центр, 5 этаж' },
+    { name: 'Розничный покупатель', phone: '0000000000' },
+    { name: 'Иван Иванов', phone: '+7 (777) 111-22-33' },
   ];
 
   for (const client of clientsData) {
     await prisma.client.upsert({
       where: { name: client.name },
-      update: {
-        phone: client.phone,
-        email: client.email,
-        address: client.address,
-      },
-      create: {
-        name: client.name,
-        phone: client.phone,
-        email: client.email,
-        address: client.address,
-      },
+      update: { phone: client.phone },
+      create: { name: client.name, phone: client.phone },
     });
   }
   console.timeEnd('Clients');
@@ -225,30 +229,15 @@ async function main() {
   // 5. Vendors
   console.time('Vendors');
   const vendorsData = [
-    {
-      name: 'Главный Поставщик',
-      phone: '0311223344',
-      email: 'sales@mainvendor.com',
-      address: 'Промзона, Склад 1',
-    },
-    { name: 'Импорт-Экспорт ООО', email: 'info@impex.com' },
-    { name: 'Местный Производитель', phone: '0355667788', address: 'ул. Заводская, 2' },
+    { name: 'ТОО КанцОпт', address: 'г. Алматы, ул. Складская, 5' },
+    { name: 'Toy Importer Ltd', address: 'г. Астана, пр. Индустриальный, 12' },
   ];
 
   for (const vendor of vendorsData) {
     await prisma.vendor.upsert({
       where: { name: vendor.name },
-      update: {
-        phone: vendor.phone,
-        email: vendor.email,
-        address: vendor.address,
-      },
-      create: {
-        name: vendor.name,
-        phone: vendor.phone,
-        email: vendor.email,
-        address: vendor.address,
-      },
+      update: { address: vendor.address },
+      create: { name: vendor.name, address: vendor.address },
     });
   }
   console.timeEnd('Vendors');
