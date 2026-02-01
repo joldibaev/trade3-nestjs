@@ -666,7 +666,6 @@ export class DocumentPurchaseService {
           include: {
             product: {
               include: {
-                prices: true,
                 revaluationItems: true,
               },
             },
